@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block page_title %}Facturación Masiva{% endblock %}
+
+{% block content %}
+<div x-data="{ showModal: false, procesando: false }" class="space-y-6">
+
+    <!-- Tarjeta Superior: Resumen y Acciones -->
+    <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row justify-between items-center transition-all">
+        <div>
+            <h2 class="text-xl font-bold text-gray-800">Cola de Pedidos</h2>
+            <p class="text-sm text-gray-500 mt-1">Hay <span class="font-bold text-blue-600">{{ cantidad_total|default:"0" }}</span> pedidos pendientes por facturar en este bloque.</p>
+        </div>
+        <div class="mt-4 md:mt-0">
+            {% if cantidad_total > 0 %}
+            <button @click="showModal = true" 
+                    class="flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:ring-4 focus:ring-blue-100">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Procesar Lote de Facturación
+            </button>
+            {% else %}
+            <button disabled class="flex items-center px-6 py-3 bg-gray-300 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed">
+                Sin pedidos en cola
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Tabla Principal -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left text-gray-600">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <th scope="col" class="px-6 py-4 font-semibold">No. Pedido</th>
+                        <th scope="col" class="px-6 py-4 font-semibold">Fecha</th>
+                        <th scope="col" class="px-6 py-4 font-semibold">Cliente</th>
+                        <th scope="col" class="px-6 py-4 font-semibold">Total</th>
+                        <th scope="col" class="px-6 py-4 font-semibold text-center">Estado</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for pedido in pedidos %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 font-medium text-gray-900">
+                            #{{ pedido.num_pedido }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {{ pedido.fch_pedido|date:"d M Y, h:i A"|default:"-" }}
+                        </td>
+                        <td class="px-6 py-4">
+                            {{ pedido.id_tercero.nom_tercero|default:pedido.id_tercero_id }}
+                        </td>
+                        <td class="px-6 py-4 font-semibold text-gray-700">
+                            $ {{ pedido.valor_pedido|default:"0.00" }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                Por Procesar
+                            </span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-12 text-center text-gray-500">
+                            <svg class="mx-auto h-12 w-12 text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <p>No hay pedidos aprobados pendientes en este momento.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmación -->
+    <div x-show="showModal" 
+         style="display: none;" 
+         class="fixed inset-0 z-50 overflow-y-auto" 
+         aria-labelledby="modal-title" role="dialog" aria-modal="true">
+         
+        <!-- Backdrop oscuro semitransparente -->
+        <div x-show="showModal"
+             x-transition:enter="ease-out duration-300"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="ease-in duration-200"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-gray-900 bg-opacity-60 backdrop-blur-sm transition-opacity" 
+             @click="if(!procesando) showModal = false"></div>
+
+        <!-- Contenedor centrado -->
+        <div class="flex items-center justify-center min-h-screen p-4 text-center sm:p-0">
+            <div x-show="showModal"
+                 x-transition:enter="ease-out duration-300"
+                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave="ease-in duration-200"
+                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 class="relative bg-white rounded-xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:max-w-lg w-full">
+                
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="sm:flex sm:items-start">
+                        <!-- Icono de advertencia -->
+                        <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 sm:mx-0 sm:h-10 sm:w-10 ring-4 ring-yellow-50">
+                            <svg class="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                            <h3 class="text-lg leading-6 font-semibold text-gray-900" id="modal-title">
+                                Confirmar Facturación Masiva
+                            </h3>
+                            <div class="mt-2">
+                                <p class="text-sm text-gray-500">
+                                    ¿Estás seguro de procesar estos <span class="font-bold text-gray-800">{{ cantidad_total }}</span> pedidos? 
+                                    Esta acción es irreversible y generará las facturas electrónicas directamente en DOORS, afectando los saldos de inventario de inmediato.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botones -->
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-gray-100">
+                    <button type="button" 
+                            @click="procesando = true; setTimeout(() => { /* Lógica posteo form/api luego de la UI */ }, 500)"
+                            :class="procesando ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'"
+                            :disabled="procesando"
+                            class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm transition-colors">
+                        
+                        <!-- Spinner Alpine -->
+                        <svg x-show="procesando" style="display: none;" class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        
+                        <span x-text="procesando ? 'Procesando...' : 'Confirmar y Facturar'"></span>
+                    </button>
+                    <button type="button" 
+                            @click="showModal = false"
+                            x-show="!procesando"
+                            class="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm transition-colors">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

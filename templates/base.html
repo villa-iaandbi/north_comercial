@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}North Local - Comercial{% endblock %}</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1d4ed8',
+                        secondary: '#475569',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Alpine.js para interactividad (Sidebar/Dropdowns) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans antialiased" x-data="{ sidebarOpen: false }">
+
+    <!-- Wrapper principal -->
+    <div class="flex h-screen overflow-hidden">
+
+        <!-- Backdrop para móvil -->
+        <div x-show="sidebarOpen" class="fixed inset-0 z-20 bg-black bg-opacity-50 transition-opacity lg:hidden" @click="sidebarOpen = false" style="display: none;"></div>
+
+        <!-- Sidebar / Drawer Lateral -->
+        <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'" class="fixed inset-y-0 left-0 z-30 w-64 bg-gray-900 text-white transition-transform duration-300 transform lg:translate-x-0 lg:static lg:inset-auto flex flex-col">
+            <!-- Logo area -->
+            <div class="flex items-center justify-center h-16 bg-gray-800 shadow-md">
+                <span class="text-2xl font-bold uppercase tracking-wider text-blue-400">North Local</span>
+            </div>
+            
+            <!-- Menú lateral -->
+            <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+                <a href="#" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                    Dashboard
+                </a>
+                <a href="#" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                    Facturación
+                </a>
+                <a href="#" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                    Punto de Venta (POS)
+                </a>
+                <a href="#" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    Impresión
+                </a>
+                <a href="#" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                    Logística
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Contenido principal -->
+        <div class="flex-1 flex flex-col bg-gray-50 overflow-hidden">
+            
+            <!-- Navbar Header -->
+            <header class="flex items-center justify-between px-6 py-4 bg-white border-b shadow-sm z-10">
+                <div class="flex items-center">
+                    <!-- Botón para abrir el drawer en móvil -->
+                    <button @click="sidebarOpen = true" class="text-gray-500 focus:outline-none lg:hidden">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    </button>
+                    <!-- Título de la página o Breadcrumbs -->
+                    <h2 class="text-xl font-semibold text-gray-800 ml-4 lg:ml-0">
+                        {% block page_title %}Facturación Pos{% endblock %}
+                    </h2>
+                </div>
+                
+                <!-- Perfil y acciones derecha -->
+                <div class="flex items-center">
+                    <div class="relative" x-data="{ userOpen: false }">
+                        <button @click="userOpen = !userOpen" class="flex items-center text-sm focus:outline-none">
+                            <span class="mr-3 font-medium text-gray-600 hidden md:block">
+                                {% if request.user.is_authenticated %}
+                                    {{ request.user.username }}
+                                {% else %}
+                                    Usuario
+                                {% endif %}
+                            </span>
+                            <div class="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
+                                U
+                            </div>
+                        </button>
+                        <!-- Dropdown perfil dropdown -->
+                        <div x-show="userOpen" @click.away="userOpen = false" class="absolute right-0 w-48 mt-3 py-2 bg-white rounded-md shadow-lg z-20 border border-gray-100" style="display: none;">
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600">Mi Perfil</a>
+                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600">Configuración</a>
+                            <hr class="my-1 border-gray-100">
+                            <!-- TODO: Integrar url logout -->
+                            <a href="#" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50">Cerrar Sesión</a>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Área de inserción de contenido de la vista -->
+            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-6 md:p-8">
+                <!-- Se muestran los mensajes de Django -->
+                {% if messages %}
+                    <div class="mb-6 space-y-3">
+                        {% for message in messages %}
+                        <div class="p-4 rounded-md shadow-sm border-l-4 
+                            {% if message.tags == 'error' %}bg-red-50 border-red-500 text-red-700
+                            {% elif message.tags == 'success' %}bg-green-50 border-green-500 text-green-700
+                            {% elif message.tags == 'warning' %}bg-yellow-50 border-yellow-500 text-yellow-700
+                            {% else %}bg-blue-50 border-blue-500 text-blue-700{% endif %}">
+                            <p class="text-sm font-medium">{{ message }}</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <!-- Content Block Principal -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-6 md:p-8">
+                    {% block content %}
+                    <!-- Contenido de las vistas irá aquí -->
+                    <div class="text-center py-12">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                        <h3 class="mt-2 text-sm font-medium text-gray-900">Bienvenido a North Comercial</h3>
+                        <p class="mt-1 text-sm text-gray-500">Selecciona un módulo en el menú lateral para comenzar.</p>
+                    </div>
+                    {% endblock %}
+                </div>
+            </main>
+        </div>
+    </div>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

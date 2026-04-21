@@ -1,0 +1,6 @@
+django
+oracledb
+python-dotenv
+docxtpl
+qrcode
+pillow
