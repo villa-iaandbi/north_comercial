@@ -1,6 +1,8 @@
 from django.shortcuts import render
+from django.http import JsonResponse
 from django.db.models import Q
 from core.models import MvPedidosNorth
+from .services import procesar_lote_pedidos
 
 def facturacion_masiva_view(request):
     """
@@ -27,3 +29,38 @@ def facturacion_masiva_view(request):
     }
 
     return render(request, 'facturacion/masiva.html', context)
+
+def facturar_lote_api(request):
+    """
+    Endpoint invocado desde el cliente (con Fetch API) para disparar la facturación.
+    """
+    if request.method == 'POST':
+        import json
+        try:
+            body = json.loads(request.body)
+            lista_pedidos = body.get('pedidos', [])
+        except Exception:
+            return JsonResponse({'error': 'JSON inválido'}, status=400)
+            
+        if not lista_pedidos:
+            return JsonResponse({'error': 'No se seleccionaron pedidos'}, status=400)
+
+        # Criterio anti-paginación, filtrado por la selección manual
+        qs_pedidos = MvPedidosNorth.objects.select_related('id_tercero').filter(
+            num_pedido__in=lista_pedidos,
+            estado_pedido='APR'
+        ).filter(
+            Q(procesado__isnull=True) | ~Q(procesado='S')
+        ).order_by('fch_pedido')
+        
+        # Iteración Defensiva Limitada (Regla 11g)
+        pedidos_lista = []
+        for count, pedido in enumerate(qs_pedidos.iterator()):
+            if count >= 50:
+                break
+            pedidos_lista.append(pedido)
+            
+        resultados = procesar_lote_pedidos(pedidos_lista)
+        return JsonResponse(resultados)
+        
+    return JsonResponse({'error': 'Método no permitido'}, status=405)

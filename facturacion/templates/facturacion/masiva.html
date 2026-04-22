@@ -3,7 +3,7 @@
 {% block page_title %}Facturación Masiva{% endblock %}
 
 {% block content %}
-<div x-data="{ showModal: false, procesando: false }" class="space-y-6">
+<div x-data="{ showModal: false, procesando: false, procesadoExitoso: false, resultados: { exitosos: 0, fallidos: 0, errores: [] }, pedidosSeleccionados: [], seleccionarTodos: false }" class="space-y-6">
 
     <!-- Tarjeta Superior: Resumen y Acciones -->
     <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row justify-between items-center transition-all">
@@ -12,19 +12,15 @@
             <p class="text-sm text-gray-500 mt-1">Hay <span class="font-bold text-blue-600">{{ cantidad_total|default:"0" }}</span> pedidos pendientes por facturar en este bloque.</p>
         </div>
         <div class="mt-4 md:mt-0">
-            {% if cantidad_total > 0 %}
             <button @click="showModal = true" 
-                    class="flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors focus:ring-4 focus:ring-blue-100">
+                    :disabled="pedidosSeleccionados.length === 0"
+                    :class="pedidosSeleccionados.length === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'"
+                    class="flex items-center px-6 py-3 text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-4 focus:ring-blue-100 disabled:opacity-50">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
-                Procesar Lote de Facturación
+                Procesar <span x-text="pedidosSeleccionados.length" class="mx-1"></span> Pedidos
             </button>
-            {% else %}
-            <button disabled class="flex items-center px-6 py-3 bg-gray-300 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed">
-                Sin pedidos en cola
-            </button>
-            {% endif %}
         </div>
     </div>
 
@@ -34,6 +30,18 @@
             <table class="w-full text-sm text-left text-gray-600">
                 <thead class="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
                     <tr>
+                        <th scope="col" class="px-6 py-4 font-semibold w-8">
+                            <input type="checkbox" x-model="seleccionarTodos" 
+                                   @change="
+                                       if (seleccionarTodos) {
+                                            let cb = document.querySelectorAll('.pedido-checkbox');
+                                            pedidosSeleccionados = Array.from(cb).map(el => el.value);
+                                       } else {
+                                            pedidosSeleccionados = [];
+                                       }
+                                   "
+                                   class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
+                        </th>
                         <th scope="col" class="px-6 py-4 font-semibold">No. Pedido</th>
                         <th scope="col" class="px-6 py-4 font-semibold">Fecha</th>
                         <th scope="col" class="px-6 py-4 font-semibold">Cliente</th>
@@ -44,6 +52,11 @@
                 <tbody class="divide-y divide-gray-100">
                     {% for pedido in pedidos %}
                     <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4">
+                            <input type="checkbox" value="{{ pedido.num_pedido }}" x-model="pedidosSeleccionados" 
+                                   class="pedido-checkbox w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                                   @change="if(!this.checked) seleccionarTodos = false;">
+                        </td>
                         <td class="px-6 py-4 font-medium text-gray-900">
                             #{{ pedido.num_pedido }}
                         </td>
@@ -64,7 +77,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="5" class="px-6 py-12 text-center text-gray-500">
+                        <td colspan="6" class="px-6 py-12 text-center text-gray-500">
                             <svg class="mx-auto h-12 w-12 text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
@@ -115,13 +128,30 @@
                         </div>
                         <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
                             <h3 class="text-lg leading-6 font-semibold text-gray-900" id="modal-title">
-                                Confirmar Facturación Masiva
+                                <span x-text="procesadoExitoso ? 'Resultado de Facturación' : 'Confirmar Facturación Masiva'"></span>
                             </h3>
-                            <div class="mt-2">
-                                <p class="text-sm text-gray-500">
-                                    ¿Estás seguro de procesar estos <span class="font-bold text-gray-800">{{ cantidad_total }}</span> pedidos? 
-                                    Esta acción es irreversible y generará las facturas electrónicas directamente en DOORS, afectando los saldos de inventario de inmediato.
-                                </p>
+                            <div class="mt-2 text-sm text-gray-500">
+                                <template x-if="!procesadoExitoso">
+                                    <p>
+                                        ¿Estás seguro de procesar <span x-show="pedidosSeleccionados.length === 1">este</span><span x-show="pedidosSeleccionados.length > 1">estos</span> <span class="font-bold text-gray-800" x-text="pedidosSeleccionados.length"></span> pedido<span x-show="pedidosSeleccionados.length > 1">s</span> seleccionado<span x-show="pedidosSeleccionados.length > 1">s</span>? 
+                                        Esta acción es irreversible y generará las facturas electrónicas directamente en DOORS, afectando los saldos de inventario de inmediato.
+                                    </p>
+                                </template>
+                                <template x-if="procesadoExitoso">
+                                    <div class="space-y-2 mt-4 text-left">
+                                        <div class="p-3 bg-green-50 rounded-lg border border-green-200">
+                                            <p class="text-green-800 font-medium">✅ Facturas generadas exitosamente: <span x-text="resultados.exitosos"></span></p>
+                                        </div>
+                                        <div class="p-3 bg-red-50 rounded-lg border border-red-200" x-show="resultados.fallidos > 0">
+                                            <p class="text-red-800 font-medium">❌ Pedidos fallidos / omitidos: <span x-text="resultados.fallidos"></span></p>
+                                            <ul class="mt-2 list-disc pl-5 text-xs text-red-600 max-h-32 overflow-y-auto">
+                                                <template x-for="err in resultados.errores">
+                                                    <li x-text="err"></li>
+                                                </template>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </template>
                             </div>
                         </div>
                     </div>
@@ -129,23 +159,57 @@
 
                 <!-- Botones -->
                 <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-gray-100">
-                    <button type="button" 
-                            @click="procesando = true; setTimeout(() => { /* Lógica posteo form/api luego de la UI */ }, 500)"
-                            :class="procesando ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'"
-                            :disabled="procesando"
-                            class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm transition-colors">
-                        
-                        <!-- Spinner Alpine -->
-                        <svg x-show="procesando" style="display: none;" class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        
-                        <span x-text="procesando ? 'Procesando...' : 'Confirmar y Facturar'"></span>
-                    </button>
+                    <template x-if="!procesadoExitoso">
+                        <button type="button" 
+                                @click="
+                                    procesando = true;
+                                    fetch('{% url 'facturacion:facturar_lote_api' %}', {
+                                        method: 'POST',
+                                        headers: {
+                                            'X-CSRFToken': '{{ csrf_token }}',
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({ pedidos: pedidosSeleccionados })
+                                    })
+                                    .then(res => {
+                                        if(!res.ok) throw new Error('Respuesta inválida');
+                                        return res.json();
+                                    })
+                                    .then(data => {
+                                        resultados = data;
+                                        procesando = false;
+                                        procesadoExitoso = true;
+                                    })
+                                    .catch(err => {
+                                        procesando = false;
+                                        alert('Error de conexión o fallo interno del servidor.');
+                                    })
+                                "
+                                :class="procesando ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'"
+                                :disabled="procesando"
+                                class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm transition-colors">
+                            
+                            <!-- Spinner Alpine -->
+                            <svg x-show="procesando" style="display: none;" class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            
+                            <span x-text="procesando ? 'Procesando en DB...' : 'Confirmar y Facturar'"></span>
+                        </button>
+                    </template>
+                    
+                    <template x-if="procesadoExitoso">
+                        <button type="button" 
+                                @click="window.location.reload()"
+                                class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm transition-colors">
+                            Aceptar y Recargar
+                        </button>
+                    </template>
+
                     <button type="button" 
                             @click="showModal = false"
-                            x-show="!procesando"
+                            x-show="!procesando && !procesadoExitoso"
                             class="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm transition-colors">
                         Cancelar
                     </button>

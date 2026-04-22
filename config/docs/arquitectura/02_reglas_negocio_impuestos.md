@@ -14,7 +14,13 @@
 *(AI INSTRUCTION: Para evitar el problema N+1, todos los datos que dependen de catálogos maestros deben consultarse en bloque antes de iniciar el ciclo de facturación).*
 
 **1. Parámetros Globales (`SG_PARAMETROS`):**
-* Extraer con `ID_SISTEMA = '1'`: Bodega por defecto, causación de retenciones, IDs de retención (RTE_COMPRAS, RTE_AGRICOLA), y porcentajes de ICA.
+* Se omitirá el filtro `ID_SISTEMA = '1'` en el query a la tabla `sg_parametros` para asegurar que la caché cargue sin problemas (dado que todos se mapean como texto desde la columna `VLR_CHR`). Los IDs de parámetros obligatorios en código duro son:
+  * `EXISTENCIA_BOD`: Código de bodega y Tipo existencia (por defecto asume que es la bodega principal o '1').
+  * `COD_VEN_CREDITO`: Tipo de documento para asignar a las facturas. (Su valor devuelto suele ser ej. '201').
+  * `CAUSA_RTEFUENTE`: Bandera de causación ('SI' / 'NO').
+  * `RTE_COMPRAS`: ID retención general. Debe mapearse cruzándose contra `CO_RETENCIONES`.
+  * `RTE_AGRICOLA`: ID retención especial. Debe mapearse contra `CO_RETENCIONES`, se dispara si el artículo indica ser Agrícola ('S').
+  * `PORC_RETENCION_ICA`: ID de retención para el ICA, que fluye desde los cruces de retención.
 
 **2. Asignación de Centro de Costo (`SG_USUARIO_CENTRO_COSTOS`):**
 * **Concepto:** Cada transacción contable y de inventario debe estar amarrada al centro de costo del vendedor (`ID_VENDEDOR` en el pedido equivale al `ID_USUARIO`).
