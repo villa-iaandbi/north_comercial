@@ -42,6 +42,7 @@ class CtVenta(models.Model):
     tot_iva = models.DecimalField(max_digits=15, decimal_places=2)
     tot_retefuente = models.DecimalField(max_digits=15, decimal_places=2)
     vlr_retencion_iva = models.DecimalField(max_digits=15, decimal_places=2)
+    tot_otr_impuestos = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True, db_column='TOT_OTR_IMPUESTOS')
     tot_descuento = models.DecimalField(max_digits=15, decimal_places=2)
     vlr_venta = models.DecimalField(max_digits=15, decimal_places=2)
     plazo_pago = models.IntegerField(default=0)
@@ -150,6 +151,7 @@ class CoTercero(models.Model):
     id_tercero = models.CharField(max_length=8, primary_key=True, db_column='ID_TERCERO')
     nom_tercero = models.CharField(max_length=200, db_column='NOM_TERCERO') # Asumido 200 por estándar, ajustar si es diferente
     id_regimen = models.CharField(max_length=3, null=True, blank=True, db_column='ID_REGIMEN')
+    siono_iva = models.CharField(max_length=1, null=True, blank=True, db_column='SIONO_IVA')
 
     class Meta:
         managed = False

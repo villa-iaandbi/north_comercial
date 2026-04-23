@@ -139,6 +139,7 @@ def procesar_lote_pedidos(pedidos_qs):
                 
                 total_comision_cabecera = decimal.Decimal('0.00')
                 total_costo_ventas = decimal.Decimal('0.00')
+                total_impoconsumo_factura = decimal.Decimal('0.00')
                 
                 mcia1 = mcia2 = mcia3 = mcia4 = mcia5 = decimal.Decimal('0.00')
                 tot_iva2 = tot_iva3 = tot_iva4 = tot_iva5 = decimal.Decimal('0.00')
@@ -186,6 +187,8 @@ def procesar_lote_pedidos(pedidos_qs):
                 # FASE 3: REGLAS FÍSICAS Y TRIBUTARIAS 
                 # ==========================================
                 idx_mov = 1
+                es_cliente_excluido = (getattr(primer_pedido.id_tercero, 'siono_iva', 'N') == 'S')
+                
                 for clave_item, data in items_consolidados.items():
                     articulo = data['articulo']
                     cant_total = data['cantidad']
@@ -193,7 +196,13 @@ def procesar_lote_pedidos(pedidos_qs):
                     
                     subtotal = cant_total * vlr_unitario
                     
-                    porc_iva = cache_gravamenes.get(articulo.id_gravamen, decimal.Decimal('0.00'))
+                    valor_impoconsumo_linea = cant_total * (articulo.impoconsumo or decimal.Decimal('0.00'))
+                    
+                    if es_cliente_excluido:
+                        porc_iva = decimal.Decimal('0.00')
+                    else:
+                        porc_iva = cache_gravamenes.get(articulo.id_gravamen, decimal.Decimal('0.00'))
+                        
                     vlr_iva_linea = subtotal * (porc_iva / decimal.Decimal('100.00'))
                     
                     unidad_medida = None
@@ -205,7 +214,11 @@ def procesar_lote_pedidos(pedidos_qs):
                     if not unidad_medida and lista_um:
                         unidad_medida = lista_um[0].id_unidad_medida
                         
-                    gravamen_str = articulo.id_gravamen if articulo.id_gravamen else '1'
+                    if es_cliente_excluido:
+                        gravamen_str = '1'
+                    else:
+                        gravamen_str = articulo.id_gravamen if articulo.id_gravamen else '1'
+                        
                     if gravamen_str == '1':
                         mcia1 += subtotal
                     elif gravamen_str == '2':
@@ -225,6 +238,7 @@ def procesar_lote_pedidos(pedidos_qs):
 
                     total_mercancia += subtotal
                     total_iva += vlr_iva_linea
+                    total_impoconsumo_factura += valor_impoconsumo_linea
                     
                     if articulo.siono_producto_agricola == 'S':
                         base_retencion_agricola += subtotal
@@ -251,6 +265,7 @@ def procesar_lote_pedidos(pedidos_qs):
                         cantidad=cant_total,
                         vlr_unitario=vlr_unitario,
                         vlr_iva=vlr_iva_linea,
+                        impoconsumo=valor_impoconsumo_linea,
                         vlr_promedio_ini=vlr_promedio,
                         vlr_reposicion=vlr_reposicion,
                         vlr_comision_vend=vlr_comision_linea,
@@ -325,7 +340,7 @@ def procesar_lote_pedidos(pedidos_qs):
                                 tot_rte_iva = total_iva * (rte_obj_iva.porc_retencion / decimal.Decimal('100.00'))
 
                 tot_retefuente = tot_rte_compras + tot_rte_agricola + tot_rte_ica
-                gran_total = total_mercancia + total_iva - (tot_retefuente + tot_rte_iva)
+                gran_total = total_mercancia + total_iva + total_impoconsumo_factura - (tot_retefuente + tot_rte_iva)
                 
                 # REDONDEO DE CABECERA (Header-Level Rounding) a Enteros más cercanos (Cero Decimales)
                 total_mercancia_red = total_mercancia.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
@@ -341,6 +356,7 @@ def procesar_lote_pedidos(pedidos_qs):
                 
                 total_comision_cabecera_red = total_comision_cabecera.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
                 total_costo_ventas_red = total_costo_ventas.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
+                total_impoconsumo_factura_red = total_impoconsumo_factura.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
                 
                 print(f"Bases Finales -> Agrícola: {base_retencion_agricola}, Compras (incl. desborde): {base_retencion_compras}, Base Total (ICA/IVA): {base_total}")
                 print(f"Total Factura a insertar (Redondeado): {gran_total_red} (RTE_COM: {tot_rte_compras_red}, RTE_AGR: {tot_rte_agricola_red}, RTE_ICA: {tot_rte_ica_red}, RTE_IVA: {tot_rte_iva_red})")
@@ -378,6 +394,7 @@ def procesar_lote_pedidos(pedidos_qs):
                     tot_iva=total_iva_red,
                     tot_retefuente=tot_retefuente_red,
                     vlr_retencion_iva=tot_rte_iva_red,
+                    tot_otr_impuestos=total_impoconsumo_factura_red,
                     tot_descuento=decimal.Decimal('0.00'),
                     vlr_venta=gran_total_red,
                     plazo_pago=primer_pedido.plazo_pago or 0,
@@ -407,7 +424,7 @@ def procesar_lote_pedidos(pedidos_qs):
                     'TOT_IVA5': tot_iva5.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
                     'COSTO_VENTA': total_costo_ventas_red if total_costo_ventas_red > 0 else decimal.Decimal('0'),
                     'CXC': gran_total_red,
-                    'TOT_IMPOCONSUMO': decimal.Decimal('0'),
+                    'TOT_IMPOCONSUMO': total_impoconsumo_factura_red,
                     'RECUPERACION_COSTO': total_costo_ventas_red if total_costo_ventas_red > 0 else decimal.Decimal('0'),
                     'RTE_COMPRAS': tot_rte_compras_red,
                     'RTE_AGRICOLA': tot_rte_agricola_red,
