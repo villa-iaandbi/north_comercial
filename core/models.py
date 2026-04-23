@@ -236,6 +236,103 @@ class CoRetencion(models.Model):
         managed = False
         db_table = 'co_retenciones'
 
+# ==========================================
+# TRANSACCIONAL: RECIBOS NORTH
+# ==========================================
+
+class MvReciboNorth(models.Model):
+    num_recibo = models.CharField(max_length=15, primary_key=True, db_column='NUM_RECIBO')
+    id_vendedor = models.CharField(max_length=8, db_column='ID_VENDEDOR')
+    id_sistema = models.CharField(max_length=15, db_column='ID_SISTEMA')
+    id_tercero = models.ForeignKey(CoTercero, on_delete=models.DO_NOTHING, db_column='ID_TERCERO')
+    fch_recibo = models.DateTimeField(db_column='FCH_RECIBO')
+    tot_recibo = models.DecimalField(max_digits=16, decimal_places=2, db_column='TOT_RECIBO')
+    medio_pago = models.CharField(max_length=1, db_column='MEDIO_PAGO')
+    num_medio = models.CharField(max_length=50, null=True, blank=True, db_column='NUM_MEDIO')
+    id_banco = models.CharField(max_length=8, null=True, blank=True, db_column='ID_BANCO')
+    obser = models.CharField(max_length=100, null=True, blank=True, db_column='OBSER')
+    estado_recibo = models.CharField(max_length=3, db_column='ESTADO_RECIBO')
+    procesado = models.CharField(max_length=1, null=True, blank=True, db_column='PROCESADO')
+
+    class Meta:
+        managed = False
+        db_table = 'mv_recibos_north'
+
+class MvReciboItemNorth(models.Model):
+    id_vendedor = models.CharField(max_length=8, db_column='ID_VENDEDOR')
+    id_sistema = models.CharField(max_length=15, db_column='ID_SISTEMA')
+    num_recibo = models.ForeignKey(MvReciboNorth, on_delete=models.DO_NOTHING, db_column='NUM_RECIBO', related_name='items')
+    id_documento = models.CharField(max_length=8, db_column='ID_DOCUMENTO', primary_key=True) # Pseudo PK: ID de la Factura
+    vlr_afectacion = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_AFECTACION')
+    descuento = models.DecimalField(max_digits=16, decimal_places=2, db_column='DESCUENTO')
+    ret_compras = models.DecimalField(max_digits=16, decimal_places=2, db_column='RET_COMPRAS')
+    ret_servicios = models.DecimalField(max_digits=16, decimal_places=2, db_column='RET_SERVICIOS')
+    ret_otros = models.DecimalField(max_digits=16, decimal_places=2, db_column='RET_OTROS')
+    ret_iva = models.DecimalField(max_digits=16, decimal_places=2, db_column='RET_IVA')
+    ret_ica = models.DecimalField(max_digits=16, decimal_places=2, db_column='RET_ICA')
+
+    class Meta:
+        managed = False
+        db_table = 'mv_recibo_items_north'
+
+# ==========================================
+# TRANSACCIONAL: TESORERÍA DOORS
+# ==========================================
+
+class TsIngreso(models.Model):
+    id_documento = models.CharField(max_length=8, primary_key=True, db_column='ID_DOCUMENTO')
+    fch_entrega_ingreso = models.DateTimeField(db_column='FCH_ENTREGA_INGRESO')
+    id_posfechado = models.CharField(max_length=8, null=True, blank=True, db_column='ID_POSFECHADO')
+    vlr_efectivo = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True, db_column='VLR_EFECTIVO')
+    vlr_cheque = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True, db_column='VLR_CHEQUE')
+    vlr_dto_financiero = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_DTO_FINANCIERO')
+    tot_retencion_compras = models.DecimalField(max_digits=16, decimal_places=2, db_column='TOT_RETENCION_COMPRAS')
+    tot_retencion_servicios = models.DecimalField(max_digits=16, decimal_places=2, db_column='TOT_RETENCION_SERVICIOS')
+    tot_retencion_otros = models.DecimalField(max_digits=16, decimal_places=2, db_column='TOT_RETENCION_OTROS')
+    tot_retencion_ica = models.DecimalField(max_digits=16, decimal_places=2, db_column='TOT_RETENCION_ICA')
+    tot_retencion_iva = models.DecimalField(max_digits=16, decimal_places=2, db_column='TOT_RETENCION_IVA')
+    vlr_otros = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True, db_column='VLR_OTROS')
+    vlr_anticipo = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True, db_column='VLR_ANTICIPO')
+
+    class Meta:
+        managed = False
+        db_table = 'ts_ingresos'
+
+class CoDocumentoAfectado(models.Model):
+    id_documento = models.CharField(max_length=8, db_column='ID_DOCUMENTO') # ID del Recibo
+    id_documento_afectado = models.CharField(max_length=8, db_column='ID_DOCUMENTO_AFECTADO', primary_key=True) # ID de la Factura
+    vlr_afectacion = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_AFECTACION')
+    vlr_dto_financiero = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_DTO_FINANCIERO')
+    vlr_retencion_compras = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_RETENCION_COMPRAS')
+    vlr_retencion_servicios = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_RETENCION_SERVICIOS')
+    vlr_retencion_ica = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_RETENCION_ICA')
+    vlr_retencion_iva = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_RETENCION_IVA')
+    vlr_retencion_otros = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_RETENCION_OTROS')
+    id_cuota = models.CharField(max_length=8, null=True, blank=True, db_column='ID_CUOTA')
+    siono_pendiente = models.CharField(max_length=1, db_column='SIONO_PENDIENTE')
+    siono_afecta = models.CharField(max_length=1, db_column='SIONO_AFECTA')
+    vlr_iva = models.DecimalField(max_digits=16, decimal_places=2, db_column='VLR_IVA')
+
+    class Meta:
+        managed = False
+        db_table = 'co_documento_afectados'
+
+class TsMedioPago(models.Model):
+    id_registro_virtual = models.CharField(max_length=50, primary_key=True) # Pseudo PK iterada
+    id_documento = models.CharField(max_length=8, db_column='ID_DOCUMENTO')
+    id_item = models.CharField(max_length=8, db_column='ID_ITEM')
+    id_tipo_medio_pago = models.CharField(max_length=8, db_column='ID_TIPO_MEDIO_PAGO')
+    id_banco_emite = models.CharField(max_length=8, null=True, blank=True, db_column='ID_BANCO_EMITE')
+    num_medio = models.CharField(max_length=50, null=True, blank=True, db_column='NUM_MEDIO')
+    id_plaza = models.CharField(max_length=8, null=True, blank=True, db_column='ID_PLAZA')
+    id_posfechado = models.CharField(max_length=8, null=True, blank=True, db_column='ID_POSFECHADO')
+    valor = models.DecimalField(max_digits=16, decimal_places=2, db_column='VALOR')
+    obser = models.CharField(max_length=250, null=True, blank=True, db_column='OBSER')
+
+    class Meta:
+        managed = False
+        db_table = 'ts_medio_pagos'
+
 class CoTipoDocumento(models.Model):
     id_sistema = models.CharField(max_length=8, db_column='ID_SISTEMA')
     id_ano = models.CharField(max_length=4, db_column='ID_ANO')

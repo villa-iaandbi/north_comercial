@@ -46,33 +46,43 @@ Antes de procesar cada ítem del pedido, se aplica la lógica de disponibilidad:
 
 ---
 
-**D. MOTOR DE CÁLCULO FINANCIERO (Línea por Línea)**
+---
 
-Por cada ítem validado, se ejecutan los cálculos acumulando los valores en las variables correspondientes (`MCIA1...5`, `TOT_IVA2...5`):
+**D. LÓGICA DE AGRUPACIÓN POR CLIENTE Y CONSOLIDACIÓN DE ÍTEMS**
 
-1.  **IVA (Gravamen):** Se obtiene el porcentaje mediante `PORC_IVA = GRAVAMEN(ID_GRAVAMEN) / 100`.
-2.  **Subtotal:** `nSUBTOTAL = ROUND(nCANTIDAD * VLR_UNITARIO * (1 - DESCUENTO / 100), 2)`.
-3.  **Valor IVA:** `nVLR_IVA = nSUBTOTAL * PORC_IVA`.
-4.  **Impoconsumo:** `nTOT_IMPOCONSUMO_LINEA = nCANTIDAD * IMPOCONSUMO`.
-5.  **Comisión:** `nVLR_COMI = nSUBTOTAL * (PORC_COMISION / 100)`.
+1.  **Agrupación de Pedidos:** Para optimizar la cartera, todos los pedidos seleccionados de un mismo cliente (`ID_TERCERO`) bajo la misma `FORMA_PAGO` deben consolidarse en una única cabecera (Factura). 
+2.  **Consolidación de Artículos:** Si distintos pedidos consolidados demandan el mismo `ID_ARTICULO` exactamente al mismo `VLR_UNITARIO` y con el mismo `DESCUENTO`, las cantidades deben sumarse en una única línea (detalle) en la factura resultante para evitar spam de renglones contables.
 
 ---
 
-**E. MOTOR TRIBUTARIO (Retenciones de Cabecera)**
+**E. MOTOR DE CÁLCULO FINANCIERO Y COSTOS (Línea por Línea)**
 
-Si el parámetro `CAUSA_RTEFUENTE = 'SI'`, se calculan las retenciones tras sumar todos los ítems:
+Por cada ítem validado (y opcionalmente consolidado), se ejecutan los cálculos:
 
-1.  **RTE_RENTA (Compras/Agrícola):**
-    * Se aplica si el tercero **no** es autorretenedor y la base (`nTOT_MERCANCIA`) supera el `VLR_BASE` en `CO_RETENCIONES`.
-    * `VALOR = ROUND(Base * PORC_RETENCION / 100)`.
-2.  **RTE_IVA:**
-    * Cruce de regímenes entre empresa y cliente según `SG_IVA_REGIMENES`.
-    * `VALOR = ROUND(nTOT_IVA * PORC_RETENCION / 100)`.
-3.  **RTE_ICA:**
-    * Se aplica si existe `PORC_RETENCION_ICA > 0` y el cliente es sujeto de ICA.
-    * `VALOR = ROUND(nTOT_MERCANCIA * PORC_RETENCION_ICA / 100)`.
-4.  **CXC Final (Total a Pagar):**
-    * `CXC = (Mercancía + IVA + Impoconsumo) - (Retenciones Totales)`.
+1.  **Ajuste de Exentos ('Secuestro de Gravamen'):** Si el cliente receptor está marcado como exento de IVA (`SIONO_IVA == 'S'`), todo el gravamen del artículo baja forzadamente a tarifa cero (0%) independientemente del catálogo.
+2.  **IVA (Gravamen):** Se obtiene el porcentaje. `PORC_IVA = GRAVAMEN(ID_GRAVAMEN) / 100`.
+3.  **Subtotal:** `nSUBTOTAL = ROUND(nCANTIDAD * VLR_UNITARIO * (1 - DESCUENTO / 100), 2)`.
+4.  **Valor IVA:** `nVLR_IVA = nSUBTOTAL * PORC_IVA`.
+5.  **Doble Costo e Inventario:** Además del VLR_PROMEDIO (Costo Promedio), se extrae el costo de reposición (`VLR_ULT_COMPRA`) del artículo para cálculos de rentabilidad comercial.
+6.  **Impoconsumo:** Contemplado linealmente. `nTOT_IMPOCONSUMO_LINEA = nCANTIDAD * IMPOCONSUMO`.
+7.  **Extracción de Comisiones:** Se extrae dinámicamente consultando el maestro pre-cacheado `IN_COMISION_GRUPOS` filtrado por el `ID_USUARIO` (Vendedor de la tabla externa `CT_VENDEDOR`) en combinación con la clase/grupo del artículo respectivo.
+
+---
+
+**F. MOTOR TRIBUTARIO EN CASCADA (Retenciones de Cabecera)**
+
+Al finalizar la sumarización de la factura consolidada, los atributos fiscales se computan en esquema de cascada:
+
+1.  **Desbordamiento Agrícola a Compras:** 
+    * Si las bases se segmentaron, pero la retención Agrícola **no supera su propia base mínima**, la base gravable agrícola sobrante se 'desborda' sumándose automáticamente a la base de Retención por Compras.
+2.  **RTE_RENTA (Compras/Agrícola):**
+    * Aplicadas si el tercero no es autorretenedor y la base consolidada (después del desbordamiento) supera el tope normativo (`VLR_BASE`).
+3.  **RTE_IVA (Exclusivo a Régimen 3):**
+    * Solo aplica sí y solo sí el Cliente Receptor pertenece al Gran Contribuyente (`ID_REGIMEN == '3'`) y la base de IVA supera el tope.
+4.  **RTE_ICA:**
+    * Basado en la ciudad del suministro y si el cliente es sujeto pasivo de ICA y no exento de dicho rubro municipal.
+5.  **CXC Final (Total Cartera):**
+    * `CXC = (Mercancía + IVA + Impoconsumo) - (Retenciones Totales Calculadas)`.
 
 ---
 

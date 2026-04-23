@@ -4,7 +4,8 @@
 1.  **Tipado de IDs:** Todos los campos identificadores (`ID_DOCUMENTO`, `ID_TERCERO`, `ID_ARTICULO`, etc.) son `VARCHAR2(8)` o `VARCHAR2(15)`. En Django deben ser `CharField`. No usar `AutoField`.
 2.  **Generación de ID_DOCUMENTO:** No es autoincremental en Python. Se debe obtener ejecutando: `SELECT SEC_DOCUMENTO.NEXTVAL FROM DUAL;`. Este valor se asigna a `vID_DOC` y se usa como llave primaria/foránea en toda la transacción.
 3.  **Regla de Sistema:** El proyecto NO es multitenant. El campo `ID_SISTEMA` debe insertarse siempre con el valor constante `'1'`.
-4.  **Campos de Auditoría:** `FCH_REGISTRO` debe ser siempre `SYSDATE` (o `timezone.now()` en Python). `TERMINAL` se debe marcar como `'NORTH-LOCAL'`.
+4.  **Campos de Auditoría y Timezones:** `FCH_REGISTRO` debe ser siempre hora local (`America/Bogota`). Para asegurar compatibilidad con Oracle, se debe eliminar el `tzinfo` (hacer el datetime *naive*) antes de guardar: `timezone.localtime(timezone.now()).replace(tzinfo=None)`. `TERMINAL` se debe marcar como `'NORTH-LOCAL'`.
+5.  **Bypass de Triggers Legacy (Hack de Consecutivos):** Django colisiona con el trigger `INS_DOCUMENTO_CONSEC` de Oracle cuando inyecta todo por el ORM. Para neutralizar al trigger sin desactivarlo (lo cual rompería otros sistemas), se debe inyectar temporalmente el `ID_TIPO_DOCUMENTO` como `DUMMY` en el `CREATE`, y luego hacer un `UPDATE` en la misma transacción devolviendo el verdadero tipo de documento.
 
 ---
 

@@ -498,3 +498,5 @@ def procesar_lote_pedidos(pedidos_qs):
             continue
 
     return resultados
+
+
