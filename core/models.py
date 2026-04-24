@@ -426,3 +426,20 @@ class MvPedidoItemNorth(models.Model):
     class Meta:
         managed = False
         db_table = 'mv_pedido_items_north'
+
+class CtVentasFel(models.Model):
+    id_documento = models.CharField(primary_key=True, max_length=8, db_column='ID_DOCUMENTO')
+    error = models.CharField(max_length=200, blank=True, null=True, db_column='ERROR')
+    fch_envio = models.DateTimeField(blank=True, null=True, db_column='FCH_ENVIO')
+    fch_respuesta = models.CharField(max_length=30, blank=True, null=True, db_column='FCH_RESPUESTA')
+    est_cliente = models.CharField(max_length=12, blank=True, null=True, db_column='EST_CLIENTE')
+    nom_est_cliente = models.CharField(max_length=200, blank=True, null=True, db_column='NOM_EST_CLIENTE')
+    est_dian = models.CharField(max_length=12, blank=True, null=True, db_column='EST_DIAN')
+    nom_est_dian = models.CharField(max_length=200, blank=True, null=True, db_column='NOM_EST_DIAN')
+    est_pt = models.CharField(max_length=12, blank=True, null=True, db_column='EST_PT')
+    nom_est_pt = models.CharField(max_length=200, blank=True, null=True, db_column='NOM_EST_PT')
+    cufe = models.CharField(max_length=100, blank=True, null=True, db_column='CUFE')
+
+    class Meta:
+        managed = False
+        db_table = 'ct_ventas_fel'

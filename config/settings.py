@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 # FORZAR MODO THICK NATIVO DE ORACLE (Obligatorio para 11g)
 try:
+    os.environ['NLS_LANG'] = '.UTF8'
     oracledb.init_oracle_client()
 except Exception as e:
     pass
