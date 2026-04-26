@@ -17,18 +17,22 @@ Para mantener la coherencia con `north_admin` y asegurar las mejores prácticas,
 * **Patrón Visual:** Estilo ERPNext. Menú lateral fijo (Sidebar) para navegación, barra superior para usuario/sucursal, y panel central de contenido limpio.
 * **Accesibilidad (POS):** Para el módulo de punto de venta y logística, se usarán fuentes de alta legibilidad, botones de gran área de clic y contrastes claros (sin información innecesaria en pantalla) para evitar errores operativos.
 
-**C. FLUJO DE FACTURACIÓN MASIVA (REGLAS ESTRICTAS DE UI Y NEGOCIO)**
+**C. FLUJO DE REINTENTO DE FACTURACIÓN MASIVA (UI Y LÓGICA HTMX)**
 
-La pantalla principal de facturación masiva no será una tabla interactiva estándar. Debe cumplir con el siguiente comportamiento para evitar descuadres operativos:
+La pantalla principal de monitoreo FEL (Panel de Control DIAN) está diseñada para otorgar control granular y retroalimentación en tiempo real, operando bajo las siguientes reglas:
 
-1.  **Carga de Datos (Query):**
-    * La vista debe consultar a Oracle todos los pedidos aprobados que aún no han sido facturados: `SELECT * FROM mv_pedidos_mobilecorp WHERE procesado IS NULL ORDER BY fecha ASC`.
-    * **Orden Obligatorio:** Los datos deben presentarse y procesarse estrictamente desde el más antiguo al más nuevo.
-2.  **Regla de "No Selección" (Todo o Nada):**
-    * Prohibido incluir casillas de verificación (checkboxes) por fila.
-    * El usuario **no puede** elegir qué pedidos facturar y cuáles omitir. Esto previene el error humano de dejar pedidos rezagados.
-    * *Política Operativa:* Si un pedido visible en la lista no debe ser facturado por algún error, el usuario debe ir a `north_admin` y anularlo/cancelarlo allá. Automáticamente desaparecerá de esta bandeja local.
-3.  **Disparador de la Acción:**
-    * Solo existirá un botón de acción global (ej. "Ejecutar Facturación Masiva").
-    * Al hacer clic, el sistema debe desplegar un modal de confirmación advirtiendo la cantidad de pedidos que se van a procesar.
-    * Al confirmar, el backend (Python) inicia el bucle transaccional descrito en el Capítulo 2.
+1.  **Motor de Datos y Desempeño:**
+    * La vista se alimenta de `CT_VENTAS_FEL`, mediante una consulta SQL nativa optimizada con `ROWNUM` cruzando con la tabla maestra de documentos para obtener prefijos y fechas reales. Esto evita los bloqueos de memoria (*OOM*) del ORM tradicional en Oracle 11g al procesar millones de registros.
+    * Los datos se ordenan estrictamente de forma descendente por la Fecha Real Original del Documento.
+
+2.  **Selección Múltiple Granular (Checkboxes):**
+    * Se abandona el diseño imperativo estricto ("todo o nada") para permitir flexibilidad ante fallos técnicos del proveedor tecnológico. 
+    * El usuario tiene a su disposición casillas de verificación globales e individuales en cada fila para seleccionar exactamente qué documentos fallidos o atascados desea procesar.
+
+3.  **Disparador Asíncrono e Interfaz Reactiva (HTMX):**
+    * Con el botón de "Reenviar Seleccionadas", HTMX orquesta una llamada `POST` segura (integrando el token CSRF de Django) enviando los IDs en lote para su encolamiento.
+    * El backend responde inmediatamente con un Modal (*Feedback visual rápido*) confirmando cuántos documentos entraron en cola, sin bloquear en ningún momento la pantalla.
+
+4.  **Polling Inteligente Auto-Regulado:**
+    * El dashboard implementa un mecanismo de *polling inteligente* inyectado por HTMX.
+    * El frontend audita silenciosamente, cada 10 segundos, si existen procesos pendientes en la base de datos de colas (`qcluster_db`). Si el trabajador (Worker) se desocupa (cola vacía), la interfaz de HTMX detiene su auto-recarga automáticamente, garantizando cero consumo inútil del servidor.

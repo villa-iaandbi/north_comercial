@@ -2,15 +2,20 @@
 
 **A. ARQUITECTURA DE TRANSMISIÓN ASÍNCRONA (Background Workers)**
 
-**1. El Problema (Evitar el Bloqueo):**
-Si se facturan 100 pedidos masivamente, enviar cada JSON al proveedor tecnológico (PT) de forma síncrona dentro del mismo ciclo congelará la interfaz del usuario web y causará un *Timeout*.
+**1. El Desafío (Rendimiento y Tolerancia a Fallos):**
+Transmitir cientos de facturas masivamente dentro del hilo principal produciría un inevitable *Timeout* HTTP y congelaría el servidor web. Además, si una sola factura de un lote grande produce error en la API de Binapps, no debe frenarse la cola de las demás facturas.
 
-**2. Estrategia de Optimización en Python (Cola de Tareas):**
-* La vista principal (UI) **solo** ejecuta el Capítulo 2 (crea las facturas en la base de datos Oracle).
-* Una vez creadas, la vista encola los `ID_DOCUMENTO` en un sistema de Background Tasks (ej. `Django-Q` o `Celery`) y le responde inmediatamente al usuario: *"X facturas generadas. Transmitiendo a la DIAN en segundo plano"*.
-* Un "Worker" (trabajador en segundo plano) toma cada factura, arma el JSON y hace la petición HTTP POST a Binapps de forma paralela.
+**2. Sistema de Colas con Aislamiento de Micro-base (Django-Q2 + SQLite):**
+* El proyecto implementa **Django-Q2** para el agendamiento y encolamiento asíncrono.
+* **Aislamiento Estratégico (Workaround Oracle 11g):** Debido a que el ORM de Django >= 4.0 genera secuencias `FETCH FIRST` y `Identity Columns` al iterar colas internas (incompatibles en Oracle 11g que producen los fatales `ORA-00933` y `ORA-02000`), se diseñó un **Enrutador de Base de Datos Personalizado** (`core.routers.DjangoQRouter`). 
+* El enrutador aísla de forma quirúrgica *toda* la metadata, modelos y colas de `django_q` hacia un archivo de micro-base de datos local (`sqlite_db/qcluster.sqlite3`). 
+* Esto nos otorga la velocidad, ligereza y cero-dependencias de SQLite, mientas se mantiene a Oracle 11g dedicado 100% solo al trabajo transaccional corporativo.
 
----
+**3. Continuidad del Negocio (Worker Robusto):**
+* Cuando el usuario orquesta el reenvío desde el botón Masivo (`HTMX`), la vista extrae la lista de identificadores `selected_docs` solicitando su encolo inmediato a SQLite.
+* El proceso `qcluster` levanta a un grupo de "Workers" invisibles que reciben el lote, lo desempacan ID por ID y llaman al proceso unitario `InvoiceOrchestrator` de forma iterativa.
+* **Aislamiento Lógico (`try...except`):** Cada iteración individual sobre la factura se aísla herméticamente en el código fuente. Ningún error nativo ni excepción HTTP al transmitir detiene el bucle; asegurando la transmisión garantizada del resto del bloque.
+
 
 **B. AUTENTICACIÓN Y CONEXIÓN HTTP**
 

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Factura Electrónica</title>
+    <style>
+        /* CONFIGURACIÓN ESTRICTA WEASYPRINT PARA PDF */
+        @page {
+            size: A4;
+            margin: 1.5cm;
+
+            @bottom-left {
+                content: "Generado por North Comercial";
+                font-size: 8pt;
+                color: #666;
+            }
+
+            @bottom-right {
+                content: "Página " counter(page) " de " counter(pages);
+                font-size: 8pt;
+                color: #666;
+            }
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-size: 10pt;
+            color: #333;
+            line-height: 1.4;
+        }
+
+        /* CABECERA */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 2px solid #2563eb;
+            /* Azul corporativo sutil */
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .company-info h1 {
+            margin: 0;
+            font-size: 16pt;
+            color: #1e3a8a;
+        }
+
+        .company-info p {
+            margin: 2px 0;
+            font-size: 9pt;
+        }
+
+        .invoice-details {
+            text-align: right;
+        }
+
+        .invoice-details h2 {
+            margin: 0;
+            font-size: 14pt;
+            color: #dc2626;
+            /* Rojo para destacar el número */
+        }
+
+        /* DATOS DEL CLIENTE */
+        .customer-box {
+            border: 1px solid #cbd5e1;
+            background-color: #f8fafc;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .customer-box table {
+            width: 100%;
+        }
+
+        .customer-box td {
+            padding: 3px;
+            font-size: 9.5pt;
+        }
+
+        .label {
+            font-weight: bold;
+            color: #475569;
+            width: 120px;
+        }
+
+        /* TABLA DE PRODUCTOS */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        .items-table th {
+            background-color: #1e3a8a;
+            color: white;
+            padding: 8px;
+            text-align: left;
+            font-size: 9pt;
+        }
+
+        .items-table th.right,
+        .items-table td.right {
+            text-align: right;
+        }
+
+        .items-table th.center,
+        .items-table td.center {
+            text-align: center;
+        }
+
+        .items-table td {
+            padding: 8px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 9pt;
+        }
+
+        /* TOTALES */
+        .totals-section {
+            width: 100%;
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 30px;
+        }
+
+        .totals-table {
+            width: 300px;
+            border-collapse: collapse;
+        }
+
+        .totals-table td {
+            padding: 6px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .totals-table .grand-total {
+            font-weight: bold;
+            font-size: 12pt;
+            background-color: #f1f5f9;
+        }
+
+        /* FOOTER DIAN Y QR */
+        .legal-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #cbd5e1;
+            padding-top: 15px;
+            font-size: 8pt;
+        }
+
+        .cufe-box {
+            word-break: break-all;
+            margin-bottom: 5px;
+        }
+
+        .qr-code {
+            width: 3cm;
+            height: 3cm;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <div class="company-info">
+            <h1>{{ nom_sistema|default:"MI EMPRESA S.A.S" }}</h1>
+            <p><strong>NIT:</strong> {{ nit_emp }}</p>
+            <p><strong>Dirección:</strong> {{ dir_emp }} - {{ municipio_emp }}</p>
+            <p><strong>Resolución DIAN:</strong> {{ resolucion }}</p>
+        </div>
+        <div class="invoice-details">
+            <p style="margin: 0; font-weight: bold; color: #64748b;">FACTURA ELECTRÓNICA DE VENTA</p>
+            <h2>{{ prefijo }} {{ num_documento }}</h2>
+            <p><strong>Fecha de Emisión:</strong> {{ fch_documento }}</p>
+            <p><strong>Vendedor:</strong> {{ vendedor }}</p>
+        </div>
+    </div>
+
+    <div class="customer-box">
+        <table>
+            <tr>
+                <td class="label">Cliente:</td>
+                <td>{{ nom_tercero }}</td>
+                <td class="label">NIT / CC:</td>
+                <td>{{ nit_tercero }}</td>
+            </tr>
+            <tr>
+                <td class="label">Dirección:</td>
+                <td>{{ dir_tercero|default:"No registrada" }}</td>
+                <td class="label">Teléfono:</td>
+                <td>{{ tel_tercero|default:"No registrado" }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th class="center" style="width: 10%;">CANT.</th>
+                <th style="width: 50%;">DESCRIPCIÓN DEL ARTÍCULO</th>
+                <th class="right" style="width: 20%;">VLR. UNITARIO</th>
+                <th class="right" style="width: 20%;">VLR. TOTAL</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td class="center">{{ item.cantidad }}</td>
+                <td>{{ item.nom_articulo }}</td>
+                <td class="right">${{ item.vlr_unitario }}</td>
+                <td class="right">${{ item.vlr_total }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" class="center">No hay líneas de detalle para esta factura.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totals-section">
+        <table class="totals-table">
+            <tr>
+                <td>Subtotal:</td>
+                <td class="right">${{ tot_mercancia }}</td>
+            </tr>
+            <tr>
+                <td>Total IVA:</td>
+                <td class="right">${{ tot_iva|default:"0.00" }}</td>
+            </tr>
+            <tr class="grand-total">
+                <td>TOTAL A PAGAR:</td>
+                <td class="right">${{ tot_documento }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="legal-footer">
+        <div style="width: 75%;">
+            <p class="cufe-box"><strong>CUFE:</strong> {{ cufe }}</p>
+            <p>Documento oficial generado según los lineamientos técnicos de la DIAN para la facturación electrónica.
+            </p>
+        </div>
+        <div style="width: 20%; text-align: right;">
+            {% if qr_base64 %}
+            <img class="qr-code" src="data:image/png;base64,{{ qr_base64 }}" alt="Código QR DIAN">
+            {% else %}
+            <div
+                style="border: 1px solid #ccc; width: 3cm; height: 3cm; display: flex; align-items: center; justify-content: center; font-size: 8pt; color: #999;">
+                [QR DIAN]
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</body>
+
+</html>

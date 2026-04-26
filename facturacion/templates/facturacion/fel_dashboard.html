@@ -1,0 +1,165 @@
+{% extends 'base.html' %} 
+
+{% block header_title %}Monitoreo Facturación Electrónica (FEL){% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+  
+  <!-- Encabezado de Sección -->
+  <div>
+    <h2 class="text-2xl font-bold text-gray-900 tracking-tight">Panel de Control DIAN</h2>
+    <p class="mt-1 text-sm text-gray-500">Monitorea el estado de transmisión de facturas y notas de crédito en tiempo real.</p>
+  </div>
+
+  <!-- KPIs -->
+  <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
+    <!-- Card 1 -->
+    <div class="bg-white overflow-hidden shadow-sm rounded-xl border border-gray-100">
+      <div class="p-6">
+        <dt class="text-sm font-medium text-gray-500 truncate">Total Procesadas Hoy</dt>
+        <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ total_hoy }}</dd>
+      </div>
+    </div>
+    <!-- Card 2 -->
+    <div class="bg-white overflow-hidden shadow-sm rounded-xl border border-gray-100">
+      <div class="p-6">
+        <dt class="text-sm font-medium text-gray-500 truncate">Total con Errores</dt>
+        <dd class="mt-2 text-3xl font-semibold text-red-600">{{ error_count }}</dd>
+      </div>
+    </div>
+    <!-- Card 3 -->
+    <div class="bg-white overflow-hidden shadow-sm rounded-xl border border-gray-100">
+      <div class="p-6">
+        <dt class="text-sm font-medium text-gray-500 truncate">Éxito de Integración</dt>
+        <dd class="mt-2 text-3xl font-semibold text-green-600">{{ pct_exito }}%</dd>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controles y Buscador -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+    <div class="relative max-w-sm w-full">
+      <input type="search" name="search" id="search-input"
+             autocomplete="off"
+             placeholder="Buscar por ID Documento o CUFE..."
+             class="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-colors duration-200"
+             hx-get="{% url 'facturacion:fel_table_results' %}"
+             hx-trigger="keyup changed delay:500ms, search"
+             hx-target="#fel-tbody"
+             hx-include="[name='status']">
+      <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      </div>
+    </div>
+
+    <!-- Filtros de Estado -->
+    <div class="flex space-x-2">
+      <button class="px-4 py-2 text-sm font-medium rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none transition-colors"
+              hx-get="{% url 'facturacion:fel_table_results' %}?status=todos"
+              hx-target="#fel-tbody"
+              hx-include="#search-input"
+              onclick="document.querySelectorAll('input[name=status]').forEach(e=>e.value='todos')">
+        Todos
+      </button>
+      <button class="px-4 py-2 text-sm font-medium rounded-lg text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none transition-colors"
+              hx-get="{% url 'facturacion:fel_table_results' %}?status=aprobados"
+              hx-target="#fel-tbody"
+              hx-include="#search-input"
+              onclick="document.querySelectorAll('input[name=status]').forEach(e=>e.value='aprobados')">
+        Aprobados
+      </button>
+      <button class="px-4 py-2 text-sm font-medium rounded-lg text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none transition-colors"
+              hx-get="{% url 'facturacion:fel_table_results' %}?status=errores"
+              hx-target="#fel-tbody"
+              hx-include="#search-input"
+              onclick="document.querySelectorAll('input[name=status]').forEach(e=>e.value='errores')">
+        Errores
+      </button>
+      <input type="hidden" name="status" value="todos" id="filter-status">
+    </div>
+  </div>
+
+  <!-- Acciones Masivas -->
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="text-lg font-medium text-gray-900">Historial de Transmisiones</h3>
+    <button hx-post="{% url 'facturacion:fel_bulk_retry' %}" 
+            hx-include="#bulk-retry-form" 
+            hx-target="#modal-container" 
+            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-sm transition-colors duration-200 flex items-center space-x-2">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+      <span>Reenviar Seleccionadas</span>
+    </button>
+  </div>
+
+  <!-- Tabla de Resultados -->
+  <form id="bulk-retry-form">
+  {% csrf_token %}
+  <div class="bg-white shadow-sm rounded-xl border border-gray-100 overflow-hidden">
+    <div class="">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-12">
+              <input type="checkbox" id="select-all" class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 cursor-pointer">
+            </th>
+            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Documento</th>
+            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Fecha Envío</th>
+            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Estado DIAN</th>
+            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">CUFE</th>
+            <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Error</th>
+            <th scope="col" class="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Detalle</th>
+          </tr>
+        </thead>
+        <tbody id="fel-tbody" class="bg-white divide-y divide-gray-100" hx-get="{% url 'facturacion:fel_table_results' %}" hx-trigger="load, reloadTable from:body">
+          <!-- Rows cargadas vía HTMX aquí -->
+          <tr>
+            <td colspan="6" class="px-6 py-12 text-center text-sm text-gray-400">
+              <div class="flex flex-col items-center justify-center space-y-3">
+                  <svg class="animate-spin h-6 w-6 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Cargando historial de transmisiones...</span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  </form>
+
+</div>
+
+<!-- HTMX Modal Container -->
+<div id="modal-container"></div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('select-all');
+    
+    selectAllCheckbox.addEventListener('change', function() {
+      const docCheckboxes = document.querySelectorAll('.doc-checkbox');
+      docCheckboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+      });
+    });
+
+    // Desmarcar "Select All" si manualmente se desmarca un elemento
+    document.body.addEventListener('change', function(e) {
+      if (e.target.classList.contains('doc-checkbox')) {
+        if (!e.target.checked) {
+          selectAllCheckbox.checked = false;
+        } else {
+          const allCheckboxes = document.querySelectorAll('.doc-checkbox');
+          const allChecked = Array.from(allCheckboxes).every(c => c.checked);
+          selectAllCheckbox.checked = allChecked;
+        }
+      }
+    });
+  });
+</script>
+
+{% endblock %}

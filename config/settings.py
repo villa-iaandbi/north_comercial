@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     'impresion',
     'pos',
     'logistica',
+    'django_q',
+    'django.contrib.humanize',
 ]
 
 MIDDLEWARE = [
@@ -79,8 +81,14 @@ DATABASES = {
         'PASSWORD': os.getenv('ORACLE_PASSWORD', ''),
         'HOST': '',
         'PORT': '',
+    },
+    'qcluster_db': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'sqlite_db' / 'qcluster.sqlite3',
     }
 }
+
+DATABASE_ROUTERS = ['core.routers.DjangoQRouter']
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -105,3 +113,21 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ----------------------------------------------------------------------
 from django.db.backends.oracle.base import DatabaseWrapper
 DatabaseWrapper.check_database_version_supported = lambda self: True
+
+# ----------------------------------------------------------------------
+# DJANGO-Q2 CLUSTER CONFIGURATION (BACKGROUND TASKS)
+# Usando el ORM de Django como broker para evitar dependencias externas
+# ----------------------------------------------------------------------
+Q_CLUSTER = {
+    'name': 'NorthComercialCluster',
+    'workers': 4,
+    'recycle': 500,
+    'timeout': 300,        # 5 minutos de timeout por cada tarea
+    'retry': 360,          # Deber ser mayor que timeout
+    'compress': True,
+    'save_limit': 250,     # Límite de tareas exitosas a conservar en la BD
+    'queue_limit': 50,
+    'cpu_affinity': 1,
+    'label': 'Django Q',
+    'orm': 'qcluster_db'       # Aislamiento total en SQLite para evitar colapso en Oracle 11g
+}

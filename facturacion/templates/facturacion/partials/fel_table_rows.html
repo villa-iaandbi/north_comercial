@@ -1,0 +1,97 @@
+{% for r in fel_records %}
+<tr class="hover:bg-gray-50 transition-colors duration-150">
+  
+  <td class="px-6 py-4 whitespace-nowrap">
+    <input type="checkbox" name="selected_docs" value="{{ r.id_documento }}" class="doc-checkbox rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 cursor-pointer">
+  </td>
+
+  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+    #{{ r.doc_num|default:r.id_documento }}
+  </td>
+  
+  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+    {{ r.doc_fch|default:r.fch_envio|date:"Y-m-d h:i A" }}
+  </td>
+
+  <td class="px-6 py-4 whitespace-nowrap">
+    {% if r.est_pt == '1' or r.est_pt == '30' %}
+      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+        Aprobado ({{ r.est_pt }})
+      </span>
+    {% elif r.est_pt == '2' or r.est_pt == '99' %}
+      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+        Error ({{ r.est_pt }})
+      </span>
+    {% else %}
+      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+        En Proceso ({{ r.est_pt }})
+      </span>
+    {% endif %}
+  </td>
+
+  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+    {% if r.cufe %}
+      <div class="max-w-[15ch] truncate" title="{{ r.cufe }}">
+        {{ r.cufe }}
+      </div>
+    {% else %}
+      <span class="text-gray-400">-</span>
+    {% endif %}
+  </td>
+
+  <td class="px-6 py-4 text-sm text-gray-500">
+    {% if r.error %}
+      <div class="max-w-[30ch] truncate text-red-600 font-medium" title="{{ r.error }}">
+        {{ r.error }}
+      </div>
+    {% else %}
+      <span class="text-gray-400">-</span>
+    {% endif %}
+  </td>
+
+  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+    <button type="button" class="inline-flex items-center px-3 py-1.5 border border-indigo-200 text-xs font-medium rounded-md text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+       hx-get="{% url 'facturacion:fel_document_detail' r.id_documento %}"
+       hx-target="#modal-container"
+       hx-swap="innerHTML">
+      Detalle
+    </button>
+  </td>
+
+</tr>
+{% if forloop.last and has_next %}
+<tr id="load-more-row" class="bg-gray-50 border-t border-gray-100">
+  <td colspan="7" class="px-6 py-6 text-center">
+    <button class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white font-medium text-sm rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 transition-colors duration-200 shadow-sm"
+            hx-indicator="#btn-spinner"
+            hx-get="{% url 'facturacion:fel_table_results' %}?page={{ next_page_number }}&search={{ search }}&status={{ status }}"
+            hx-target="#load-more-row"
+            hx-swap="outerHTML">
+      <span id="btn-text">Cargar más facturas</span>
+      <svg id="btn-spinner" class="animate-spin ml-2 h-5 w-5 text-white htmx-indicator" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+    </button>
+  </td>
+</tr>
+{% endif %}
+{% empty %}
+<tr>
+  <td colspan="7" class="px-6 py-12 text-center text-sm text-gray-500">
+    <svg class="mx-auto h-12 w-12 text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+    No se encontraron registros en el historial.
+  </td>
+</tr>
+{% endfor %}
+
+{% if has_active_tasks %}
+<!-- Auto-polling: Recarga la tabla cada 10s si el worker aún tiene tareas -->
+<tr hx-get="{% url 'facturacion:fel_table_results' %}?search={{ search }}&status={{ status }}"
+    hx-trigger="every 10s"
+    hx-target="#fel-tbody"
+    hx-swap="innerHTML"
+    class="hidden"></tr>
+{% endif %}
