@@ -1,52 +1,50 @@
-# CAPÍTULO 5: Representación Gráfica (Impresión con Plantillas y QR)
+# CAPÍTULO 5: Representación Gráfica (Impresión WeasyPrint y Asincronía)
 
 **A. CONCEPTO DE NEGOCIO Y ARQUITECTURA (AI INSTRUCTIONS)**
-1.  **Cero Hardcoding Visual:** Queda estrictamente prohibido generar PDFs desde cero utilizando librerías de dibujo vectorial (como ReportLab o FPDF). 
-2.  **Motor de Plantillas:** La representación gráfica se generará poblando documentos de Microsoft Word (`.docx`) utilizando la librería `docxtpl` (DocxTemplate).
-3.  **Diseño Delegado:** El diseño visual (logos, fuentes, márgenes) pertenece a la plantilla física `.docx`. Python actuará únicamente como inyector de datos (Context Provider).
+1.  **Motor HTML a PDF (WeasyPrint):** La representación gráfica de las facturas (y otros documentos) se genera transformando plantillas HTML/CSS estrictamente maquetadas a formato PDF mediante la librería `WeasyPrint`. Quedan deprecadas las estrategias basadas en `docxtpl` o herramientas ofimáticas.
+2.  **Impresión en Masa Asíncrona:** La generación de facturas puede ser intensiva. Por regla arquitectónica, toda impresión masiva se delega a colas de tareas en background utilizando **Django Q2** (`qcluster`). Las vistas Django solo encolan la tarea y responden inmediatamente.
+3.  **Anti-Paginación Absoluta:** Para compatibilidad con Oracle 11g, las consultas del renderizador deben procesar todo en memoria usando `.fetchall()` o cursores sin limit/offset, evitando bloqueos en la base de datos origen.
 
 ---
 
-**B. ESTRUCTURA DEL CONTEXTO (El Diccionario de Datos)**
+**B. ESTRUCTURA DEL CONTEXTO Y RENDERIZADO**
 
-Para renderizar la plantilla, Python debe compilar toda la información de la factura (`CO_DOCUMENTOS`, `CT_VENTAS`, `IN_MOV_INVENTARIOS`) en un único diccionario de contexto.
+La función constructora del contexto (`_build_context`) debe extraer la información cruda de Oracle 11g (`MvPedidosNorth`, `SG_PARAMETROS`, `SG_SISTEMAS`) y mapearla al diccionario requerido por el HTML.
 
-**1. Cabecera y Maestros:**
-* `nom_sistema`, `nit_emp`, `dir_emp`, `municipio_emp`, `resolucion` (Extraídos de `SG_PARAMETROS` o `SG_SISTEMAS`).
-* `num_documento`, `fch_documento` (Fecha de expedición), `vendedor`.
-* `nom_tercero`, `nit_tercero` (Datos del Adquirente).
-* `cufe` (Obtenido de la respuesta del Proveedor Tecnológico en el Capítulo 4).
+**1. Desacoplamiento de Prefijo y Número:**
+Para evitar colisiones o visualizaciones dobles (Ej: FES-FES123), la capa Python debe implementar expresiones regulares (`re.match(r"([A-Za-z]+)(\d+)", num_doc)`) para separar limpiamente el `prefijo` (alfabético) del `num_documento` (numérico) antes de enviarlo a la plantilla.
 
-**2. Listas y Ciclos (Jinja2 Syntax):**
-* **`items`:** Una lista de listas o diccionarios que alimentará el ciclo `{%tr for item in items %}` en la plantilla de Word. Debe contener: `cantidad`, `nom_articulo`, `vlr_unitario`, `vlr_total`.
-* **`pagos`:** Lista de medios de pago para la sección de formas de pago.
-
-**3. Totales e Impuestos:**
-* `tot_items`, `tot_mercancia` (Subtotal), `tot_documento` (Gran total).
-* Discriminación de tarifas: `tot_excluida`, `tot_mercancia2` (Base 5%), `tot_iva2`, `tot_mercancia3` (Base 19%), `tot_iva3`.
+**2. Formateo y Mapeo Visual:**
+*   **Logo de Empresa:** Se carga estáticamente desde el disco (ej. `BASE_DIR / 'templates' / 'logo_credito.jpeg'`) y se inyecta en Base64 para evitar dependencias de URLs absolutas de red durante el render de WeasyPrint.
+*   **Limpieza de UI:** Se evitan textos 'quemados' en el HTML. Las direcciones, teléfonos y resoluciones provienen de la BD.
 
 ---
 
-**C. GENERACIÓN E INYECCIÓN DEL CÓDIGO QR**
+**C. GENERACIÓN E INYECCIÓN DE QR Y BARCODE**
 
-El Código QR es un requisito legal de la DIAN y debe generarse dinámicamente en memoria antes de inyectarse en el documento de Word.
+El Código QR y el Código de Barras son requisitos normativos y operativos. Se procesan enteramente en RAM.
 
-**1. Construcción de la Cadena (String del QR):**
-* La cadena debe apuntar a la URL de validación de la DIAN, concatenando el CUFE. 
-* *Ejemplo de formato:* `https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey={CUFE}`
+**1. Código QR (Alta Resolución):**
+*   Librería: `qrcode`.
+*   Para evitar difuminado por redimensionamiento en el PDF, se debe usar `box_size=10` y `error_correction=qrcode.constants.ERROR_CORRECT_M`.
+*   Salida: `BytesIO` convertido a un string Base64 (`data:image/png;base64,...`) e inyectado directo al `src` de la etiqueta `<img>`.
+*   CSS: Uso de `image-rendering: pixelated;` en la imagen HTML.
 
-**2. Estrategia de Inyección en Python:**
-* **Generación:** Usar la librería `qrcode` de Python para generar la imagen PNG en memoria (usando `io.BytesIO` para no guardar archivos temporales basura en el servidor).
-* **Conversión a InlineImage:** El agente debe importar `InlineImage` desde `docxtpl.shared`.
-* **Inyección:** En el diccionario de contexto, la llave `codigo_qr` se asignará al objeto `InlineImage` instanciado con la imagen en memoria y un ancho (width) predefinido (ej. 30 o 40 milímetros).
-* *En la plantilla de Word, simplemente se colocará la etiqueta `{{ codigo_qr }}` en la zona designada.*
+**2. Código de Barras (Code128):**
+*   Librería: `python-barcode` con el `ImageWriter`.
+*   Se genera usando la concatenación del prefijo limpio y número limpio (ej. `FES5663`). Ocultando el texto nativo (`write_text=False`).
+*   Salida: Idéntico al QR, en formato Base64 inyectado en el DOM.
 
 ---
 
-**D. FLUJO DE EJECUCIÓN (Render y Salida)**
+**D. FLUJO DE EJECUCIÓN (Cola de Impresión)**
 
-1.  **Carga de la Plantilla:** `doc = DocxTemplate("ruta/a/la/plantilla_factura_pos.docx")`
-2.  **Renderizado:** `doc.render(contexto)`
-3.  **Salida/Descarga:**
-    * El documento final debe guardarse temporalmente con un nombre único (ej. `Factura_POS_Prefijo_Numero.docx`).
-    * En un entorno web local (Django), la vista debe devolver este archivo generado directamente como una respuesta HTTP (`FileResponse` o `HttpResponse` con content-type `application/vnd.openxmlformats-officedocument.wordprocessingml.document`) para que el cajero lo descargue o se envíe directo a la cola de impresión local del sistema POS.
+1.  **Activación UI:** El usuario desencadena la impresión masiva desde el frontend (vía un POST/HTMX modal).
+2.  **Encolamiento (`tasks.py`):** La vista llama a `async_task('facturacion.tasks.generar_pdfs_lote', request.POST)`.
+3.  **Procesamiento Background:** 
+    * El worker de `django-q2` toma la tarea.
+    * Itera sobre las facturas seleccionadas.
+    * Obtiene datos (Oracle), ensambla el HTML local y dispara WeasyPrint.
+    * Guarda el PDF resultante en un directorio local predeterminado (ej. `facturas/`).
+    * **Actualización DB:** Por cada factura exitosa, ejecuta un `UPDATE` en Oracle (`SIONO_IMPRESO='S'`) usando cursores nativos y realiza un `COMMIT`.
+4.  **Feedback:** El frontend implementa Alpine.js o HTMX polling para informar al usuario sobre el estado final.
