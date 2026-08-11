@@ -20,3 +20,10 @@ env/
 
 # Env variables
 .env
+
+# Temporary / Scratch
+scratch*.py
+temp_check.py
+sqlite_db/
+logs/
+facturas/

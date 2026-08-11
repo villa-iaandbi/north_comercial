@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Informe de Cartera - North Comercial{% endblock %}
+{% block page_title %}Informe de Cartera por Edades & Recaudos del Día{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Resumen Superior de Cartera y Recaudos del Día -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Tarjeta Cartera Total -->
+        <div class="bg-gray-900 text-white p-6 rounded-lg shadow-md flex items-center justify-between border-l-8 border-red-500">
+            <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Total Cartera Pendiente</span>
+                <h2 class="text-3xl font-black text-white mt-1">{{ total_cartera_cop }}</h2>
+                <p class="text-xs text-gray-400 mt-1">Saldos activos en CO_DOCUMENTOS / CT_VENTAS</p>
+            </div>
+            <span class="text-5xl">🏛️</span>
+        </div>
+
+        <!-- Tarjeta Recaudos del Día -->
+        <div class="bg-gray-900 text-white p-6 rounded-lg shadow-md flex items-center justify-between border-l-8 border-green-500">
+            <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-green-400">Recaudos Ingresados Hoy</span>
+                <h2 class="text-3xl font-black text-green-400 mt-1">{{ recaudos_dia_cop }}</h2>
+                <p class="text-xs text-gray-400 mt-1">Ingresos a caja registrados en la fecha actual</p>
+            </div>
+            <span class="text-5xl">💵</span>
+        </div>
+    </div>
+
+    <!-- Composición de Cartera por Edades (5 Rangos) -->
+    <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+        <h4 class="text-base font-bold text-gray-900 mb-4">📅 Clasificación por Edades de Vencimiento</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-5 gap-3">
+            <!-- Corriente -->
+            <div class="bg-blue-50 border border-blue-200 p-3 rounded-lg text-center">
+                <span class="text-xs font-extrabold uppercase text-blue-700">Corriente (Sin Vencer)</span>
+                <p class="text-lg font-black text-blue-900 mt-1">{{ cartera_corriente }}</p>
+            </div>
+            <!-- 1 - 30 Días -->
+            <div class="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-center">
+                <span class="text-xs font-extrabold uppercase text-yellow-800">1 - 30 Días</span>
+                <p class="text-lg font-black text-yellow-900 mt-1">{{ cartera_1_30 }}</p>
+            </div>
+            <!-- 31 - 60 Días -->
+            <div class="bg-orange-50 border border-orange-200 p-3 rounded-lg text-center">
+                <span class="text-xs font-extrabold uppercase text-orange-800">31 - 60 Días</span>
+                <p class="text-lg font-black text-orange-900 mt-1">{{ cartera_31_60 }}</p>
+            </div>
+            <!-- 61 - 90 Días -->
+            <div class="bg-red-50 border border-red-200 p-3 rounded-lg text-center">
+                <span class="text-xs font-extrabold uppercase text-red-700">61 - 90 Días</span>
+                <p class="text-lg font-black text-red-900 mt-1">{{ cartera_61_90 }}</p>
+            </div>
+            <!-- +90 Días -->
+            <div class="bg-purple-50 border border-purple-200 p-3 rounded-lg text-center">
+                <span class="text-xs font-extrabold uppercase text-purple-700">+90 Días (Crítica)</span>
+                <p class="text-lg font-black text-purple-900 mt-1">{{ cartera_90_mas }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla Detallada de Saldos por Cliente -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+            <h4 class="text-base font-bold text-gray-900">👥 Saldos de Cartera por Cliente (Top 25)</h4>
+            <span class="text-xs text-gray-500 font-semibold">Consultado en Oracle 11g</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead class="bg-gray-100 uppercase text-gray-700 font-extrabold border-b">
+                    <tr>
+                        <th class="p-3">NIT / Tercero</th>
+                        <th class="p-3">Nombre del Cliente</th>
+                        <th class="p-3 text-right">Saldo Total</th>
+                        <th class="p-3 text-right">Corriente</th>
+                        <th class="p-3 text-right">1-30 Días</th>
+                        <th class="p-3 text-right">31-60 Días</th>
+                        <th class="p-3 text-right">61-90 Días</th>
+                        <th class="p-3 text-right">+90 Días</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    {% for c in clientes_cartera %}
+                    <tr class="hover:bg-gray-50 font-mono">
+                        <td class="p-3 font-bold text-gray-900">{{ c.id_tercero }}</td>
+                        <td class="p-3 text-gray-800 font-sans font-semibold">{{ c.nom_tercero }}</td>
+                        <td class="p-3 text-right font-black text-red-700">{{ c.saldo_total }}</td>
+                        <td class="p-3 text-right text-blue-900 font-semibold">{{ c.corriente }}</td>
+                        <td class="p-3 text-right text-yellow-800 font-semibold">{{ c.dias_1_30 }}</td>
+                        <td class="p-3 text-right text-orange-800 font-semibold">{{ c.dias_31_60 }}</td>
+                        <td class="p-3 text-right text-red-800 font-semibold">{{ c.dias_61_90 }}</td>
+                        <td class="p-3 text-right text-purple-900 font-bold bg-purple-50">{{ c.dias_90_mas }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="p-6 text-center text-gray-500 font-bold">No se encontraron clientes con cartera pendiente en el sistema.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

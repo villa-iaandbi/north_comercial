@@ -15,7 +15,7 @@
             <button @click="showModal = true" 
                     :disabled="pedidosSeleccionados.length === 0"
                     :class="pedidosSeleccionados.length === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'"
-                    class="flex items-center px-6 py-3 text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-4 focus:ring-blue-100 disabled:opacity-50">
+                    class="flex items-center px-3 py-2 text-sm font-medium rounded-lg shadow-sm transition-all focus:ring-4 focus:ring-blue-100 disabled:opacity-50">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
@@ -30,7 +30,7 @@
             <table class="w-full text-sm text-left text-gray-600">
                 <thead class="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
                     <tr>
-                        <th scope="col" class="px-6 py-4 font-semibold w-8">
+                        <th scope="col" class="px-3 py-2 font-semibold w-8">
                             <input type="checkbox" x-model="seleccionarTodos" 
                                    @change="
                                        if (seleccionarTodos) {
@@ -42,34 +42,34 @@
                                    "
                                    class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
                         </th>
-                        <th scope="col" class="px-6 py-4 font-semibold">No. Pedido</th>
-                        <th scope="col" class="px-6 py-4 font-semibold">Fecha</th>
-                        <th scope="col" class="px-6 py-4 font-semibold">Cliente</th>
-                        <th scope="col" class="px-6 py-4 font-semibold">Total</th>
-                        <th scope="col" class="px-6 py-4 font-semibold text-center">Estado</th>
+                        <th scope="col" class="px-3 py-2 font-semibold">No. Pedido</th>
+                        <th scope="col" class="px-3 py-2 font-semibold">Fecha</th>
+                        <th scope="col" class="px-3 py-2 font-semibold">Cliente</th>
+                        <th scope="col" class="px-3 py-2 font-semibold">Total</th>
+                        <th scope="col" class="px-3 py-2 font-semibold text-center">Estado</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     {% for pedido in pedidos %}
                     <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-6 py-4">
+                        <td class="px-3 py-2">
                             <input type="checkbox" value="{{ pedido.num_pedido }}" x-model="pedidosSeleccionados" 
                                    class="pedido-checkbox w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
                                    @change="if(!this.checked) seleccionarTodos = false;">
                         </td>
-                        <td class="px-6 py-4 font-medium text-gray-900">
+                        <td class="px-3 py-2 font-medium text-gray-900">
                             #{{ pedido.num_pedido }}
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
+                        <td class="px-3 py-2 whitespace-nowrap">
                             {{ pedido.fch_pedido|date:"d M Y, h:i A"|default:"-" }}
                         </td>
-                        <td class="px-6 py-4">
+                        <td class="px-3 py-2">
                             {{ pedido.id_tercero.nom_tercero|default:pedido.id_tercero_id }}
                         </td>
-                        <td class="px-6 py-4 font-semibold text-gray-700">
+                        <td class="px-3 py-2 font-semibold text-gray-700">
                             $ {{ pedido.valor_pedido|default:"0.00" }}
                         </td>
-                        <td class="px-6 py-4 text-center">
+                        <td class="px-3 py-2 text-center">
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
                                 Por Procesar
                             </span>

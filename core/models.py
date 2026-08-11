@@ -5,8 +5,8 @@ class CoDocumento(models.Model):
     id_tipo_documento = models.CharField(max_length=5)
     num_documento = models.CharField(max_length=20)
     fch_documento = models.DateTimeField()
-    id_tercero = models.CharField(max_length=15)
-    id_vendedor = models.CharField(max_length=15)
+    id_tercero = models.ForeignKey('CoTercero', models.DO_NOTHING, db_column='ID_TERCERO', db_constraint=False)
+    id_vendedor = models.ForeignKey('CtVendedor', models.DO_NOTHING, db_column='ID_VENDEDOR', db_constraint=False)
     id_responsable = models.CharField(max_length=15)
     tot_documento = models.DecimalField(max_digits=15, decimal_places=2)
     obser = models.CharField(max_length=2000, null=True, blank=True)
@@ -21,6 +21,7 @@ class CoDocumento(models.Model):
     vlr_comision_vend = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True, db_column='VLR_COMISION_VEND')
     cambios = models.DecimalField(max_digits=4, decimal_places=0, null=True, blank=True)
     id_doc_consecutivo = models.CharField(max_length=15, null=True, blank=True)
+    id_entrega = models.ForeignKey('logistica.CoEntregas', models.DO_NOTHING, db_column='ID_ENTREGA', null=True, blank=True)
 
     class Meta:
         managed = False
@@ -147,11 +148,20 @@ class SgUsuarioCentroCosto(models.Model):
         managed = False
         db_table = 'sg_usuario_centro_costos'
 
+class SgMunicipioDian(models.Model):
+    id_municipio_dian = models.CharField(max_length=8, primary_key=True, db_column='ID_MUNICIPIO_DIAN')
+    nom_municipio_dian = models.CharField(max_length=100, db_column='NOM_MUNICIPIO_DIAN')
+
+    class Meta:
+        managed = False
+        db_table = 'sg_municipios_dian'
+
 class CoTercero(models.Model):
     id_tercero = models.CharField(max_length=8, primary_key=True, db_column='ID_TERCERO')
     nom_tercero = models.CharField(max_length=200, db_column='NOM_TERCERO') # Asumido 200 por estándar, ajustar si es diferente
     id_regimen = models.CharField(max_length=3, null=True, blank=True, db_column='ID_REGIMEN')
     siono_iva = models.CharField(max_length=1, null=True, blank=True, db_column='SIONO_IVA')
+    id_municipio_dian = models.ForeignKey(SgMunicipioDian, models.DO_NOTHING, db_column='ID_MUNICIPIO_DIAN', db_constraint=False, null=True, blank=True)
 
     class Meta:
         managed = False
@@ -170,6 +180,7 @@ class InComisionGrupo(models.Model):
 
 class CtVendedor(models.Model):
     id_vendedor = models.CharField(max_length=8, primary_key=True, db_column='ID_VENDEDOR')
+    cod_vendedor = models.CharField(max_length=50, null=True, blank=True, db_column='COD_VENDEDOR')
     id_comision = models.CharField(max_length=8, null=True, blank=True, db_column='ID_COMISION')
 
     class Meta:

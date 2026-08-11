@@ -21,8 +21,9 @@ def dictfetchall(cursor):
 
 def build_qr_base64(datos_fac, cufe):
     """
-    Construye la cadena base del código QR según el estándar DIAN y genera la imagen en Base64.
+    Construye la cadena base del código QR según el estándar DIAN y genera la imagen en Base64 (formato SVG).
     """
+    import qrcode.image.svg
     num_fac = datos_fac.get('num_documento', '')
     
     # Formateo de fecha y hora seguro
@@ -38,41 +39,23 @@ def build_qr_base64(datos_fac, cufe):
     doc_adq = datos_fac.get('num_identificacion', '')
     val_fac = str(datos_fac.get('tot_documento', '0.00'))
     
-    # Si la info de impuestos no está en BD principal, la mockeamos o se calcula.
-    val_iva = "0.00"
-    val_otro_im = "0.00"
-    val_tol_fac = val_fac
+    # Generar el QR estrictamente con la URL para asegurar compatibilidad con todos los móviles
+    qr_string = f"https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey={cufe}"
     
-    qr_string = (
-        f"NumFac: {num_fac}\n"
-        f"FecFac: {fec_fac}\n"
-        f"HorFac: {hor_fac}\n"
-        f"NitFac: {nit_fac}\n"
-        f"DocAdq: {doc_adq}\n"
-        f"ValFac: {val_fac}\n"
-        f"ValIva: {val_iva}\n"
-        f"ValOtroIm: {val_otro_im}\n"
-        f"ValTolFac: {val_tol_fac}\n"
-        f"CUFE: {cufe}\n"
-        f"QRCode: https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey={cufe}"
-    )
-    
+    factory = qrcode.image.svg.SvgPathImage
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=10, # PARÁMETRO VITAL PARA LA RESOLUCIÓN
+        box_size=10, 
         border=4,
     )
     qr.add_data(qr_string)
     qr.make(fit=True)
     
-    img = qr.make_image(fill_color="black", back_color="white")
+    img = qr.make_image(image_factory=factory)
+    svg_bytes = img.to_string()
     
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    img_bytes = buffer.getvalue()
-    
-    return base64.b64encode(img_bytes).decode('utf-8')
+    return base64.b64encode(svg_bytes).decode('utf-8')
 
 
 import re
@@ -142,7 +125,7 @@ def _build_context(id_documento):
 
         # 1.1 Total Items (MAX id_item)
         cursor.execute("""
-            SELECT NVL(MAX(ID_ITEM), 0)
+            SELECT NVL(MAX(TO_NUMBER(ID_ITEM)), 0)
             FROM IN_MOV_INVENTARIOS
             WHERE ID_DOCUMENTO = %s
         """, [id_documento])
@@ -159,7 +142,9 @@ def _build_context(id_documento):
                 (lin.CANTIDAD * lin.VLR_UNITARIO) AS VLR_TOTAL,
                 lin.ID_UNIDAD_MEDIDA AS UND_VTA,
                 lin.VLR_IVA,
-                lin.IMPOCONSUMO
+                lin.IMPOCONSUMO,
+                CANTIDAD_UNIDAD(lin.ID_ARTICULO, NVL(lin.CANTIDAD, 1), 'G') AS CAJAS_CALCULADAS,
+                CANTIDAD_UNIDAD(lin.ID_ARTICULO, NVL(lin.CANTIDAD, 1), 'GP') AS UNIDADES_CALCULADAS
             FROM IN_MOV_INVENTARIOS lin
             LEFT JOIN IN_ARTICULOS itm ON lin.ID_ARTICULO = itm.ID_ARTICULO
             WHERE lin.ID_DOCUMENTO = %s
@@ -284,11 +269,16 @@ def _build_context(id_documento):
         elif 18.0 <= porc_iva <= 20.0:
             tot_base_19 += vlr_total_linea
         
+        cajas_calc = float(item.get('cajas_calculadas') or 0)
+        unidades_calc = float(item.get('unidades_calculadas') or 0)
+        cajas_str = fmt_qty(cajas_calc) if cajas_calc > 0 else ""
+        unidades_str = fmt_qty(unidades_calc) if unidades_calc > 0 else ""
+
         items_list.append({
             'referencia': item.get('referencia') or '',
             'descripcion': item.get('descripcion') or '',
-            'cajas': "", # Se deja vacío intencional si no hay datos de caja en línea
-            'unidades': "", 
+            'cajas': cajas_str,
+            'unidades': unidades_str, 
             'und_vta': item.get('und_vta') or '',
             'cantidad': fmt_qty(item.get('cantidad') or 0),
             'vlr_unitario': fmt(item.get('vlr_unitario')),

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Generación de Entregas Logísticas{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="md:flex md:items-center md:justify-between mb-6">
+    <div class="flex-1 min-w-0">
+      <h2 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
+        Despacho y Enrutamiento (Entregas)
+      </h2>
+      <p class="mt-1 text-sm text-gray-500">
+        Gestione y agrupe facturas pendientes para generar la planilla física de envíos.
+      </p>
+    </div>
+  </div>
+
+  <div id="alerts-container"></div>
+
+  <!-- Controles Superiores -->
+  <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-6 space-y-4">
+    <!-- Fila Superior: Buscador y Filtros -->
+    <div class="flex flex-col md:flex-row md:items-center space-y-4 md:space-y-0 md:space-x-4">
+      <div class="relative flex-1">
+        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+          </svg>
+        </span>
+        <input type="text" id="docSearch" name="search" placeholder="Buscar factura o cliente..." 
+               class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 px-3 border"
+               hx-get="{% url 'logistica:entregas_table_partial' %}"
+               hx-trigger="keyup changed delay:500ms, search"
+               hx-target="#entregas-tbody"
+               hx-include="#filterVendedor, #filterMunicipio"
+               hx-swap="innerHTML">
+      </div>
+      
+      <div class="w-full md:w-64">
+         <select id="filterVendedor" name="vendedor"
+               class="focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md py-2 px-3 border bg-white"
+               hx-get="{% url 'logistica:entregas_table_partial' %}"
+               hx-trigger="change"
+               hx-target="#entregas-tbody"
+               hx-include="#docSearch, #filterMunicipio"
+               hx-swap="innerHTML">
+            <option value="">Todos los vendedores</option>
+            {% for v in vendedores %}
+            <option value="{{ v.vendedor_id }}">{{ v.nom_persona }}</option>
+            {% endfor %}
+         </select>
+      </div>
+      <div class="w-full md:w-64">
+         <select id="filterMunicipio" name="municipio"
+               class="focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md py-2 px-3 border bg-white"
+               hx-get="{% url 'logistica:entregas_table_partial' %}"
+               hx-trigger="change"
+               hx-target="#entregas-tbody"
+               hx-include="#docSearch, #filterVendedor"
+               hx-swap="innerHTML">
+            <option value="">Todos los municipios</option>
+            {% for m in municipios %}
+            <option value="{{ m.id_municipio_dian }}">{{ m.nom_municipio_dian }}</option>
+            {% endfor %}
+         </select>
+      </div>
+    </div>
+    
+    <hr class="border-gray-200">
+    
+    <!-- Fila Inferior: Formulario Cabecera Entrega -->
+    <div class="flex flex-col md:flex-row md:items-end justify-between space-y-4 md:space-y-0 md:space-x-4 bg-gray-50 p-3 rounded">
+      <div>
+         <label for="transportador" class="block text-sm font-medium text-gray-700">Transportador</label>
+         <select id="transportador" name="transportador" required
+                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+            <option value="">Seleccione transportador</option>
+            {% for t in transportadores %}
+            <option value="{{ t.id_transportador }}">{{ t.nom_transportador }}</option>
+            {% endfor %}
+         </select>
+      </div>
+      <div class="w-full md:w-48">
+          <label class="block text-xs font-medium text-gray-700">Placa Vehículo</label>
+          <input type="text" id="inputPlaca" name="placa" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2 border uppercase">
+      </div>
+      <div class="flex-1 min-w-0">
+          <label class="block text-xs font-medium text-gray-700">Observaciones</label>
+          <input type="text" id="inputObs" name="observaciones" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2 border">
+      </div>
+      
+      <button 
+        id="btn-generar"
+        hx-post="{% url 'logistica:generar_entrega_action' %}"
+        hx-include=".doc-checkbox:checked, #transportador, #inputPlaca, #inputObs"
+        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+        hx-target="#alerts-container"
+        hx-indicator="#gen-btn-spinner"
+        hx-confirm="¿Está seguro de generar la entrega con las facturas seleccionadas?"
+        class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center space-x-2">
+        <svg id="gen-btn-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+        <svg id="gen-btn-spinner" class="animate-spin hidden h-5 w-5 text-white htmx-indicator" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>Generar Entrega</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Tabla de Documentos Pendientes -->
+  <div class="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th scope="col" class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-12">
+              <input type="checkbox" id="select-all" class="cursor-pointer rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
+            </th>
+            <th scope="col" class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Factura</th>
+            <th scope="col" class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Fecha</th>
+            <th scope="col" class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente</th>
+            <th scope="col" class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Municipio</th>
+            <th scope="col" class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Vendedor</th>
+            <th scope="col" class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Valor Total</th>
+          </tr>
+        </thead>
+        <tbody id="entregas-tbody" class="bg-white divide-y divide-gray-100" hx-get="{% url 'logistica:entregas_table_partial' %}" hx-trigger="load, reloadTable from:body">
+          <tr>
+            <td colspan="7" class="px-6 py-12 text-center text-sm text-gray-400">
+              <svg class="animate-spin mx-auto h-8 w-8 text-gray-300 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Cargando facturas pendientes...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('change', function(e) {
+    if (e.target.id === 'select-all') {
+      document.querySelectorAll('.doc-checkbox').forEach(cb => {
+        cb.checked = e.target.checked;
+      });
+    }
+  });
+</script>
+{% endblock %}

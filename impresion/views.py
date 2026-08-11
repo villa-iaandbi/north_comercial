@@ -224,3 +224,27 @@ def generar_pdfs_seleccionados(request):
     # Ya no forzamos recarga inmediata completa porque se procesa de fondo. 
     # El usuario deberá recargar manualmente, o podemos integrarlo con HTMX polling luego.
     return response
+
+
+def descargar_factura_docx(request, id_documento):
+    """
+    Genera y entrega la factura en formato Microsoft Word (.docx) utilizando docxtpl y QR dinámico.
+    """
+    from django.http import FileResponse, HttpResponseNotFound
+    from impresion.docx_engine import renderizar_factura_docx
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        docx_stream = renderizar_factura_docx(str(id_documento))
+        filename = f"Factura_{id_documento}.docx"
+        response = FileResponse(
+            docx_stream,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"Error al generar factura .docx para ID {id_documento}: {e}")
+        return HttpResponseNotFound(f"No fue posible generar la factura .docx para ID '{id_documento}': {e}")
+

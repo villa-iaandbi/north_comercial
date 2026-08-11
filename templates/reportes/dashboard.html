@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Dashboard Comercial - North Comercial{% endblock %}
+{% block page_title %}Dashboard Gerencial & Indicadores de Venta{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Filtro de Período -->
+    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex items-center justify-between">
+        <div>
+            <h3 class="text-lg font-bold text-gray-900">📊 Resumen de Desempeño Comercial</h3>
+            <p class="text-xs text-gray-500">Métricas clave calculadas estrictamente en Pesos Colombianos (COP).</p>
+        </div>
+        <div class="flex items-center space-x-2">
+            <a href="?periodo=dia" class="px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-colors {% if periodo == 'dia' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">Hoy</a>
+            <a href="?periodo=mes" class="px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-colors {% if periodo == 'mes' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">Este Mes</a>
+            <a href="?periodo=ano" class="px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-colors {% if periodo == 'ano' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">Este Año</a>
+        </div>
+    </div>
+
+    <!-- Grid de Tarjetas KPI -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <!-- KPI 1: Total Ventas -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-blue-600 flex flex-col justify-between">
+            <div>
+                <span class="text-xs font-bold uppercase text-gray-500 tracking-wider">Total Ventas</span>
+                <h3 class="text-2xl font-black text-blue-900 mt-1" fill="none">{{ total_ventas_cop }}</h3>
+            </div>
+            <span class="text-[11px] font-semibold text-gray-400 mt-2">Facturación acumulada (COP)</span>
+        </div>
+
+        <!-- KPI 2: Drop Size (Tamaño Promedio de Pedido) -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-green-600 flex flex-col justify-between">
+            <div>
+                <span class="text-xs font-bold uppercase text-gray-500 tracking-wider">Drop Size (Prom. Pedido)</span>
+                <h3 class="text-2xl font-black text-green-700 mt-1">{{ drop_size_cop }}</h3>
+            </div>
+            <span class="text-[11px] font-semibold text-gray-400 mt-2">Promedio por ticket/venta</span>
+        </div>
+
+        <!-- KPI 3: Impactos Clientes -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-purple-600 flex flex-col justify-between">
+            <div>
+                <span class="text-xs font-bold uppercase text-gray-500 tracking-wider">Impactos Clientes</span>
+                <h3 class="text-2xl font-black text-purple-900 mt-1">{{ impactos_clientes }}</h3>
+            </div>
+            <span class="text-[11px] font-semibold text-gray-400 mt-2">Clientes únicos atendidos</span>
+        </div>
+
+        <!-- KPI 4: Total Pedidos/Documentos -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-orange-500 flex flex-col justify-between">
+            <div>
+                <span class="text-xs font-bold uppercase text-gray-500 tracking-wider">Total Pedidos</span>
+                <h3 class="text-2xl font-black text-orange-700 mt-1">{{ cant_pedidos }}</h3>
+            </div>
+            <span class="text-[11px] font-semibold text-gray-400 mt-2">Documentos procesados</span>
+        </div>
+    </div>
+
+    <!-- Gráfico Tendencia de Ventas -->
+    <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+        <h4 class="text-base font-bold text-gray-900 mb-3">📈 Tendencia Diaria de Ventas (Este Mes)</h4>
+        <div class="h-64">
+            <canvas id="salesChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Tabla Agrupada por Proveedor, Familia y Línea -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="p-4 border-b border-gray-200 bg-gray-50">
+            <h4 class="text-base font-bold text-gray-900">📦 Resumen de Ventas Agrupadas (Proveedor / Familia / Línea)</h4>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b">
+                    <tr>
+                        <th class="p-3">Proveedor</th>
+                        <th class="p-3">Familia</th>
+                        <th class="p-3">Línea</th>
+                        <th class="p-3 text-right">Cantidad Unidades</th>
+                        <th class="p-3 text-right">Total Mercancía (COP)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    {% for item in agrupacion_productos %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="p-3 font-bold text-gray-900">{{ item.proveedor }}</td>
+                        <td class="p-3 text-gray-700 font-semibold">{{ item.familia }}</td>
+                        <td class="p-3 text-gray-600">{{ item.linea }}</td>
+                        <td class="p-3 text-right font-mono font-bold">{{ item.cantidad|floatformat:2 }}</td>
+                        <td class="p-3 text-right font-mono font-black text-green-700">{{ item.tot_mercancia_cop }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="p-6 text-center text-gray-500 font-bold">No hay registros de ventas para el período seleccionado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    const chartData = {{ ventas_tendencia|safe|default:"[]" }};
+
+    const labels = chartData.map(d => d.dia);
+    const values = chartData.map(d => d.monto);
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Ventas ($ COP)',
+                data: values,
+                borderColor: '#1d4ed8',
+                backgroundColor: 'rgba(29, 78, 216, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString('es-CO');
+                        }
+                    }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -2,33 +2,33 @@
 
 {% for r in resultados %}
 <tr class="hover:bg-gray-50 transition-colors">
-  <td class="px-6 py-4 whitespace-nowrap">
+  <td class="px-3 py-2 whitespace-nowrap">
     <input type="checkbox" name="selected_docs" value="{{ r.id_documento }}" class="doc-checkbox cursor-pointer rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
   </td>
   
-  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+  <td class="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
     {{ r.num_documento }}
   </td>
   
-  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+  <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
     {{ r.fch_documento|date:"Y-m-d h:i A" }}
   </td>
 
-  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+  <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
     <div class="truncate max-w-xs" title="{{ r.cliente_nombre|default:'Sin Nombre' }}">
       {{ r.cliente_nombre|default:"Sin Nombre" }}
     </div>
   </td>
 
-  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">
+  <td class="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-600">
     {{ r.id_vendedor|default:"N/A" }}
   </td>
 
-  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+  <td class="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
     ${{ r.tot_documento|intcomma }}
   </td>
 
-  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+  <td class="px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
     <div class="h-full flex flex-col justify-center">
       {% if r.siono_impreso == 'S' %}
         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -42,7 +42,7 @@
     </div>
   </td>
 
-  <td class="px-6 py-4 whitespace-nowrap text-center text-sm">
+  <td class="px-3 py-2 whitespace-nowrap text-center text-sm">
     {% if r.cufe %}
       <div class="truncate max-w-[120px] mx-auto text-gray-500 font-mono" title="{{ r.cufe }}">
         {{ r.cufe }}

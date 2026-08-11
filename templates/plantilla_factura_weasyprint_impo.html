@@ -182,7 +182,7 @@
                     <tr>
                         <td style="width: 35%; text-align: right; border: none; padding: 0;">
                             {% if qr_base64 %}
-                            <img src="data:image/svg+xml;base64,{{ qr_base64 }}" style="width: 2.2cm; height: 2.2cm;">
+                            <img src="data:image/png;base64,{{ qr_base64 }}" style="width: 2.2cm; height: 2.2cm;">
                             {% endif %}
                         </td>
                         <td style="width: 65%; text-align: center; border: none; padding: 0;">
@@ -228,14 +228,15 @@
         <thead>
             <tr>
                 <th style="width: 10%;">REFERENCIA</th>
-                <th style="width: 38%;">DESCRIPCIÓN</th>
+                <th style="width: 33%;">DESCRIPCIÓN</th>
                 <th style="width: 4%;">CAJAS</th>
                 <th style="width: 4%;">UNDS</th>
                 <th style="width: 7%;">UNDVTA</th>
                 <th style="width: 4%;">CANT.</th>
                 <th style="width: 10%;">VR/ UNITARIO</th>
                 <th style="width: 4%;">IVA</th>
-                <th style="width: 19%;">VALOR TOTAL</th>
+                <th style="width: 10%;">IMPOCONSUMO</th>
+                <th style="width: 14%;">VALOR TOTAL</th>
             </tr>
         </thead>
         <tbody>
@@ -249,6 +250,7 @@
                 <td>{{ item.cantidad|floatformat:"0" }}</td>
                 <td class="right">{{ item.vlr_unitario }}</td>
                 <td>{{ item.porc_iva }}</td>
+                <td class="right">{{ item.impoconsumo }}</td>
                 <td class="right">{{ item.vlr_total }}</td>
             </tr>
             {% endfor %}
@@ -259,12 +261,13 @@
         <thead>
             <tr>
                 <th style="width: 10%; text-align: left;">Total Kilos:</th>
-                <th style="width: 13%;">M/cia Excluida</th>
-                <th style="width: 15%;">M/cia Gravada 5%</th>
-                <th style="width: 16%;">M/cia Gravada 19%</th>
-                <th style="width: 15%;">Total Mercancia</th>
-                <th style="width: 14%;">Total IVA</th>
-                <th style="width: 17%;">Total Factura</th>
+                <th style="width: 11%;">M/cia Excluida</th>
+                <th style="width: 13%;">M/cia Gravada 5%</th>
+                <th style="width: 14%;">M/cia Gravada 19%</th>
+                <th style="width: 13%;">Total Mercancia</th>
+                <th style="width: 12%;">Total IVA</th>
+                <th style="width: 12%;">Impoconsumo</th>
+                <th style="width: 15%;">Total Factura</th>
             </tr>
         </thead>
         <tbody>
@@ -281,10 +284,11 @@
                 <td style="vertical-align: middle;">{{ tot_base_19 }}</td>
                 <td style="vertical-align: middle;">{{ subtotal }}</td>
                 <td style="vertical-align: middle;">{{ total_iva }}</td>
+                <td style="vertical-align: middle;">{{ tot_impoconsumo }}</td>
                 <td style="vertical-align: middle;"><strong style="font-size: 9pt;">{{ total_pagar }}</strong></td>
             </tr>
             <tr>
-                <td colspan="7" style="text-align: left; border: 1px solid #000; padding: 4px; font-size: 7pt;">
+                <td colspan="8" style="text-align: left; border: 1px solid #000; padding: 4px; font-size: 7pt;">
                     <strong>Son : </strong> {{ valor_en_letras|upper }}
                 </td>
             </tr>
@@ -297,10 +301,7 @@
                 <strong>Elaborado Por :</strong><br><br><br><br>{{ elaborado_por }}
             </td>
             <td style="width: 8%; text-align: center; vertical-align: top;">
-                <div style="font-size: 8.5pt !important; font-weight: bold;">
-                    Total<br>Cajas<br><br><br>
-                    <span style="font-size: 12pt !important;">{{ total_cajas_factura }}</span>
-                </div>
+                <strong>Total<br>Cajas</strong><br><br><br>{{ total_cajas_factura }}
             </td>
             <td style="width: 8%; text-align: center; vertical-align: top;">
                 <strong>Total<br>Varios</strong><br><br><br>{{ total_varios_factura }}

@@ -1,0 +1,1021 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Punto de Venta (POS) - North Comercial{% endblock %}
+{% block page_title %}Caja Registradora POS (Offline-First, Promociones & DIAN){% endblock %}
+
+{% block extra_head %}
+<script src="{% static 'pos/pos_db.js' %}"></script>
+<script src="{% static 'pos/sw.js' %}"></script>
+<style>
+    .btn-pos-primary {
+        background-color: #1d4ed8;
+        color: #ffffff;
+        font-weight: 700;
+        padding: 0.75rem 1.5rem;
+        font-size: 1.125rem;
+        border-radius: 0.5rem;
+        transition: all 0.2s;
+    }
+    .btn-pos-primary:hover {
+        background-color: #1e40af;
+    }
+    .btn-pos-success {
+        background-color: #15803d;
+        color: #ffffff;
+        font-weight: 700;
+        padding: 0.75rem 1.5rem;
+        font-size: 1.125rem;
+        border-radius: 0.5rem;
+        transition: all 0.2s;
+    }
+    .btn-pos-success:hover {
+        background-color: #166534;
+    }
+    .btn-pos-warning {
+        background-color: #b45309;
+        color: #ffffff;
+        font-weight: 700;
+        padding: 0.75rem 1.25rem;
+        font-size: 1rem;
+        border-radius: 0.5rem;
+    }
+
+    /* Estilos de Impresión Térmica 80mm */
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        #thermal-receipt-area, #thermal-receipt-area * {
+            visibility: visible;
+        }
+        #thermal-receipt-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 80mm;
+            padding: 5mm;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            color: #000;
+            background: #fff;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div x-data="posApp()" x-init="initApp()" class="-m-6 md:-m-8 p-4 bg-gray-100 min-h-screen">
+    
+    <!-- Barra Superior de Estado y Controles del Turno -->
+    <div class="bg-gray-900 text-white rounded-lg p-4 mb-4 shadow-md flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center space-x-4">
+            <!-- Indicador Red -->
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide"
+                  :class="isOnline ? 'bg-green-600 text-white' : 'bg-red-600 text-white'">
+                <span class="w-2.5 h-2.5 rounded-full mr-2" :class="isOnline ? 'bg-green-300 animate-pulse' : 'bg-red-300'"></span>
+                <span x-text="isOnline ? 'EN LÍNEA (ONLINE)' : 'SIN RED (OFFLINE)'"></span>
+            </span>
+
+            <!-- Indicador Turno -->
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide"
+                  :class="turno.abierto ? 'bg-blue-600 text-white' : 'bg-yellow-600 text-white'">
+                <span x-text="turno.abierto ? 'TURNO #' + turno.id_turno + ' (ABIERTO)' : 'CAJA CERRADA'"></span>
+            </span>
+
+            <!-- Indicador Base Económica -->
+            <template x-if="turno.abierto">
+                <span class="text-sm font-semibold text-gray-300">
+                    Base: <span class="text-green-400 font-bold" x-text="formatCOP(turno.base_economica)"></span>
+                </span>
+            </template>
+
+            <!-- Counter Tickets Pendientes de Sync -->
+            <span x-show="unsyncedCount > 0" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-orange-600 text-white animate-bounce">
+                Sync Pendiente: <span class="ml-1 text-sm font-black" x-text="unsyncedCount"></span>
+            </span>
+
+            <!-- Puntos Ganados Previstos -->
+            <span x-show="puntosGanados > 0" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-purple-600 text-white">
+                🎁 Puntos Venta: +<span x-text="puntosGanados"></span> pts
+            </span>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <!-- Botón Último Recibo / Factura -->
+            <button x-show="lastIssuedTicket" @click="showReceiptModal = true" class="bg-indigo-700 hover:bg-indigo-600 text-white font-bold px-3 py-2 rounded text-sm flex items-center shadow">
+                📄 Última Factura
+            </button>
+
+            <!-- Botón Sync Catálogo & Promociones -->
+            <button @click="syncCatalogAndPromos()" class="bg-gray-700 hover:bg-gray-600 text-white font-bold px-3 py-2 rounded text-sm flex items-center">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Sync Datos & Promos
+            </button>
+
+            <!-- Botón Apertura de Caja -->
+            <button x-show="!turno.abierto" @click="showAperturaModal = true" class="btn-pos-success text-sm py-2">
+                + Apertura de Caja
+            </button>
+
+            <!-- Botón Cierre Z -->
+            <button x-show="turno.abierto" @click="openCierreZModal()" class="btn-pos-warning text-sm py-2">
+                Cierre Z (Finalizar Turno)
+            </button>
+        </div>
+    </div>
+
+    <!-- Grid Principal POS -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        
+        <!-- PANEL IZQUIERDO: Catálogo y Búsqueda de Productos (7 Cols) -->
+        <div class="lg:col-span-7 bg-white rounded-lg p-4 shadow-sm border border-gray-200 flex flex-col h-[calc(100vh-12rem)]">
+            <!-- Buscador de artículos -->
+            <div class="mb-4">
+                <div class="relative">
+                    <input type="text" x-model="searchQuery" @input="filterCatalog()"
+                           placeholder="🔍 Buscar por nombre, referencia o código de barras..."
+                           class="w-full text-lg p-3 pl-10 border-2 border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 font-semibold bg-gray-50 text-gray-900">
+                </div>
+            </div>
+
+            <!-- Listado Grid de Artículos -->
+            <div class="flex-1 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <template x-for="item in filteredCatalog" :key="item.id_articulo">
+                    <div class="bg-gray-50 border-2 border-gray-200 hover:border-blue-500 rounded-lg p-3 flex flex-col justify-between transition-colors shadow-sm">
+                        <div>
+                            <div class="flex justify-between items-start">
+                                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider" x-text="item.referencia || item.id_articulo"></span>
+                                <span class="text-xs font-extrabold px-2 py-0.5 rounded" :class="item.porc_gravamen > 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-700'" x-text="item.porc_gravamen > 0 ? 'IVA ' + item.porc_gravamen + '%' : 'EXENTO'"></span>
+                            </div>
+                            <h4 class="text-base font-bold text-gray-900 line-clamp-2 mt-1" x-text="item.nom_articulo"></h4>
+                        </div>
+                        <div class="mt-3 flex items-center justify-between">
+                            <span class="text-xl font-black text-blue-900" x-text="formatCOP(item.precio)"></span>
+                            <button @click="addToCart(item)" :disabled="!turno.abierto"
+                                    class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold px-4 py-2 rounded-lg text-sm transition-transform active:scale-95 shadow">
+                                + AGREGAR
+                            </button>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="filteredCatalog.length === 0">
+                    <div class="col-span-2 text-center py-12 text-gray-500">
+                        <p class="text-lg font-bold">No se encontraron artículos en el catálogo local.</p>
+                        <p class="text-sm">Intenta sincronizar el catálogo o cambiar el filtro de búsqueda.</p>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- PANEL DERECHO: Carrito, Cliente, Promociones y Cobro (5 Cols) -->
+        <div class="lg:col-span-5 bg-white rounded-lg p-4 shadow-sm border border-gray-200 flex flex-col h-[calc(100vh-12rem)]">
+            
+            <!-- Cabecera de Cliente y Saldo de Puntos -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2 flex items-center justify-between">
+                <div>
+                    <span class="text-xs font-extrabold text-blue-600 uppercase tracking-wide">Cliente Factura:</span>
+                    <p class="text-sm font-bold text-gray-900" x-text="cliente.id_tercero + ' - ' + cliente.nom_tercero"></p>
+                    <template x-if="cliente.id_tercero !== '222222222222'">
+                        <p class="text-xs font-extrabold text-purple-700 mt-0.5">
+                            ⭐ Puntos Acumulados: <span x-text="puntosCliente.saldo"></span> pts (<span x-text="formatCOP(puntosCliente.valor_cop)"></span>)
+                        </p>
+                    </template>
+                </div>
+                <button @click="showClienteModal = true" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded uppercase shadow">
+                    Cambiar
+                </button>
+            </div>
+
+            <!-- Banner Promociones Aplicadas -->
+            <template x-if="promocionesAplicadas.length > 0">
+                <div class="bg-purple-50 border-2 border-purple-400 text-purple-900 p-2.5 rounded-lg mb-2 text-xs font-bold flex items-center justify-between">
+                    <div class="flex items-center">
+                        <span class="text-lg mr-2">🏷️</span>
+                        <div>
+                            <p class="uppercase tracking-wide font-extrabold text-purple-700">Promoción Aplicada:</p>
+                            <p x-text="promocionesAplicadas.join(', ')"></p>
+                        </div>
+                    </div>
+                    <span class="text-sm font-black text-purple-800" x-text="'-' + formatCOP(descuentoPromocion)"></span>
+                </div>
+            </template>
+
+            <!-- Tabla de Ítems en el Carrito -->
+            <div class="flex-1 overflow-y-auto border-t border-b border-gray-200 py-2">
+                <template x-if="cart.length === 0">
+                    <div class="text-center py-16 text-gray-400">
+                        <svg class="w-12 h-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        <p class="font-bold text-gray-500">Carrito de Venta Vacío</p>
+                        <p class="text-xs">Selecciona productos del catálogo para comenzar.</p>
+                    </div>
+                </template>
+
+                <div class="space-y-2">
+                    <template x-for="(item, index) in cart" :key="item.id_articulo">
+                        <div class="bg-gray-50 p-2.5 rounded-lg border border-gray-200 flex items-center justify-between"
+                             :class="item.es_regalo ? 'bg-purple-50 border-purple-300' : ''">
+                            <div class="flex-1 pr-2">
+                                <div class="flex items-center">
+                                    <p class="text-sm font-bold text-gray-800 leading-tight" x-text="item.nom_articulo"></p>
+                                    <template x-if="item.es_regalo">
+                                        <span class="ml-2 bg-purple-600 text-white font-black text-[10px] px-1.5 py-0.5 rounded">REGALO</span>
+                                    </template>
+                                </div>
+                                <p class="text-xs text-gray-500 font-semibold" x-text="formatCOP(item.vlr_unitario) + ' c/u'"></p>
+                            </div>
+                            <!-- Controles de Cantidad -->
+                            <div class="flex items-center space-x-1">
+                                <button @click="updateQty(index, -1)" :disabled="item.es_regalo" class="w-7 h-7 bg-red-100 hover:bg-red-200 text-red-700 font-black rounded flex items-center justify-center text-base disabled:opacity-30">-</button>
+                                <span class="w-8 text-center font-black text-sm text-gray-900" x-text="item.cantidad"></span>
+                                <button @click="updateQty(index, 1)" :disabled="item.es_regalo" class="w-7 h-7 bg-green-100 hover:bg-green-200 text-green-700 font-black rounded flex items-center justify-center text-base disabled:opacity-30">+</button>
+                            </div>
+                            <!-- Subtotal y Eliminar -->
+                            <div class="w-28 text-right pl-2">
+                                <span class="block text-sm font-black text-gray-900" x-text="formatCOP(item.tot_linea)"></span>
+                                <button @click="removeFromCart(index)" class="text-xs text-red-600 hover:underline font-bold">Quitar</button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Resumen Financiero del Ticket -->
+            <div class="bg-gray-900 text-white rounded-lg p-3 mt-3 shadow-inner space-y-1.5">
+                <div class="flex justify-between text-xs font-semibold text-gray-300">
+                    <span>Subtotal Mercancía:</span>
+                    <span x-text="formatCOP(totMercancia)"></span>
+                </div>
+                <div class="flex justify-between text-xs font-semibold text-gray-300">
+                    <span>IVA Generado:</span>
+                    <span x-text="formatCOP(totIVA)"></span>
+                </div>
+                <template x-if="descuentoPromocion > 0">
+                    <div class="flex justify-between text-xs font-bold text-purple-400">
+                        <span>Descuento Promoción:</span>
+                        <span x-text="'-' + formatCOP(descuentoPromocion)"></span>
+                    </div>
+                </template>
+                <div class="flex justify-between text-xs font-semibold text-gray-400">
+                    <span>Retenciones (Exención POS):</span>
+                    <span>$0.00</span>
+                </div>
+                <div class="flex justify-between text-xl font-black text-green-400 border-t border-gray-700 pt-2 mt-1">
+                    <span>TOTAL:</span>
+                    <span x-text="formatCOP(totTicket)"></span>
+                </div>
+            </div>
+
+            <!-- Botón Cobrar Ticket -->
+            <button @click="openPaymentModal()" :disabled="cart.length === 0 || !turno.abierto"
+                    class="btn-pos-success w-full mt-3 py-3 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                💳 COBRAR TICKET (<span x-text="formatCOP(totTicket)"></span>)
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL 1: APERTURA DE CAJA -->
+    <div x-show="showAperturaModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border-4 border-blue-600">
+            <h3 class="text-2xl font-black text-gray-900 mb-2">🔓 Apertura de Caja POS</h3>
+            <p class="text-sm text-gray-600 mb-4">Ingresa la <strong>Base Económica inicial</strong> recibida en efectivo antes de iniciar las ventas del turno.</p>
+            
+            <form @submit.prevent="submitApertura()">
+                <div class="mb-4">
+                    <label class="block text-sm font-extrabold text-gray-700 uppercase mb-1">Base Económica ($ COP):</label>
+                    <input type="number" step="100" min="0" x-model="aperturaBase" required
+                           class="w-full text-2xl font-black p-3 border-2 border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none text-right">
+                </div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="submit" class="btn-pos-primary w-full py-3">
+                        CONFIRMAR APERTURA
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: BÚSQUEDA DE CLIENTE -->
+    <div x-show="showClienteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border-2 border-gray-300">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-900">🔍 Buscar Cliente (CO_TERCEROS)</h3>
+                <button @click="showClienteModal = false" class="text-gray-500 hover:text-black font-black text-xl">&times;</button>
+            </div>
+            
+            <input type="text" x-model="clienteQuery" @input.debounce.300ms="searchTerceros()"
+                   placeholder="Ingrese NIT o Nombre del cliente..."
+                   class="w-full text-base p-2.5 border-2 border-blue-400 rounded-lg mb-3">
+
+            <div class="max-h-60 overflow-y-auto space-y-1 mb-4 border rounded p-2">
+                <button @click="selectCliente({id_tercero: '222222222222', nom_tercero: 'VENTAS MASIVAS (CONSUMIDOR FINAL)'})"
+                        class="w-full text-left p-2 hover:bg-blue-50 rounded border-b font-bold text-blue-700">
+                    222222222222 - VENTAS MASIVAS (CONSUMIDOR FINAL) [Por Defecto]
+                </button>
+                <template x-for="t in tercerosResults" :key="t.id_tercero">
+                    <button @click="selectCliente(t)"
+                            class="w-full text-left p-2 hover:bg-blue-100 rounded border-b font-semibold text-gray-800 text-sm">
+                        <span x-text="t.id_tercero + ' - ' + t.nom_tercero"></span>
+                    </button>
+                </template>
+            </div>
+
+            <button @click="showClienteModal = false" class="w-full bg-gray-500 text-white font-bold py-2 rounded">
+                Cerrar
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL 3: COBRO Y MEDIOS DE PAGO MULTIPLES -->
+    <div x-show="showPaymentModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-xl w-full p-6 border-4 border-green-600">
+            <h3 class="text-2xl font-black text-gray-900 mb-1">💵 Procesar Cobro de Ticket</h3>
+            <p class="text-sm font-bold text-gray-500 mb-3">Monto Total a Cobrar: <span class="text-green-700 text-xl font-black" x-text="formatCOP(totTicket)"></span></p>
+
+            <div class="space-y-3 bg-gray-50 p-4 rounded-lg border mb-4">
+                <!-- Efectivo -->
+                <div class="flex items-center justify-between">
+                    <label class="text-sm font-extrabold text-gray-800 uppercase w-36">💵 Efectivo:</label>
+                    <input type="number" step="100" min="0" x-model.number="pagoEfectivo"
+                           class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
+                </div>
+                <!-- Tarjeta -->
+                <div class="flex items-center justify-between">
+                    <label class="text-sm font-extrabold text-gray-800 uppercase w-36">💳 Tarjeta:</label>
+                    <input type="number" step="100" min="0" x-model.number="pagoTarjeta"
+                           class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
+                </div>
+                <!-- Transferencia -->
+                <div class="flex items-center justify-between">
+                    <label class="text-sm font-extrabold text-gray-800 uppercase w-36">📲 Transferencia:</label>
+                    <input type="number" step="100" min="0" x-model.number="pagoTransferencia"
+                           class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
+                </div>
+
+                <!-- Puntos de Fidelización (Burn - ONLINE ONLY) -->
+                <div class="pt-2 border-t border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <label class="text-sm font-extrabold text-purple-900 uppercase">⭐ Puntos Fidelización:</label>
+                            <template x-if="!isOnline">
+                                <p class="text-[11px] font-black text-red-600">🔒 Pagar con puntos requiere red ONLINE</p>
+                            </template>
+                            <template x-if="isOnline && cliente.id_tercero !== '222222222222'">
+                                <p class="text-[11px] font-bold text-purple-700">Disp: <span x-text="puntosCliente.saldo"></span> pts (<span x-text="formatCOP(puntosCliente.valor_cop)"></span>)</p>
+                            </template>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="number" step="100" min="0" x-model.number="pagoPuntos" :disabled="!isOnline || cliente.id_tercero === '222222222222'"
+                                   class="w-36 text-lg font-bold p-2 border-2 border-purple-300 rounded text-right focus:border-purple-600 focus:outline-none disabled:bg-gray-200 disabled:cursor-not-allowed">
+                            <button @click="redimirPuntos()" :disabled="!isOnline || cliente.id_tercero === '222222222222'"
+                                    class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-black text-xs px-2.5 py-2.5 rounded uppercase">
+                                Redimir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Desglose de Cálculo de Devuelta/Pendiente -->
+            <div class="bg-gray-900 text-white p-3.5 rounded-lg space-y-1.5 mb-5">
+                <div class="flex justify-between text-sm font-bold">
+                    <span>Total Ingresado:</span>
+                    <span x-text="formatCOP(totalPagado)"></span>
+                </div>
+                <div class="flex justify-between text-sm font-bold" :class="pendienteCobro > 0 ? 'text-red-400' : 'text-gray-400'">
+                    <span>Saldo Pendiente:</span>
+                    <span x-text="formatCOP(pendienteCobro)"></span>
+                </div>
+                <div class="flex justify-between text-xl font-black text-green-400 border-t border-gray-700 pt-1.5">
+                    <span>DEVUELTA / CAMBIO:</span>
+                    <span x-text="formatCOP(cambioDevuelta)"></span>
+                </div>
+            </div>
+
+            <div class="flex space-x-3">
+                <button @click="showPaymentModal = false" class="w-1/3 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg text-base">
+                    Cancelar
+                </button>
+                <button @click="confirmPayment()" :disabled="totalPagado < totTicket"
+                        class="w-2/3 btn-pos-success py-3 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-lg">
+                    ✅ FINALIZAR Y EMITIR
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 4: CIERRE Z (CONSOLIDACIÓN) -->
+    <div x-show="showCierreZModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border-4 border-yellow-600">
+            <h3 class="text-2xl font-black text-gray-900 mb-2">⚡ Cierre Z de Caja</h3>
+            <p class="text-sm text-gray-600 mb-4">Esta acción finalizará el turno actual, agrupará todas las ventas por producto y generará un <strong>único movimiento de inventario consolidado</strong> y <strong>asiento contable maestro</strong> en Oracle 11g, transmitiendo asíncronamente a la DIAN.</p>
+            
+            <div class="bg-yellow-50 border border-yellow-300 p-3 rounded mb-5 text-sm font-bold text-yellow-900 space-y-1">
+                <p>Turno #: <span x-text="turno.id_turno"></span></p>
+                <p>Tickets del Turno: <span x-text="turno.tickets_count || 0"></span></p>
+            </div>
+
+            <div class="flex space-x-3">
+                <button @click="showCierreZModal = false" class="w-1/2 bg-gray-500 text-white font-bold py-2.5 rounded">
+                    Cancelar
+                </button>
+                <button @click="executeCierreZ()" class="w-1/2 btn-pos-warning py-2.5 text-base">
+                    EJECUTAR CIERRE Z
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 5: TICKET EMITIDO / IMPRESIÓN (.DOCX DIAN vs. RECIBO TÉRMICO OFFLINE) -->
+    <div x-show="showReceiptModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border-4" :class="isOnline ? 'border-blue-600' : 'border-yellow-500'">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-2xl font-black text-gray-900">📄 Ticket Emitido</h3>
+                <button @click="showReceiptModal = false" class="text-gray-500 hover:text-black font-black text-xl">&times;</button>
+            </div>
+
+            <!-- MODO EN LÍNEA: FACTURA OFICIAL WORD .DOCX -->
+            <template x-if="isOnline">
+                <div class="bg-blue-50 border-2 border-blue-300 rounded-lg p-4 mb-4 text-center">
+                    <span class="text-4xl">📄</span>
+                    <h4 class="text-lg font-black text-blue-900 mt-2">Factura Electrónica Registrada</h4>
+                    <p class="text-xs text-gray-600 mb-4">La factura se ha guardado y encolado para transmisión DIAN. Puedes descargar la versión oficial Word (.docx) con el código QR inyectado.</p>
+                    
+                    <div class="flex justify-center space-x-2">
+                        <template x-if="lastIssuedDocId">
+                            <a :href="'/impresion/descargar-docx/' + lastIssuedDocId + '/'" target="_blank"
+                               class="btn-pos-primary py-3 px-6 text-base inline-flex items-center shadow-lg">
+                                📥 Descargar Factura (.docx)
+                            </a>
+                        </template>
+                        <template x-if="!lastIssuedDocId">
+                            <p class="text-xs font-bold text-gray-500">Documento maestro se consolidará al ejecutar el Cierre Z.</p>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
+            <!-- MODO SIN RED: RECIBO TÉRMICO POS CON ADVERTENCIA -->
+            <template x-if="!isOnline">
+                <div class="space-y-3">
+                    <div class="bg-yellow-100 border-l-4 border-yellow-600 p-3 rounded text-yellow-900 text-xs font-bold">
+                        ⚠️ RECIBO TEMPORAL POS - Documento Electrónico DIAN (.docx + QR) se generará al recuperar la conexión y sincronizar.
+                    </div>
+
+                    <!-- Vista previa Recibo Térmico (Imprenta 80mm) -->
+                    <div id="thermal-receipt-area" class="border-2 border-dashed border-gray-400 p-4 bg-gray-50 rounded font-mono text-xs text-gray-900 space-y-1">
+                        <div class="text-center font-bold border-b pb-2 mb-2">
+                            <p class="text-base uppercase">NORTH COMERCIAL S.A.S.</p>
+                            <p>NIT: 890.501.170-1</p>
+                            <p class="text-[10px]">RECIBO DE VENTA POS (OFFLINE)</p>
+                        </div>
+                        <template x-if="lastIssuedTicket">
+                            <div>
+                                <p>Ticket: <span class="font-bold" x-text="lastIssuedTicket.ticket_id"></span></p>
+                                <p>Fecha: <span x-text="lastIssuedTicket.fch_ticket"></span></p>
+                                <p>Cliente: <span x-text="lastIssuedTicket.nom_tercero"></span></p>
+                                <p class="border-b my-1.5"></p>
+                                <div class="space-y-1">
+                                    <template x-for="it in lastIssuedTicket.items" :key="it.id_articulo">
+                                        <div class="flex justify-between text-[11px]">
+                                            <span x-text="it.cantidad + 'x ' + it.nom_articulo"></span>
+                                            <span x-text="formatCOP(it.tot_linea)"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                                <p class="border-b my-1.5"></p>
+                                <div class="flex justify-between font-black text-sm">
+                                    <span>TOTAL COP:</span>
+                                    <span x-text="formatCOP(lastIssuedTicket.tot_ticket)"></span>
+                                </div>
+                                <div class="text-[10px] text-gray-600 mt-1">
+                                    <p x-show="lastIssuedTicket.pago_efectivo > 0">Efectivo: <span x-text="formatCOP(lastIssuedTicket.pago_efectivo)"></span></p>
+                                    <p x-show="lastIssuedTicket.pago_tarjeta > 0">Tarjeta: <span x-text="formatCOP(lastIssuedTicket.pago_tarjeta)"></span></p>
+                                    <p x-show="lastIssuedTicket.pago_puntos > 0">Puntos: <span x-text="formatCOP(lastIssuedTicket.pago_puntos)"></span></p>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <button @click="printThermalReceipt()" class="btn-pos-primary w-full py-3 text-base flex items-center justify-center">
+                        🖨️ Imprimir Recibo Térmico POS
+                    </button>
+                </div>
+            </template>
+
+            <div class="mt-4 border-t pt-3 flex justify-end">
+                <button @click="showReceiptModal = false" class="bg-gray-600 text-white font-bold px-4 py-2 rounded">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function posApp() {
+    return {
+        isOnline: navigator.onLine,
+        turno: { abierto: false, id_turno: null, caja_id: 'CAJA-01', base_economica: 0, tickets_count: 0 },
+        catalog: [],
+        filteredCatalog: [],
+        promociones: [],
+        promocionesAplicadas: [],
+        descuentoPromocion: 0,
+        searchQuery: '',
+        cart: [],
+        cliente: { id_tercero: '222222222222', nom_tercero: 'VENTAS MASIVAS (CONSUMIDOR FINAL)' },
+        puntosCliente: { saldo: 0, valor_cop: 0 },
+        puntosRedimidosTicket: 0,
+        tercerosResults: [],
+        clienteQuery: '',
+        unsyncedCount: 0,
+        lastIssuedTicket: null,
+        lastIssuedDocId: null,
+        
+        // Modales
+        showAperturaModal: false,
+        showClienteModal: false,
+        showPaymentModal: false,
+        showCierreZModal: false,
+        showReceiptModal: false,
+        
+        // Form inputs
+        aperturaBase: 100000,
+        pagoEfectivo: 0,
+        pagoTarjeta: 0,
+        pagoTransferencia: 0,
+        pagoPuntos: 0,
+
+        async initApp() {
+            window.addEventListener('online', () => { this.isOnline = true; this.triggerSync(); this.fetchPuntosSaldo(); });
+            window.addEventListener('offline', () => { this.isOnline = false; });
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/static/pos/sw.js').catch(err => console.error('SW Error:', err));
+            }
+
+            await window.posDB.init();
+            await this.checkShiftStatus();
+            await this.loadLocalCatalog();
+            await this.loadLocalPromociones();
+            await this.updateUnsyncedCount();
+            
+            if (this.isOnline) {
+                this.triggerSync();
+                this.syncPromociones();
+                this.fetchPuntosSaldo();
+            }
+        },
+
+        async checkShiftStatus() {
+            try {
+                const res = await fetch('/pos/api/shift/status/?caja_id=CAJA-01');
+                const data = await res.json();
+                if (data.status === 'success' && data.turno_abierto) {
+                    this.turno = { abierto: true, ...data.turno };
+                } else {
+                    this.turno = { abierto: false, id_turno: null, caja_id: 'CAJA-01', base_economica: 0, tickets_count: 0 };
+                    this.showAperturaModal = true;
+                }
+            } catch (e) {
+                console.warn('[POS] Error al verificar estado del turno online, operando offline:', e);
+            }
+        },
+
+        async loadLocalCatalog() {
+            this.catalog = await window.posDB.getCatalog();
+            if (this.catalog.length === 0 && this.isOnline) {
+                await this.syncCatalog();
+            } else {
+                this.filterCatalog();
+            }
+        },
+
+        async syncCatalog() {
+            if (!this.isOnline) return;
+            try {
+                const res = await fetch('/pos/api/catalog/');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.catalog = data.catalog;
+                    await window.posDB.saveCatalog(this.catalog);
+                    this.filterCatalog();
+                }
+            } catch (e) {
+                console.error('Fallo al descargar catálogo maestro:', e);
+            }
+        },
+
+        async syncPromociones() {
+            if (!this.isOnline) return;
+            try {
+                const res = await fetch('/pos/api/promociones/');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.promociones = data.promociones;
+                    await window.posDB.savePromociones(this.promociones);
+                    this.evaluatePromotions();
+                }
+            } catch (e) {
+                console.error('Fallo al descargar promociones:', e);
+            }
+        },
+
+        async loadLocalPromociones() {
+            this.promociones = await window.posDB.getPromociones();
+            this.evaluatePromotions();
+        },
+
+        async syncCatalogAndPromos() {
+            if (!this.isOnline) {
+                alert('No hay conexión a la red para actualizar catálogo y promociones.');
+                return;
+            }
+            await this.syncCatalog();
+            await this.syncPromociones();
+            alert('Catálogo maestro y Reglas de Promociones actualizados correctamente.');
+        },
+
+        filterCatalog() {
+            const q = this.searchQuery.trim().toLowerCase();
+            if (!q) {
+                this.filteredCatalog = this.catalog.slice(0, 40);
+                return;
+            }
+            this.filteredCatalog = this.catalog.filter(item => 
+                (item.nom_articulo && item.nom_articulo.toLowerCase().includes(q)) ||
+                (item.referencia && item.referencia.toLowerCase().includes(q)) ||
+                (item.codigo_barras && item.codigo_barras.toLowerCase().includes(q))
+            ).slice(0, 40);
+        },
+
+        addToCart(item) {
+            if (!this.turno.abierto) {
+                alert('Debes realizar la Apertura de Caja antes de facturar.');
+                return;
+            }
+            const index = this.cart.findIndex(c => c.id_articulo === item.id_articulo && !c.es_regalo);
+            if (index > -1) {
+                this.cart[index].cantidad += 1;
+                this.recalcCartLine(index);
+            } else {
+                const vlrUnitario = item.precio;
+                const porcIva = item.porc_gravamen || 0;
+                const vlrIva = vlrUnitario * (porcIva / 100);
+                
+                this.cart.push({
+                    id_articulo: item.id_articulo,
+                    referencia: item.referencia,
+                    nom_articulo: item.nom_articulo,
+                    cantidad: 1,
+                    vlr_unitario: vlrUnitario,
+                    porc_descuento: 0,
+                    porc_iva: porcIva,
+                    vlr_iva: vlrIva,
+                    tot_linea: vlrUnitario,
+                    es_regalo: false
+                });
+            }
+            this.evaluatePromotions();
+        },
+
+        updateQty(index, delta) {
+            if (this.cart[index].es_regalo) return;
+            this.cart[index].cantidad += delta;
+            if (this.cart[index].cantidad <= 0) {
+                this.removeFromCart(index);
+            } else {
+                this.recalcCartLine(index);
+            }
+            this.evaluatePromotions();
+        },
+
+        recalcCartLine(index) {
+            const item = this.cart[index];
+            item.tot_linea = item.cantidad * item.vlr_unitario;
+            item.vlr_iva = (item.vlr_unitario * (item.porc_iva / 100)) * item.cantidad;
+        },
+
+        removeFromCart(index) {
+            this.cart.splice(index, 1);
+            this.evaluatePromotions();
+        },
+
+        evaluatePromotions() {
+            this.descuentoPromocion = 0;
+            this.promocionesAplicadas = [];
+            this.cart = this.cart.filter(item => !item.es_regalo);
+
+            if (this.cart.length === 0 || this.promociones.length === 0) return;
+
+            const subtotalSinDescuento = this.cart.reduce((sum, item) => sum + item.tot_linea, 0);
+
+            for (const promo of this.promociones) {
+                let cumpleTodas = true;
+
+                for (const cond of promo.condiciones || []) {
+                    if (cond.tipo_condicion === 'MONTO_MINIMO') {
+                        if (subtotalSinDescuento < parseFloat(cond.valor_condicion)) {
+                            cumpleTodas = false; break;
+                        }
+                    } else if (cond.tipo_condicion === 'PRODUCTO') {
+                        const existe = this.cart.some(i => i.id_articulo === cond.valor_condicion && i.cantidad >= parseFloat(cond.cantidad_minima || 1));
+                        if (!existe) { cumpleTodas = false; break; }
+                    } else if (cond.tipo_condicion === 'CLIENTE') {
+                        if (this.cliente.id_tercero !== cond.valor_condicion) {
+                            cumpleTodas = false; break;
+                        }
+                    }
+                }
+
+                if (cumpleTodas) {
+                    this.promocionesAplicadas.push(promo.nom_promocion);
+                    for (const act of promo.acciones || []) {
+                        if (act.tipo_accion === 'DESCUENTO_PORC') {
+                            const desc = subtotalSinDescuento * (parseFloat(act.valor_accion) / 100);
+                            this.descuentoPromocion += desc;
+                        } else if (act.tipo_accion === 'DESCUENTO_VALOR') {
+                            this.descuentoPromocion += parseFloat(act.valor_accion);
+                        } else if (act.tipo_accion === 'REGALO' && act.id_articulo_regalo) {
+                            const regaloArt = this.catalog.find(a => a.id_articulo === act.id_articulo_regalo);
+                            if (regaloArt) {
+                                this.cart.push({
+                                    id_articulo: regaloArt.id_articulo,
+                                    referencia: regaloArt.referencia,
+                                    nom_articulo: regaloArt.nom_articulo + ' [REGALO]',
+                                    cantidad: 1,
+                                    vlr_unitario: 0,
+                                    porc_descuento: 100,
+                                    porc_iva: 0,
+                                    vlr_iva: 0,
+                                    tot_linea: 0,
+                                    es_regalo: true
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        },
+
+        get totMercancia() {
+            return this.cart.reduce((sum, item) => sum + (item.tot_linea - item.vlr_iva), 0);
+        },
+
+        get totIVA() {
+            return this.cart.reduce((sum, item) => sum + item.vlr_iva, 0);
+        },
+
+        get totTicket() {
+            const raw = (this.totMercancia + this.totIVA) - this.descuentoPromocion;
+            return raw > 0 ? raw : 0;
+        },
+
+        get puntosGanados() {
+            if (this.cliente.id_tercero === '222222222222' || this.totMercancia <= 0) return 0;
+            return Math.floor(this.totMercancia / 1000);
+        },
+
+        async fetchPuntosSaldo() {
+            if (!this.isOnline || this.cliente.id_tercero === '222222222222') {
+                this.puntosCliente = { saldo: 0, valor_cop: 0 };
+                return;
+            }
+            try {
+                const res = await fetch(`/pos/api/puntos/saldo/?id_tercero=${this.cliente.id_tercero}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.puntosCliente = { saldo: data.puntos_saldo, valor_cop: data.valor_cop };
+                }
+            } catch (e) {
+                console.warn('Fallo al consultar saldo de puntos:', e);
+            }
+        },
+
+        async redimirPuntos() {
+            if (!this.isOnline) {
+                alert('🔒 La redención de puntos está desactivada en modo OFFLINE para prevenir doble gasto.');
+                return;
+            }
+
+            if (this.puntosCliente.saldo <= 0) {
+                alert('El cliente no posee puntos acumulados disponibles para redimir.');
+                return;
+            }
+
+            const maxDescuentoCop = Math.min(this.puntosCliente.valor_cop, this.totTicket);
+            const puntosRequeridos = Math.ceil(maxDescuentoCop / 10);
+
+            if (confirm(`¿Desea redimir ${puntosRequeridos} puntos por un valor de ${this.formatCOP(maxDescuentoCop)}?`)) {
+                try {
+                    const res = await fetch('/pos/api/puntos/redimir/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id_tercero: this.cliente.id_tercero,
+                            puntos_redimir: puntosRequeridos
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        this.pagoPuntos = data.valor_cop;
+                        this.puntosRedimidosTicket = data.puntos_redimidos;
+                        this.puntosCliente.saldo = data.nuevo_saldo_puntos;
+                        this.puntosCliente.valor_cop = data.nuevo_saldo_puntos * 10;
+                        alert(`✅ ${data.message}`);
+                    } else {
+                        alert('Error al redimir puntos: ' + data.message);
+                    }
+                } catch (e) {
+                    alert('Fallo en transacción de puntos: ' + e.message);
+                }
+            }
+        },
+
+        get totalPagado() {
+            return (this.pagoEfectivo || 0) + (this.pagoTarjeta || 0) + (this.pagoTransferencia || 0) + (this.pagoPuntos || 0);
+        },
+
+        get pendienteCobro() {
+            const diff = this.totTicket - this.totalPagado;
+            return diff > 0 ? diff : 0;
+        },
+
+        get cambioDevuelta() {
+            const diff = this.totalPagado - this.totTicket;
+            return diff > 0 ? diff : 0;
+        },
+
+        openPaymentModal() {
+            const resto = Math.max(0, this.totTicket - (this.pagoPuntos || 0));
+            this.pagoEfectivo = resto;
+            this.pagoTarjeta = 0;
+            this.pagoTransferencia = 0;
+            this.showPaymentModal = true;
+            this.fetchPuntosSaldo();
+        },
+
+        async confirmPayment() {
+            if (this.totalPagado < this.totTicket) {
+                alert('El monto ingresado es inferior al total a pagar.');
+                return;
+            }
+
+            const ticketId = 'POS-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+            const ticket = {
+                ticket_id: ticketId,
+                id_tercero: this.cliente.id_tercero,
+                nom_tercero: this.cliente.nom_tercero,
+                fch_ticket: new Date().toLocaleString('es-CO'),
+                tot_mercancia: this.totMercancia,
+                tot_iva: this.totIVA,
+                tot_ticket: this.totTicket,
+                descuento_promocion: this.descuentoPromocion,
+                pago_efectivo: this.pagoEfectivo,
+                pago_tarjeta: this.pagoTarjeta,
+                pago_transferencia: this.pagoTransferencia,
+                pago_puntos: this.pagoPuntos,
+                puntos_ganados: this.puntosGanados,
+                puntos_redimidos_ticket: this.puntosRedimidosTicket,
+                cambio: this.cambioDevuelta,
+                items: JSON.parse(JSON.stringify(this.cart))
+            };
+
+            await window.posDB.saveTicket(ticket);
+            this.lastIssuedTicket = ticket;
+            
+            // Limpiar estado
+            this.cart = [];
+            this.descuentoPromocion = 0;
+            this.promocionesAplicadas = [];
+            this.pagoPuntos = 0;
+            this.puntosRedimidosTicket = 0;
+            this.showPaymentModal = false;
+            this.cliente = { id_tercero: '222222222222', nom_tercero: 'VENTAS MASIVAS (CONSUMIDOR FINAL)' };
+            
+            await this.updateUnsyncedCount();
+            if (this.isOnline) {
+                await this.triggerSync();
+            }
+
+            // Abrir Modal de Impresión / Descarga
+            this.showReceiptModal = true;
+        },
+
+        printThermalReceipt() {
+            window.print();
+        },
+
+        async submitApertura() {
+            try {
+                const res = await fetch('/pos/api/shift/open/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ caja_id: 'CAJA-01', base_economica: this.aperturaBase })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.turno = { abierto: true, ...data.turno };
+                    this.showAperturaModal = false;
+                    alert('Turno de caja abierto correctamente.');
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (e) {
+                alert('No fue posible realizar la apertura online: ' + e.message);
+            }
+        },
+
+        async searchTerceros() {
+            if (!this.clienteQuery.trim()) return;
+            try {
+                const res = await fetch(`/pos/api/terceros/?q=${encodeURIComponent(this.clienteQuery)}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.tercerosResults = data.terceros;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        },
+
+        selectCliente(tercero) {
+            this.cliente = tercero;
+            this.showClienteModal = false;
+            this.pagoPuntos = 0;
+            this.fetchPuntosSaldo();
+            this.evaluatePromotions();
+        },
+
+        async updateUnsyncedCount() {
+            const unsynced = await window.posDB.getUnsyncedTickets();
+            this.unsyncedCount = unsynced.length;
+        },
+
+        async triggerSync() {
+            if (!this.isOnline) return;
+            const unsynced = await window.posDB.getUnsyncedTickets();
+            if (unsynced.length === 0) return;
+
+            try {
+                const res = await fetch('/pos/api/sync-tickets/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ caja_id: 'CAJA-01', tickets: unsynced })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    await window.posDB.markTicketsSynced(data.synced_ids);
+                    await this.updateUnsyncedCount();
+                    console.log('[POS] Sync exitoso de tickets pendientes.');
+                }
+            } catch (e) {
+                console.warn('[POS] Error al sincronizar tickets:', e);
+            }
+        },
+
+        openCierreZModal() {
+            this.showCierreZModal = true;
+        },
+
+        async executeCierreZ() {
+            if (!this.isOnline) {
+                alert('El Cierre Z requiere conexión con el servidor central (Oracle 11g). Restablezca la red para proceder.');
+                return;
+            }
+
+            await this.triggerSync();
+
+            try {
+                const res = await fetch('/pos/api/cierre-z/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ caja_id: 'CAJA-01' })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.lastIssuedDocId = data.id_documento;
+                    alert(`⚡ ${data.message}`);
+                    this.showCierreZModal = false;
+                    this.turno = { abierto: false, id_turno: null, caja_id: 'CAJA-01', base_economica: 0, tickets_count: 0 };
+                    this.showAperturaModal = true;
+                    this.showReceiptModal = true; // Mostrar modal de descarga .docx oficial
+                    await window.posDB.runGarbageCollection();
+                } else {
+                    alert('Error en Cierre Z: ' + data.message);
+                }
+            } catch (e) {
+                alert('Fallo al ejecutar Cierre Z: ' + e.message);
+            }
+        },
+
+        formatCOP(val) {
+            const num = parseFloat(val || 0);
+            return '$' + num.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+    };
+}
+</script>
+{% endblock %}

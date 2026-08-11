@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Informe Cierre Z - North Comercial{% endblock %}
+{% block page_title %}Informe de Cierre Z & Arqueo de Caja POS{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Selector de Turno de Caja -->
+    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-4">
+        <div>
+            <h3 class="text-lg font-bold text-gray-900">⚡ Auditoría de Cierre de Caja (Turno #{{ turno.id_turno|default:"--" }})</h3>
+            <p class="text-xs text-gray-500">Cruce de la Base Económica inicial con los cobros por medio de pago y arqueo de efectivo.</p>
+        </div>
+
+        <form method="GET" class="flex items-center space-x-2">
+            <label class="text-xs font-bold text-gray-700 uppercase">Seleccionar Turno:</label>
+            <select name="turno_id" onchange="this.form.submit()" class="border-2 border-blue-500 font-bold text-sm rounded-lg p-2 bg-gray-50 focus:outline-none">
+                {% for t in todos_turnos %}
+                <option value="{{ t.id_turno }}" {% if t.id_turno == turno.id_turno %}selected{% endif %}>
+                    Turno #{{ t.id_turno }} - Caja {{ t.caja_id }} ({{ t.usuario }}) - {{ t.estado }}
+                </option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% if not turno_encontrado %}
+    <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-lg text-yellow-800 font-bold">
+        {{ message }}
+    </div>
+    {% else %}
+
+    <!-- Tarjetas del Arqueo de Efectivo (Base Económica + Ventas Efectivo = Esperado) -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Base Económica -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-blue-600">
+            <span class="text-xs font-bold uppercase text-gray-500 tracking-wider">1. Base Económica Inicial</span>
+            <h3 class="text-2xl font-black text-blue-900 mt-1">{{ base_economica_cop }}</h3>
+            <span class="text-[11px] font-semibold text-gray-400">Efectivo inicial en caja</span>
+        </div>
+
+        <!-- Ventas Efectivo -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border-l-4 border-green-600">
+            <span class="text-xs font-bold uppercase text-gray-500 tracking-wider">2. (+) Ventas en Efectivo</span>
+            <h3 class="text-2xl font-black text-green-700 mt-1">{{ tot_efectivo_cop }}</h3>
+            <span class="text-[11px] font-semibold text-gray-400">Ingreso por cobranza en efectivo</span>
+        </div>
+
+        <!-- Efectivo Esperado en Caja -->
+        <div class="bg-gray-900 text-white p-5 rounded-lg shadow-md border-l-4 border-yellow-500">
+            <span class="text-xs font-bold uppercase text-gray-400 tracking-wider">3. (=) EFECTIVO ESPERADO EN CAJA</span>
+            <h3 class="text-2xl font-black text-yellow-400 mt-1">{{ efectivo_esperado_cop }}</h3>
+            <span class="text-[11px] font-semibold text-gray-400">Total físico requerido en el arqueo</span>
+        </div>
+    </div>
+
+    <!-- Formulario de Declaración de Efectivo y Alerta de Descuadre -->
+    <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+        <h4 class="text-base font-bold text-gray-900 mb-3">🖩 Arqueo Físico y Declaración del Cajero</h4>
+        
+        <form method="GET" class="flex flex-wrap items-end gap-4 mb-4">
+            <input type="hidden" name="turno_id" value="{{ turno.id_turno }}">
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-xs font-extrabold text-gray-700 uppercase mb-1">Efectivo Físico Contado ($ COP):</label>
+                <input type="number" step="100" min="0" name="efectivo_declarado" 
+                       value="{{ efectivo_declarado|default:'' }}" placeholder="Ingrese total contado..."
+                       class="w-full text-xl font-bold p-2.5 border-2 border-gray-300 rounded-lg text-right focus:border-blue-600 focus:outline-none">
+            </div>
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-lg text-sm uppercase shadow">
+                Calcular Descuadre
+            </button>
+        </form>
+
+        <!-- Banner de Resultado de Auditoría -->
+        {% if efectivo_declarado is not None %}
+            {% if descuadre == 0 %}
+                <div class="bg-green-100 border-2 border-green-500 text-green-900 p-4 rounded-lg font-bold flex items-center">
+                    <span class="text-3xl mr-3">✅</span>
+                    <div>
+                        <p class="text-lg font-black">CAJA CUADRADA PERFECTAMENTE</p>
+                        <p class="text-xs">El efectivo contado coincide exactamente con el Efectivo Esperado en sistema ($ 0.00 COP).</p>
+                    </div>
+                </div>
+            {% elif descuadre > 0 %}
+                <div class="bg-blue-100 border-2 border-blue-500 text-blue-900 p-4 rounded-lg font-bold flex items-center">
+                    <span class="text-3xl mr-3">ℹ️</span>
+                    <div>
+                        <p class="text-lg font-black">SOBRANTE DE CAJA DETECTADO: {{ descuadre_cop }}</p>
+                        <p class="text-xs">El efectivo contado supera el Efectivo Esperado en el sistema.</p>
+                    </div>
+                </div>
+            {% else %}
+                <div class="bg-red-100 border-2 border-red-500 text-red-900 p-4 rounded-lg font-bold flex items-center animate-pulse">
+                    <span class="text-3xl mr-3">🚨</span>
+                    <div>
+                        <p class="text-lg font-black">FALTANTE / DESCUADRE DE CAJA: {{ descuadre_cop }}</p>
+                        <p class="text-xs">El efectivo contado es menor que el Efectivo Esperado en el sistema. Se requiere auditoría.</p>
+                    </div>
+                </div>
+            {% endif %}
+        {% endif %}
+    </div>
+
+    <!-- Desglose Completo por Medios de Pago -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+            <h4 class="text-base font-bold text-gray-900">💳 Consolidador de Medios de Pago del Turno</h4>
+            <span class="text-xs font-bold text-gray-500">Tickets Procesados: {{ tickets_count }}</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b">
+                    <tr>
+                        <th class="p-3">Medio de Pago</th>
+                        <th class="p-3 text-center">Tipo de Transacción</th>
+                        <th class="p-3 text-right">Monto Procesado (COP)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 font-semibold">
+                    <tr>
+                        <td class="p-3 flex items-center font-bold text-gray-900">💵 Efectivo</td>
+                        <td class="p-3 text-center text-xs text-gray-500">Pago Directo en Caja</td>
+                        <td class="p-3 text-right font-mono font-bold text-gray-900">{{ tot_efectivo_cop }}</td>
+                    </tr>
+                    <tr>
+                        <td class="p-3 flex items-center font-bold text-gray-900">💳 Tarjeta Débito/Crédito</td>
+                        <td class="p-3 text-center text-xs text-gray-500">Datáfono / Voucher</td>
+                        <td class="p-3 text-right font-mono font-bold text-blue-700">{{ tot_tarjeta_cop }}</td>
+                    </tr>
+                    <tr>
+                        <td class="p-3 flex items-center font-bold text-gray-900">📲 Transferencia Bancaria</td>
+                        <td class="p-3 text-center text-xs text-gray-500">Bancolombia / Nequi</td>
+                        <td class="p-3 text-right font-mono font-bold text-blue-700">{{ tot_transferencia_cop }}</td>
+                    </tr>
+                    <tr>
+                        <td class="p-3 flex items-center font-bold text-purple-900">⭐ Puntos Fidelización</td>
+                        <td class="p-3 text-center text-xs text-purple-700">Redención Puntos Cliente</td>
+                        <td class="p-3 text-right font-mono font-bold text-purple-900">{{ tot_puntos_cop }}</td>
+                    </tr>
+                    <tr class="bg-gray-900 text-white font-black text-base">
+                        <td colspan="2" class="p-3">TOTAL VENTAS BRUTAS DEL TURNO:</td>
+                        <td class="p-3 text-right text-green-400 font-mono">{{ tot_ventas_cop }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% endif %}
+
+</div>
+{% endblock %}

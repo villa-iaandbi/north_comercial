@@ -4,7 +4,7 @@ class DjangoQRouter:
     hacia la base de datos SQLite local, evitando ORA-00933 y errores de Identity
     en Oracle 11g.
     """
-    route_app_labels = {'django_q'}
+    route_app_labels = {'django_q', 'admin', 'auth', 'contenttypes', 'sessions', 'pos'}
 
     def db_for_read(self, model, **hints):
         if model._meta.app_label in self.route_app_labels:

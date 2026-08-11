@@ -1,0 +1,53 @@
+{% load humanize %}
+
+{% if not facturas and not next_page_number %}
+<tr>
+  <td colspan="7" class="px-6 py-8 text-center text-gray-500 text-sm">
+    No se encontraron facturas pendientes de asignación con los filtros actuales.
+  </td>
+</tr>
+{% else %}
+  {% for fac in facturas %}
+  <tr class="hover:bg-gray-50 transition-colors duration-150">
+    <td class="px-3 py-2 whitespace-nowrap">
+      <input type="checkbox" name="selected_docs" value="{{ fac.id_documento }}" class="doc-checkbox cursor-pointer rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50">
+    </td>
+    <td class="px-3 py-2 whitespace-nowrap">
+      <div class="flex items-center">
+        <div class="text-sm font-bold text-gray-900">{{ fac.num_documento }}</div>
+      </div>
+    </td>
+    <td class="px-3 py-2 whitespace-nowrap">
+      <div class="text-sm text-gray-900">{{ fac.fch_documento|date:"d/m/Y H:i" }}</div>
+    </td>
+    <td class="px-3 py-2 whitespace-nowrap">
+      <div class="text-sm text-gray-900 max-w-xs truncate" title="{{ fac.nom_tercero_calc|default:'N/A' }}">
+        {{ fac.nom_tercero_calc|default:"N/A" }}
+      </div>
+    </td>
+    <td class="px-3 py-2 whitespace-nowrap">
+      <div class="text-sm text-gray-900">{{ fac.nom_municipio_calc|default:"Sin Municipio" }}</div>
+    </td>
+    <td class="px-3 py-2 whitespace-nowrap">
+      <div class="text-sm text-gray-900">{{ fac.id_vendedor.cod_vendedor|default:fac.id_vendedor_id }}</div>
+    </td>
+    <td class="px-3 py-2 whitespace-nowrap">
+      <div class="text-sm font-semibold text-gray-900">${{ fac.tot_documento|intcomma }}</div>
+    </td>
+  </tr>
+  
+  {% if forloop.last and has_next %}
+  <tr id="load-more-row">
+    <td colspan="7" class="px-3 py-2 text-center">
+      <button class="bg-gray-100 text-gray-700 font-medium py-2 px-4 rounded w-full border border-gray-200 hover:bg-gray-200 hover:shadow-md transform hover:-translate-y-0.5 transition-all duration-200"
+              hx-get="{% url 'logistica:entregas_table_partial' %}?page={{ next_page_number }}&search={{ search|urlencode }}&vendedor={{ vendedor|urlencode }}&municipio={{ municipio|urlencode }}"
+              hx-target="#load-more-row"
+              hx-swap="outerHTML">
+        Cargar más resultados...
+      </button>
+    </td>
+  </tr>
+  {% endif %}
+  
+  {% endfor %}
+{% endif %}
