@@ -89,23 +89,51 @@
           <input type="text" id="inputObs" name="observaciones" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2 border">
       </div>
       
-      <button 
-        id="btn-generar"
-        hx-post="{% url 'logistica:generar_entrega_action' %}"
-        hx-include=".doc-checkbox:checked, #transportador, #inputPlaca, #inputObs"
-        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-        hx-target="#alerts-container"
-        hx-indicator="#gen-btn-spinner"
-        hx-confirm="¿Está seguro de generar la entrega con las facturas seleccionadas?"
-        class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center space-x-2">
-        <svg id="gen-btn-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
-        <svg id="gen-btn-spinner" class="animate-spin hidden h-5 w-5 text-white htmx-indicator" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <span>Generar Entrega</span>
-      </button>
+      <div class="flex flex-wrap gap-2">
+        <button 
+          type="button"
+          onclick="sugerirRutaIdeal()"
+          class="bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center space-x-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+          <span>🗺️ Sugerir Ruta Ideal</span>
+        </button>
+
+        <button 
+          id="btn-generar"
+          hx-post="{% url 'logistica:generar_entrega_action' %}"
+          hx-include=".doc-checkbox:checked, #transportador, #inputPlaca, #inputObs"
+          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+          hx-target="#alerts-container"
+          hx-indicator="#gen-btn-spinner"
+          hx-confirm="¿Está seguro de generar la entrega con las facturas seleccionadas?"
+          class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 flex items-center space-x-2">
+          <svg id="gen-btn-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+          <svg id="gen-btn-spinner" class="animate-spin hidden h-5 w-5 text-white htmx-indicator" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span>Generar Entrega</span>
+        </button>
+      </div>
     </div>
+  </div>
+
+  <!-- Panel de Mapa de Ruteo Inteligente -->
+  <div id="map-panel" class="hidden bg-white shadow rounded-lg overflow-hidden border border-gray-200 mb-6 p-4">
+    <div class="flex justify-between items-center mb-3">
+        <div>
+            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                <span>📍 Ruteo Logístico Optimizado</span>
+                <span id="route-badge" class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-bold"></span>
+            </h3>
+            <p id="route-summary" class="text-xs text-gray-500 mt-0.5"></p>
+        </div>
+        <button type="button" onclick="document.getElementById('map-panel').classList.add('hidden')" class="text-xs text-gray-400 hover:text-gray-600 font-bold px-2 py-1 border rounded">✖ Cerrar Mapa</button>
+    </div>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <div id="map-despacho" class="w-full h-80 rounded-md border border-gray-300 z-0 bg-gray-100"></div>
   </div>
 
   <!-- Tabla de Documentos Pendientes -->
@@ -142,6 +170,9 @@
 </div>
 
 <script>
+  var mapDespacho = null;
+  var markersGroup = null;
+
   document.addEventListener('change', function(e) {
     if (e.target.id === 'select-all') {
       document.querySelectorAll('.doc-checkbox').forEach(cb => {
@@ -149,5 +180,87 @@
       });
     }
   });
+
+  function sugerirRutaIdeal() {
+    var checkedBoxes = Array.from(document.querySelectorAll('.doc-checkbox:checked'));
+    if (checkedBoxes.length === 0) {
+      alert("Por favor seleccione al menos una factura para calcular la ruta ideal.");
+      return;
+    }
+
+    var selectedDocs = checkedBoxes.map(cb => cb.value);
+
+    fetch("{% url 'logistica:api_ruta_ideal' %}", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": "{{ csrf_token }}"
+      },
+      body: JSON.stringify({ selected_docs: selectedDocs })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        alert("Error: " + data.error);
+        return;
+      }
+
+      document.getElementById('map-panel').classList.remove('hidden');
+
+      if (!mapDespacho) {
+        mapDespacho = L.map('map-despacho').setView([4.570868, -74.297333], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap'
+        }).addTo(mapDespacho);
+      }
+
+      if (markersGroup) {
+        mapDespacho.removeLayer(markersGroup);
+      }
+      markersGroup = L.layerGroup().addTo(mapDespacho);
+
+      var latLngs = [];
+      data.ruta.forEach((item, index) => {
+        if (item.lat && item.lng) {
+          var p = [item.lat, item.lng];
+          latLngs.push(p);
+
+          var marker = L.circleMarker(p, {
+            radius: 12,
+            fillColor: "#059669",
+            color: "#ffffff",
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.9
+          });
+
+          marker.bindPopup(`
+            <div style="font-family: sans-serif; font-size: 12px;">
+              <b style="color: #059669;">Parada #${item.secuencia}</b><br>
+              <b>Factura:</b> ${item.num_documento}<br>
+              <b>Cliente:</b> ${item.nom_tercero}<br>
+              <b>Tramo:</b> ${item.distancia_tramo_km} km
+            </div>
+          `);
+
+          markersGroup.addLayer(marker);
+        }
+      });
+
+      if (latLngs.length > 1) {
+        var polyline = L.polyline(latLngs, { color: '#059669', weight: 3, dashArray: '6, 6' });
+        markersGroup.addLayer(polyline);
+        mapDespacho.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+      } else if (latLngs.length === 1) {
+        mapDespacho.setView(latLngs[0], 14);
+      }
+
+      document.getElementById('route-badge').innerText = `${data.distancia_total_km} km totales`;
+      document.getElementById('route-summary').innerText = `Secuencia óptima generada para ${data.total_paradas} paradas (${data.paradas_con_gps} con coordenadas GPS).`;
+    })
+    .catch(err => {
+      alert("Error calculando la ruta ideal: " + err);
+    });
+  }
 </script>
 {% endblock %}

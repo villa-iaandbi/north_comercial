@@ -454,3 +454,16 @@ class CtVentasFel(models.Model):
     class Meta:
         managed = False
         db_table = 'ct_ventas_fel'
+
+class NorthCliente(models.Model):
+    id_sistema = models.CharField(max_length=15, db_column='ID_SISTEMA')
+    id_tercero = models.CharField(max_length=20, primary_key=True, db_column='ID_TERCERO')
+    cliente_nombre = models.CharField(max_length=150, db_column='CLIENTE_NOMBRE')
+    latitud = models.CharField(max_length=50, null=True, blank=True, db_column='LATITUD')
+    longitud = models.CharField(max_length=50, null=True, blank=True, db_column='LONGITUD')
+    cliente_ciudad = models.CharField(max_length=100, null=True, blank=True, db_column='CLIENTE_CIUDAD')
+    cliente_direccion = models.CharField(max_length=150, null=True, blank=True, db_column='CLIENTE_DIRECCION')
+
+    class Meta:
+        managed = False
+        db_table = 'north_clientes'

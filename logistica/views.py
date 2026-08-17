@@ -155,3 +155,101 @@ def generar_entrega_action(request):
             })
     
     return HttpResponseNotAllowed(['POST'])
+
+
+from django.http import JsonResponse
+from core.models import NorthCliente
+import math
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    try:
+        r = 6371.0  # km
+        phi1 = math.radians(float(lat1))
+        phi2 = math.radians(float(lat2))
+        delta_phi = math.radians(float(lat2) - float(lat1))
+        delta_lambda = math.radians(float(lon2) - float(lon1))
+
+        a = math.sin(delta_phi / 2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0)**2
+        c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+        return r * c
+    except (TypeError, ValueError):
+        return 0.0
+
+def api_ruta_ideal(request):
+    """
+    Endpoint de ruteo inteligente (TSP / Vecino más cercano).
+    Calcula la secuencia óptima de entrega para una lista de documentos seleccionados.
+    """
+    if request.method == 'POST':
+        import json
+        try:
+            body = json.loads(request.body)
+            doc_ids = body.get('selected_docs', [])
+        except Exception:
+            doc_ids = request.POST.getlist('selected_docs[]') or request.POST.getlist('selected_docs')
+
+        if not doc_ids:
+            return JsonResponse({'error': 'No se enviaron documentos para el ruteo.'}, status=400)
+
+        docs = CoDocumento.objects.filter(id_documento__in=doc_ids).select_related('id_tercero')
+        terceros_ids = [d.id_tercero_id for d in docs if d.id_tercero_id]
+        
+        dict_clients = {c.id_tercero: c for c in NorthCliente.objects.filter(id_tercero__in=terceros_ids)}
+
+        puntos = []
+        for d in docs:
+            cli = dict_clients.get(d.id_tercero_id)
+            lat = float(cli.latitud) if cli and cli.latitud else None
+            lng = float(cli.longitud) if cli and cli.longitud else None
+
+            puntos.append({
+                'id_documento': d.id_documento,
+                'num_documento': d.num_documento,
+                'nom_tercero': d.id_tercero.nom_tercero if d.id_tercero else d.id_tercero_id,
+                'lat': lat,
+                'lng': lng,
+                'tot_documento': float(d.tot_documento or 0)
+            })
+
+        # Algoritmo de Vecino Más Cercano (Nearest Neighbor TSP)
+        con_gps = [p for p in puntos if p['lat'] is not None and p['lng'] is not None]
+        sin_gps = [p for p in puntos if p['lat'] is None or p['lng'] is None]
+
+        ruta_ordenada = []
+        distancia_total = 0.0
+
+        if con_gps:
+            no_visitados = con_gps[:]
+            actual = no_visitados.pop(0)  # Iniciar en el primer punto registrado
+            actual['secuencia'] = 1
+            actual['distancia_tramo_km'] = 0.0
+            ruta_ordenada.append(actual)
+
+            while no_visitados:
+                siguiente = min(
+                    no_visitados,
+                    key=lambda p: haversine_km(actual['lat'], actual['lng'], p['lat'], p['lng'])
+                )
+                dist_tramo = haversine_km(actual['lat'], actual['lng'], siguiente['lat'], siguiente['lng'])
+                distancia_total += dist_tramo
+                siguiente['secuencia'] = len(ruta_ordenada) + 1
+                siguiente['distancia_tramo_km'] = round(dist_tramo, 2)
+                ruta_ordenada.append(siguiente)
+                no_visitados.remove(siguiente)
+                actual = siguiente
+
+        # Añadir al final los que no tengan coordenadas GPS
+        for item in sin_gps:
+            item['secuencia'] = len(ruta_ordenada) + 1
+            item['distancia_tramo_km'] = 0.0
+            ruta_ordenada.append(item)
+
+        return JsonResponse({
+            'status': 'success',
+            'ruta': ruta_ordenada,
+            'distancia_total_km': round(distancia_total, 2),
+            'total_paradas': len(ruta_ordenada),
+            'paradas_con_gps': len(con_gps)
+        })
+
+    return JsonResponse({'error': 'Método no permitido'}, status=405)

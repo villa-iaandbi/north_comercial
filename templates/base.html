@@ -43,28 +43,154 @@
                 <span class="text-2xl font-bold uppercase tracking-wider text-blue-400">North Local</span>
             </div>
             
-            <!-- Menú lateral -->
-            <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-                <a href="{% url 'reportes:dashboard' %}" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors font-bold">
-                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
-                    Dashboard
+            <!-- Menú lateral principal -->
+            <nav class="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto" x-data="{ 
+                openMenu: {% if 'tipo=NC' in request.get_full_path or 'notas' in request.get_full_path %}'notas_credito'
+                          {% elif request.resolver_match.app_name == 'facturacion' %}'facturacion'
+                          {% elif request.resolver_match.app_name == 'logistica' %}'entregas'
+                          {% elif request.resolver_match.app_name == 'recibos' or request.resolver_match.url_name == 'cartera' %}'tesoreria'
+                          {% elif request.resolver_match.app_name == 'pos' or request.resolver_match.url_name == 'cierre_caja' %}'pos'
+                          {% else %}'facturacion'{% endif %}
+            }">
+                <!-- Dashboard General -->
+                <a href="{% url 'reportes:dashboard' %}" class="flex items-center px-3 py-2.5 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors mb-2 {% if request.resolver_match.url_name == 'dashboard' %}bg-blue-600/20 text-blue-400 border border-blue-500/30{% endif %}">
+                    <svg class="w-5 h-5 mr-3 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                    <span>Dashboard</span>
                 </a>
-                <a href="{% url 'pos:pos_home' %}" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors">
-                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                    Punto de Venta (POS)
-                </a>
-                <a href="{% url 'reportes:cartera' %}" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors">
-                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                    Informe de Cartera
-                </a>
-                <a href="{% url 'reportes:cierre_caja' %}" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors">
-                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                    Cierre Z (Arqueo Caja)
-                </a>
-                <a href="{% url 'impresion:portal_impresion' %}" class="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white rounded-md transition-colors">
-                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                    Impresión .docx
-                </a>
+
+                <!-- 1. Facturación -->
+                <div class="space-y-1">
+                    <button @click="openMenu = (openMenu === 'facturacion' ? null : 'facturacion')" class="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            <span>1. Facturación</span>
+                        </div>
+                        <svg class="w-4 h-4 transition-transform duration-200" :class="openMenu === 'facturacion' ? 'rotate-90 text-emerald-400' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <div x-show="openMenu === 'facturacion'" class="pl-9 pr-2 py-1 space-y-1">
+                        <a href="{% url 'facturacion:facturacion_masiva' %}" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'facturacion_masiva' and not 'tipo=NC' in request.get_full_path %}text-emerald-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2.5"></span>
+                            Facturar (Lote / Masiva)
+                        </a>
+                        <a href="{% url 'facturacion:fel_dashboard' %}" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'fel_dashboard' and not 'tipo=NC' in request.get_full_path %}text-blue-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-blue-400 mr-2.5"></span>
+                            Envío DIAN (Monitoreo FEL)
+                        </a>
+                        <a href="{% url 'impresion:portal_impresion' %}" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'portal_impresion' and not 'tipo=NC' in request.get_full_path %}text-indigo-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 mr-2.5"></span>
+                            Generar PDF e Impresión
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 2. Entregas -->
+                <div class="space-y-1">
+                    <button @click="openMenu = (openMenu === 'entregas' ? null : 'entregas')" class="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v4m0 0H8m4 0h4m-4 8a2 2 0 100-4 2 2 0 000 4z"></path></svg>
+                            <span>2. Entregas</span>
+                        </div>
+                        <svg class="w-4 h-4 transition-transform duration-200" :class="openMenu === 'entregas' ? 'rotate-90 text-amber-400' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <div x-show="openMenu === 'entregas'" class="pl-9 pr-2 py-1 space-y-1">
+                        <a href="{% url 'logistica:entregas_list' %}" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'entregas_list' %}text-amber-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-2.5"></span>
+                            Planillas de Entrega
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 3. Tesorería -->
+                <div class="space-y-1">
+                    <button @click="openMenu = (openMenu === 'tesoreria' ? null : 'tesoreria')" class="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            <span>3. Tesorería</span>
+                        </div>
+                        <svg class="w-4 h-4 transition-transform duration-200" :class="openMenu === 'tesoreria' ? 'rotate-90 text-cyan-400' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <div x-show="openMenu === 'tesoreria'" class="pl-9 pr-2 py-1 space-y-1">
+                        <a href="{% url 'recibos:lote_recibos' %}" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'lote_recibos' %}text-cyan-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 mr-2.5"></span>
+                            Recibos de Caja
+                        </a>
+                        <a href="{% url 'reportes:cartera' %}" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'cartera' %}text-teal-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-teal-400 mr-2.5"></span>
+                            Informe de Cartera
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 4. Notas Crédito -->
+                <div class="space-y-1">
+                    <button @click="openMenu = (openMenu === 'notas_credito' ? null : 'notas_credito')" class="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z"></path></svg>
+                            <span>4. Notas Crédito</span>
+                        </div>
+                        <svg class="w-4 h-4 transition-transform duration-200" :class="openMenu === 'notas_credito' ? 'rotate-90 text-rose-400' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <div x-show="openMenu === 'notas_credito'" class="pl-9 pr-2 py-1 space-y-1">
+                        <a href="{% url 'facturacion:facturacion_masiva' %}?tipo=NC" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if 'tipo=NC' in request.get_full_path and request.resolver_match.url_name == 'facturacion_masiva' %}text-rose-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-rose-400 mr-2.5"></span>
+                            Generar Nota Crédito
+                        </a>
+                        <a href="{% url 'facturacion:fel_dashboard' %}?tipo=NC" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if 'tipo=NC' in request.get_full_path and request.resolver_match.url_name == 'fel_dashboard' %}text-pink-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-pink-400 mr-2.5"></span>
+                            Envío DIAN (Monitoreo NC)
+                        </a>
+                        <a href="{% url 'impresion:portal_impresion' %}?tipo=NC" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if 'tipo=NC' in request.get_full_path and request.resolver_match.url_name == 'portal_impresion' %}text-red-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-red-400 mr-2.5"></span>
+                            Generar PDF e Impresión NC
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 5. POS (Punto de Venta) -->
+                <div class="space-y-1">
+                    <button @click="openMenu = (openMenu === 'pos' ? null : 'pos')" class="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            <span>5. POS (Punto de Venta)</span>
+                        </div>
+                        <svg class="w-4 h-4 transition-transform duration-200" :class="openMenu === 'pos' ? 'rotate-90 text-purple-400' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <div x-show="openMenu === 'pos'" class="pl-9 pr-2 py-1 space-y-1">
+                        <a href="{% url 'pos:pos_home' %}" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'pos_home' %}text-purple-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-purple-400 mr-2.5"></span>
+                            Ventas POS
+                        </a>
+                        <a href="{% url 'pos:pos_home' %}#apertura" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors">
+                            <span class="w-1.5 h-1.5 rounded-full bg-violet-400 mr-2.5"></span>
+                            Apertura de Caja
+                        </a>
+                        <a href="{% url 'reportes:cierre_caja' %}" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'cierre_caja' %}text-fuchsia-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-fuchsia-400 mr-2.5"></span>
+                            Cierres Z (Arqueo Caja)
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 6. Descuentos y Promociones -->
+                <div class="space-y-1">
+                    <button @click="openMenu = (openMenu === 'descuentos' ? null : 'descuentos')" class="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 mr-3 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                            <span>6. Descuentos & Promociones</span>
+                        </div>
+                        <svg class="w-4 h-4 transition-transform duration-200" :class="openMenu === 'descuentos' ? 'rotate-90 text-orange-400' : 'text-gray-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                    <div x-show="openMenu === 'descuentos'" class="pl-9 pr-2 py-1 space-y-1">
+                        <a href="{% url 'pos:pos_home' %}#promociones" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors">
+                            <span class="w-1.5 h-1.5 rounded-full bg-orange-400 mr-2.5"></span>
+                            Configuración Promociones
+                        </a>
+                        <a href="{% url 'pos:pos_home' %}#puntos" class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors">
+                            <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 mr-2.5"></span>
+                            Fidelización y Puntos
+                        </a>
+                    </div>
+                </div>
             </nav>
         </aside>
 
