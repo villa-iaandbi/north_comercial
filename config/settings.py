@@ -7,12 +7,16 @@ import os
 import oracledb
 from dotenv import load_dotenv
 
-# FORZAR MODO THICK NATIVO DE ORACLE (Obligatorio para 11g)
+# FORZAR MODO THICK NATIVO DE ORACLE Y ALIAS PARA DJANGO (Obligatorio para 11g)
+import sys
 try:
     os.environ['NLS_LANG'] = '.UTF8'
-    oracledb.init_oracle_client()
+    oracledb.init_oracle_client(lib_dir=r"C:\oracle\instantclient_19_23")
 except Exception as e:
     pass
+
+oracledb.version = "8.3.0"
+sys.modules["cx_Oracle"] = oracledb
 
 # Carga .env para las configuraciones locales
 load_dotenv(override=True)

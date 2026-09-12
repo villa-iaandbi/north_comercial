@@ -4,10 +4,11 @@ import logging
 import datetime
 from decimal import Decimal
 from pathlib import Path
-from zoneinfo import ZoneInfo
-from django.conf import settings
-
-logger = logging.getLogger(__name__)
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    import pytz
+    ZoneInfo = pytz.timezone
 
 BOGOTA_TZ = ZoneInfo("America/Bogota")
 
