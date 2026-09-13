@@ -49,7 +49,6 @@ def build_qr_base64(datos_fac, cufe):
     # Generar el QR estrictamente con la URL para asegurar compatibilidad con todos los móviles
     qr_string = f"https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey={cufe}"
     
-    factory = qrcode.image.svg.SvgPathImage
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
@@ -59,10 +58,11 @@ def build_qr_base64(datos_fac, cufe):
     qr.add_data(qr_string)
     qr.make(fit=True)
     
-    img = qr.make_image(image_factory=factory)
-    svg_bytes = img.to_string()
+    img = qr.make_image()
+    buffer_qr = io.BytesIO()
+    img.save(buffer_qr, format="PNG")
     
-    return base64.b64encode(svg_bytes).decode('utf-8')
+    return base64.b64encode(buffer_qr.getvalue()).decode('utf-8')
 
 
 import re
@@ -416,10 +416,11 @@ def render_invoice_to_pdf(id_documento):
         with open(file_path, 'wb') as f:
             pisa_status = pisa.CreatePDF(src=clean_html, dest=f)
             
-        if not pisa_status.err and os.path.exists(file_path) and os.path.getsize(file_path) > 1000:
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 2000:
+            print(f"PDF real generado exitosamente ({os.path.getsize(file_path)} bytes).")
             return file_path
         else:
-            print(f"xhtml2pdf generó advertencias o errores: err={pisa_status.err}")
+            print(f"xhtml2pdf no superó validación de tamaño: err={pisa_status.err}, size={os.path.getsize(file_path) if os.path.exists(file_path) else 0}")
     except Exception as e:
         import traceback
         print(f"Excepción en xhtml2pdf: {e}\n{traceback.format_exc()}")
