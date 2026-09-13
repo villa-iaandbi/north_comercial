@@ -18,6 +18,17 @@ except Exception as e:
 oracledb.version = "8.3.0"
 sys.modules["cx_Oracle"] = oracledb
 
+# PARCHE DE COMPATIBILIDAD PYTHON 3.8 / HASHLIB PARA REPORTLAB
+import hashlib
+try:
+    hashlib.md5(b"", usedforsecurity=False)
+except TypeError:
+    _orig_md5 = hashlib.md5
+    def _safe_md5(string=b"", **kwargs):
+        kwargs.pop('usedforsecurity', None)
+        return _orig_md5(string, **kwargs)
+    hashlib.md5 = _safe_md5
+
 # Carga .env para las configuraciones locales
 load_dotenv(override=True)
 

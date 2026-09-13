@@ -1,3 +1,13 @@
+import hashlib
+try:
+    hashlib.md5(b"", usedforsecurity=False)
+except TypeError:
+    _orig_md5 = hashlib.md5
+    def _safe_md5(string=b"", **kwargs):
+        kwargs.pop('usedforsecurity', None)
+        return _orig_md5(string, **kwargs)
+    hashlib.md5 = _safe_md5
+
 import os
 import io
 import base64
