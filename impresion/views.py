@@ -109,51 +109,30 @@ def impresion_table_results(request):
 
 def descargar_factura_pdf(request, id_documento):
     """
-    Genera el PDF usando WeasyPrint (o similar), lo guarda en disco y lo retorna,
-    además marca la factura como impresa en la DB.
+    Genera el PDF usando render_invoice_to_pdf, lo guarda en la carpeta por fecha de factura y lo retorna.
+    Además marca la factura como impresa en la DB.
     """
     if request.method != 'GET':
         return HttpResponseNotAllowed(['GET'])
         
-    # 1. Obtener la data de la factura (Simulado si fuera Weasyprint real)
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT ID_DOCUMENTO, NUM_DOCUMENTO FROM CO_DOCUMENTOS WHERE ID_DOCUMENTO = %s
-        """, [id_documento])
-        doc = dictfetchall(cursor)
-        
-    if not doc:
-        return HttpResponse("Documento no encontrado", status=404)
-        
-    num_doc = doc[0]['num_documento']
-    
-    # 2. Generar el PDF
-    now = datetime.now()
-    media_dir = os.path.join(settings.MEDIA_ROOT, 'facturas', str(now.year), f"{now.month:02d}", f"{now.day:02d}")
-    os.makedirs(media_dir, exist_ok=True)
-    
-    pdf_filename = f"Factura_{num_doc}.pdf"
-    file_path = os.path.join(media_dir, pdf_filename)
-    
-    if WEASYPRINT_AVAILABLE:
-        # Aquí se renderizaría un template HTML a STRING
-        html_string = f"<h1>FACTURA {num_doc}</h1><p>Generada electrónicamente.</p>"
-        HTML(string=html_string).write_pdf(file_path)
-    else:
-        # Dummy PDF para simular si WeasyPrint falló al instalar en Windows
-        with open(file_path, 'wb') as f:
-            f.write(b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000056 00000 n\n0000000111 00000 n\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF")
+    from .document_renderer import render_invoice_to_pdf
 
-    # 3. Actualizar el estado en base de datos
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            UPDATE CO_DOCUMENTOS SET SIONO_IMPRESO = 'S' WHERE ID_DOCUMENTO = %s
-        """, [id_documento])
-        
-    # 4. Retornar fichero
-    with open(file_path, 'rb') as pdf:
-        response = HttpResponse(pdf.read(), content_type='application/pdf')
-        response['Content-Disposition'] = f'inline; filename="{pdf_filename}"'
+    try:
+        file_path = render_invoice_to_pdf(id_documento)
+        pdf_filename = os.path.basename(file_path)
+
+        # Actualizar estado a impreso 'S'
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE CO_DOCUMENTOS SET SIONO_IMPRESO = 'S' WHERE ID_DOCUMENTO = %s
+            """, [id_documento])
+
+        with open(file_path, 'rb') as pdf:
+            response = HttpResponse(pdf.read(), content_type='application/pdf')
+            response['Content-Disposition'] = f'inline; filename="{pdf_filename}"'
+            return response
+    except Exception as e:
+        return HttpResponse(f"Error generando PDF para {id_documento}: {str(e)}", status=500)
         
 from django.db import connection
 from django_q.tasks import async_task

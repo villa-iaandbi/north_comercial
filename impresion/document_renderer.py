@@ -367,21 +367,30 @@ def _build_context(id_documento):
         'nit_desarrollador': params_db.get('NIT_DESARROLLADOR', '900619134')
     }
     
-    return contexto, num_doc
+    return contexto, num_doc, header.get('fch_documento')
 
 def render_invoice_to_pdf(id_documento):
     """
-    Genera físicamente el PDF de una factura utilizando Weasyprint y retorna la ruta del archivo.
-    Aplica la lógica del Código QR requerida.
+    Genera físicamente el PDF de una factura utilizando Weasyprint / xhtml2pdf y retorna la ruta del archivo.
+    Guarda en la carpeta correspondiente a la FECHA DE LA FACTURA (FCH_DOCUMENTO).
     """
-    context, num_documento = _build_context(id_documento)
+    context, num_documento, fch_documento = _build_context(id_documento)
 
     # 5. Renderizar la plantilla a STRING
     html_string = render_to_string('plantilla_factura_weasyprint.html', context)
     
-    # 6. Generar estructura de directorios
-    now = datetime.now()
-    media_dir = os.path.join(settings.MEDIA_ROOT, 'facturas', str(now.year), f"{now.month:02d}", f"{now.day:02d}")
+    # 6. Generar estructura de directorios según FECHA DE LA FACTURA
+    if fch_documento and hasattr(fch_documento, 'year'):
+        year_str = str(fch_documento.year)
+        month_str = f"{fch_documento.month:02d}"
+        day_str = f"{fch_documento.day:02d}"
+    else:
+        now = datetime.now()
+        year_str = str(now.year)
+        month_str = f"{now.month:02d}"
+        day_str = f"{now.day:02d}"
+
+    media_dir = os.path.join(settings.MEDIA_ROOT, 'facturas', year_str, month_str, day_str)
     os.makedirs(media_dir, exist_ok=True)
     
     pdf_filename = f"FES_{num_documento}.pdf"
