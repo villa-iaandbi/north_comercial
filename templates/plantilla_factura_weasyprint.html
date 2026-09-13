@@ -8,6 +8,10 @@
         @page {
             size: A4;
             margin: 0.8cm 0.8cm;
+            @frame page_counter {
+                -pdf-frame-content: pagenum_header;
+                top: 2.1cm; right: 0.8cm; width: 3.5cm; height: 0.6cm;
+            }
         }
 
         body {
@@ -52,7 +56,7 @@
             padding: 3px 4px;
         }
 
-        /* TABLA DETALLE (SIN LINEAS HORIZONTALES INTERNAS) */
+        /* TABLA DETALLE (SIN BORDES HORIZONTALES INTERNOS) */
         .items-table {
             border: 1px solid #000;
             margin-bottom: 4px;
@@ -70,8 +74,8 @@
         .items-table td {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
-            border-top: none;
-            border-bottom: none;
+            border-top: 0px none #ffffff;
+            border-bottom: 0px none #ffffff;
             padding: 2px 3px;
             font-size: 7pt;
         }
@@ -113,15 +117,20 @@
 
 <body>
 
+    <!-- MARCO ESTÁTICO DE PAGINACIÓN DE XHTML2PDF -->
+    <div id="pagenum_header" style="text-align: center; font-size: 7.5pt; font-weight: bold;">
+        Pag <pdf:pagenumber> de <pdf:pagecount>
+    </div>
+
     <!-- CABECERA PRINCIPAL -->
     <table class="header-table" width="100%" border="0" cellspacing="0" cellpadding="0">
         <tr>
-            <td width="22%" align="center" valign="middle">
+            <td width="24%" align="center" valign="middle">
                 {% if logo_base64 %}
-                <img src="data:image/png;base64,{{ logo_base64 }}" width="135" height="85">
+                <img src="data:image/png;base64,{{ logo_base64 }}" width="150" height="90">
                 {% endif %}
             </td>
-            <td width="48%" align="center" valign="middle">
+            <td width="46%" align="center" valign="middle">
                 <div class="company-name">{{ nom_empresa }}</div>
                 <div class="company-info">
                     <strong>NIT {{ nit_empresa }}</strong><br>
@@ -146,7 +155,7 @@
                             {% if barcode_base64 %}
                             <img src="data:image/png;base64,{{ barcode_base64 }}" width="110" height="28"><br>
                             {% endif %}
-                            <div style="font-size: 7.5pt; font-weight: bold; margin-top: 2px;">Pag <span class="page">1</span> de <span class="pages">1</span></div>
+                            <div style="font-size: 7.5pt; font-weight: bold; margin-top: 2px;">Pag <pdf:pagenumber> de <pdf:pagecount></div>
                         </td>
                     </tr>
                 </table>
@@ -217,32 +226,29 @@
     <table class="totals-table" width="100%" border="1" cellspacing="0" cellpadding="3">
         <thead>
             <tr>
-                <th width="12%" align="left">Total Kilos:</th>
-                <th width="13%" align="center">M/cia Excluida</th>
-                <th width="15%" align="center">M/cia Gravada 5%</th>
-                <th width="16%" align="center">M/cia Gravada 19%</th>
-                <th width="15%" align="center">Total Mercancia</th>
-                <th width="13%" align="center">Total IVA</th>
-                <th width="16%" align="center">Total Factura</th>
+                <th width="11%" align="center">Total Kilos</th>
+                <th width="10%" align="center">Total items</th>
+                <th width="12%" align="center">M/cia Excluida</th>
+                <th width="14%" align="center">M/cia Gravada 5%</th>
+                <th width="14%" align="center">M/cia Gravada 19%</th>
+                <th width="13%" align="center">Total Mercancia</th>
+                <th width="11%" align="center">Total IVA</th>
+                <th width="15%" align="center">Total Factura</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td width="12%" align="right">{{ total_kilos }}</td>
-                <td width="13%" align="right">{{ tot_excluida }}</td>
-                <td width="15%" align="right">{{ tot_base_5 }}</td>
-                <td width="16%" align="right">{{ tot_base_19 }}</td>
-                <td width="15%" align="right">{{ subtotal }}</td>
-                <td width="13%" align="right">{{ total_iva }}</td>
-                <td width="16%" align="right"><strong>{{ total_pagar }}</strong></td>
+                <td width="11%" align="right">{{ total_kilos }}</td>
+                <td width="10%" align="center">{{ total_items }}</td>
+                <td width="12%" align="right">{{ tot_excluida }}</td>
+                <td width="14%" align="right">{{ tot_base_5 }}</td>
+                <td width="14%" align="right">{{ tot_base_19 }}</td>
+                <td width="13%" align="right">{{ subtotal }}</td>
+                <td width="11%" align="right">{{ total_iva }}</td>
+                <td width="15%" align="right"><strong>{{ total_pagar }}</strong></td>
             </tr>
             <tr>
-                <td colspan="7" align="left">
-                    <strong>Total items:</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{{ total_items }}
-                </td>
-            </tr>
-            <tr>
-                <td colspan="7" align="left">
+                <td colspan="8" align="left">
                     <strong>Son :</strong> {{ valor_en_letras|upper }}
                 </td>
             </tr>

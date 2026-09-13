@@ -288,8 +288,22 @@ def _build_context(id_documento):
         
         cajas_calc = float(item.get('cajas_calculadas') or 0)
         unidades_calc = float(item.get('unidades_calculadas') or 0)
-        cajas_str = fmt_qty(cajas_calc) if cajas_calc > 0 else ""
-        unidades_str = fmt_qty(unidades_calc) if unidades_calc > 0 else ""
+        cantidad_linea = float(item.get('cantidad') or 0)
+        und_vta_str = str(item.get('und_vta') or '').upper().strip()
+
+        if cajas_calc > 0:
+            cajas_str = fmt_qty(cajas_calc)
+        elif cantidad_linea > 0 and und_vta_str not in ['UND', 'UNIDAD', 'UNDS']:
+            cajas_str = fmt_qty(cantidad_linea)
+        else:
+            cajas_str = ""
+
+        if unidades_calc > 0:
+            unidades_str = fmt_qty(unidades_calc)
+        elif cantidad_linea > 0 and und_vta_str in ['UND', 'UNIDAD', 'UNDS', 'LIB']:
+            unidades_str = fmt_qty(cantidad_linea)
+        else:
+            unidades_str = ""
 
         items_list.append({
             'referencia': item.get('referencia') or '',
