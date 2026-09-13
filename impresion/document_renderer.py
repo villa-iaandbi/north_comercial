@@ -11,8 +11,15 @@ try:
     from weasyprint import HTML
     WEASYPRINT_AVAILABLE = True
 except (ImportError, OSError, Exception) as e:
-    print(f"Advertencia: WeasyPrint no pudo inicializarse ({e}). Se usará renderizado Dummy.")
+    print(f"Advertencia: WeasyPrint no pudo inicializarse ({e}). Se intentará con xhtml2pdf.")
     WEASYPRINT_AVAILABLE = False
+
+try:
+    from xhtml2pdf import pisa
+    XHTML2PDF_AVAILABLE = True
+except (ImportError, OSError, Exception) as e:
+    print(f"Advertencia: xhtml2pdf no pudo inicializarse ({e}).")
+    XHTML2PDF_AVAILABLE = False
 
 def dictfetchall(cursor):
     "Return all rows from a cursor as a dict"
@@ -384,12 +391,24 @@ def render_invoice_to_pdf(id_documento):
     if WEASYPRINT_AVAILABLE:
         try:
             HTML(string=html_string).write_pdf(file_path)
+            return file_path
         except Exception as e:
             print(f"Error nativo WeasyPrint: {str(e)}")
-            _generate_dummy_pdf(file_path, num_documento, html_string)
-    else:
-        _generate_dummy_pdf(file_path, num_documento, html_string)
-        
+
+    if XHTML2PDF_AVAILABLE:
+        try:
+            import re
+            clean_html = re.sub(r'@bottom-center\s*\{[^}]*\}', '', html_string)
+            with open(file_path, 'wb') as f:
+                pisa_status = pisa.CreatePDF(src=clean_html, dest=f)
+            if not pisa_status.err:
+                return file_path
+            else:
+                print(f"Error nativo xhtml2pdf (pisa): {pisa_status.err}")
+        except Exception as e:
+            print(f"Excepción en xhtml2pdf: {str(e)}")
+
+    _generate_dummy_pdf(file_path, num_documento, html_string)
     return file_path
 
 def _generate_dummy_pdf(file_path, num_doc, html_string):

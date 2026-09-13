@@ -12,3 +12,4 @@ waitress>=2.1.0
 pytz
 python-barcode
 num2words
+xhtml2pdf
