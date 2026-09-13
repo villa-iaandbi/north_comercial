@@ -371,7 +371,7 @@ def _build_context(id_documento):
 
 def render_invoice_to_pdf(id_documento):
     """
-    Genera físicamente el PDF de una factura utilizando Weasyprint / xhtml2pdf y retorna la ruta del archivo.
+    Genera físicamente el PDF de una factura utilizando Weasyprint o xhtml2pdf (pisa) y retorna la ruta del archivo.
     Guarda en la carpeta correspondiente a la FECHA DE LA FACTURA (FCH_DOCUMENTO).
     """
     context, num_documento, fch_documento = _build_context(id_documento)
@@ -396,37 +396,39 @@ def render_invoice_to_pdf(id_documento):
     pdf_filename = f"FES_{num_documento}.pdf"
     file_path = os.path.join(media_dir, pdf_filename)
     
-    # 7. Salida a disco
+    # 1. Intentar WeasyPrint primero
     if WEASYPRINT_AVAILABLE:
         try:
             HTML(string=html_string).write_pdf(file_path)
-            return file_path
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 1000:
+                return file_path
         except Exception as e:
             print(f"Error nativo WeasyPrint: {str(e)}")
 
-    if XHTML2PDF_AVAILABLE:
-        try:
-            import re
-            clean_html = re.sub(r'@bottom-center\s*\{[^}]*\}', '', html_string)
-            with open(file_path, 'wb') as f:
-                pisa_status = pisa.CreatePDF(src=clean_html, dest=f)
-            if not pisa_status.err:
-                return file_path
-            else:
-                print(f"Error nativo xhtml2pdf (pisa): {pisa_status.err}")
-        except Exception as e:
-            print(f"Excepción en xhtml2pdf: {str(e)}")
+    # 2. Intentar xhtml2pdf (pisa) dinámicamente como motor principal de alto rendimiento
+    try:
+        from xhtml2pdf import pisa
+        import re
+        clean_html = re.sub(r'@bottom-center\s*\{[\s\S]*?\}', '', html_string)
+        clean_html = clean_html.replace('<span class="page"></span>', '<pdf:pagenumber/>')
+        clean_html = clean_html.replace('<span class="pages"></span>', '<pdf:pagecount/>')
+        
+        with open(file_path, 'wb') as f:
+            pisa_status = pisa.CreatePDF(src=clean_html, dest=f)
+            
+        if not pisa_status.err and os.path.exists(file_path) and os.path.getsize(file_path) > 1000:
+            return file_path
+        else:
+            print(f"xhtml2pdf generó advertencias o errores: err={pisa_status.err}")
+    except Exception as e:
+        import traceback
+        print(f"Excepción en xhtml2pdf: {e}\n{traceback.format_exc()}")
 
+    # 3. Fallback final (Dummy PDF simple)
     _generate_dummy_pdf(file_path, num_documento, html_string)
     return file_path
 
 def _generate_dummy_pdf(file_path, num_doc, html_string):
-    """Fallback por si falla WeasyPrint en el servidor. Crea un PDF en blanco y el HTML real para inspección."""
-    # 1. Crear el PDF Dummy
+    """Fallback si fallan todos los generadores. Crea un PDF básico."""
     with open(file_path, 'wb') as f:
         f.write(b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000056 00000 n\n0000000111 00000 n\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF")
-        
-    # 2. Guardar el archivo HTML para que el usuario pueda visualizar cómo quedó el diseño
-    html_path = file_path.replace('.pdf', '.html')
-    with open(html_path, 'w', encoding='utf-8') as f:
-        f.write(html_string)
