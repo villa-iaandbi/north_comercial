@@ -119,7 +119,7 @@ def _build_context(id_documento):
             SELECT 
                 doc.ID_DOCUMENTO, doc.NUM_DOCUMENTO, doc.FCH_DOCUMENTO, doc.TOT_DOCUMENTO, doc.OBSER as OBSERVACIONES,
                 NOMBRE_CORTO(doc.ID_RESPONSABLE) AS ELABORADO_POR,
-                NIT_TERCERO(ter.ID_TERCERO) AS NIT_TERCERO, ter.NOM_TERCERO, ter.DIR, ter.TELS, ter.ID_MUNICIPIO AS MUNICIPIO, ter.DIR2 AS BARRIO, ter.NOM_NEGOCIO,
+                NIT_TERCERO(ter.ID_TERCERO) AS NIT_TERCERO, ter.NOM_TERCERO, ter.DIR, ter.TELS, NVL(NOM_MUNICIPIO(ter.ID_MUNICIPIO), ter.ID_MUNICIPIO) AS MUNICIPIO, ter.DIR2 AS BARRIO, ter.NOM_NEGOCIO,
                 fel.CUFE,
                 ven.PLAZO_PAGO AS PLAZO, ven.CONDICIONES_PAGO AS ID_FORMA_PAGO,
                 ven.TOT_MERCANCIA, ven.TOT_IVA,
@@ -420,8 +420,12 @@ def render_invoice_to_pdf(id_documento):
         from xhtml2pdf import pisa
         import re
         clean_html = re.sub(r'@bottom-center\s*\{[\s\S]*?\}', '', html_string)
-        clean_html = clean_html.replace('<span class="page"></span>', '<pdf:pagenumber/>')
-        clean_html = clean_html.replace('<span class="pages"></span>', '<pdf:pagecount/>')
+        clean_html = clean_html.replace('<span class="page">1</span>', '<pdf:pagenumber>')
+        clean_html = clean_html.replace('<span class="pages">1</span>', '<pdf:pagecount>')
+        clean_html = clean_html.replace('<span class="page"></span>', '<pdf:pagenumber>')
+        clean_html = clean_html.replace('<span class="pages"></span>', '<pdf:pagecount>')
+        clean_html = clean_html.replace('<pdf:pagenumber/>', '<pdf:pagenumber>')
+        clean_html = clean_html.replace('<pdf:pagecount/>', '<pdf:pagecount>')
         
         with open(file_path, 'wb') as f:
             pisa_status = pisa.CreatePDF(src=clean_html, dest=f)
