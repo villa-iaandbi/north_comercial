@@ -7,145 +7,100 @@
     <style>
         @page {
             size: A4;
-            margin: 0.8cm 1cm;
-
-            @bottom-center {
-                content: "Factura electrónica de venta emitida en software propio {{ nom_software|default:'EDocuments' }}, desarrollado por {{ desarrollador_software|default:'BINAPPS' }} NIT: {{ nit_desarrollador|default:'900619134' }}";
-                font-size: 6pt;
-                font-family: Arial, sans-serif;
-            }
+            margin: 0.8cm 0.8cm;
         }
 
         body {
-            font-family: Arial, sans-serif;
-            font-size: 7pt;
-            color: #000;
-        }
-
-        .page:before {
-            content: counter(page);
-        }
-
-        .pages:before {
-            content: counter(pages);
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 7.5pt;
+            color: #000000;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 5px;
         }
 
-        td,
-        th {
-            padding: 3px;
-        }
-
-        .qr-img { 
-            width: 3.2cm; 
-            height: 3.2cm; 
-            float: right; 
-            image-rendering: pixelated; /* EVITA QUE SE PONGA BORROSO AL ENCOGER */
-        }
-
-        /* CABECERA */
-        .header-table {
-            margin-bottom: 10px;
-        }
-        
         .header-table td {
-            vertical-align: middle;
+            padding: 1px;
         }
 
         .company-name {
-            font-size: 14pt;
+            font-size: 13pt;
             font-weight: bold;
             text-align: center;
-            margin-bottom: 5px;
+            margin-bottom: 2px;
             text-transform: uppercase;
         }
 
         .company-info {
             text-align: center;
             font-size: 6.5pt;
-            line-height: 1.2;
+            line-height: 1.1;
         }
 
         /* CAJA CLIENTE */
         .customer-box {
             border: 1px solid #000;
+            margin-top: 4px;
+            margin-bottom: 4px;
         }
 
         .customer-box td {
             border: 1px solid #000;
             font-size: 7.5pt;
-            padding: 4px;
-        }
-
-        .label-bold {
-            font-weight: bold;
+            padding: 3px 4px;
         }
 
         /* TABLA DETALLE */
         .items-table {
             border: 1px solid #000;
+            margin-bottom: 4px;
         }
 
         .items-table th {
             border: 1px solid #000;
             background-color: #ffffff;
             font-size: 6.5pt;
+            font-weight: bold;
             text-align: center;
-            padding: 2px; /* Reducido para compactar */
+            padding: 3px 1px;
         }
 
         .items-table td {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
-            text-align: center;
-            padding: 2px; /* Reducido para compactar */
-            font-size: 7.5pt; /* INCREMENTADO */
-        }
-
-        .items-table td.left {
-            text-align: left;
-            font-size: 6.5pt; /* EXCEPTO NOMBRE ARTICULO */
-        }
-
-        .items-table td.right {
-            text-align: right;
+            border-top: none;
+            border-bottom: none;
+            padding: 2px 3px;
+            font-size: 7pt;
         }
 
         /* TABLA TOTALES */
         .totals-table {
             border: 1px solid #000;
-            margin-top: 5px;
-            page-break-inside: avoid;
-            break-inside: avoid;
+            margin-bottom: 4px;
         }
 
         .totals-table th {
             border: 1px solid #000;
             text-align: center;
             font-size: 6.5pt;
-            padding: 4px 2px;
+            font-weight: bold;
+            padding: 3px 2px;
         }
 
         .totals-table td {
             border: 1px solid #000;
-            text-align: right;
-            padding: 4px;
-            font-size: 8.5pt; /* INCREMENTADO */
+            padding: 3px 4px;
+            font-size: 7.5pt;
         }
 
-        /* FOOTER (Firmas y Legales) */
+        /* FOOTER LEGAL */
         .legal-footer {
             border: 1px solid #000;
             font-size: 6.5pt;
-            line-height: 1.2;
-            margin-top: 5px;
-            page-break-inside: avoid;
-            break-inside: avoid;
+            line-height: 1.15;
         }
 
         .legal-footer td {
@@ -158,14 +113,15 @@
 
 <body>
 
-    <table class="header-table">
+    <!-- CABECERA PRINCIPAL -->
+    <table class="header-table" width="100%" border="0" cellspacing="0" cellpadding="0">
         <tr>
-            <td style="width: 25%; text-align: center;">
+            <td width="22%" align="center" valign="middle">
                 {% if logo_base64 %}
-                <img src="data:image/png;base64,{{ logo_base64 }}" style="max-width: 4.5cm; max-height: 2.5cm;">
+                <img src="data:image/png;base64,{{ logo_base64 }}" width="110" height="65">
                 {% endif %}
             </td>
-            <td style="width: 45%;">
+            <td width="48%" align="center" valign="middle">
                 <div class="company-name">{{ nom_empresa }}</div>
                 <div class="company-info">
                     <strong>NIT {{ nit_empresa }}</strong><br>
@@ -176,21 +132,21 @@
                     </div>
                 </div>
             </td>
-            <td style="width: 30%;">
-                <div style="font-size: 10pt; font-weight: bold; text-align: center; margin-bottom: 5px;">Factura Electrónica de Venta</div>
-                <table style="width: 100%; border: none; padding: 0; margin: 0;">
+            <td width="30%" align="center" valign="top">
+                <div style="font-size: 9.5pt; font-weight: bold; text-align: center; margin-bottom: 2px;">Factura Electrónica de Venta</div>
+                <div style="font-size: 12pt; font-weight: bold; text-align: center; margin-bottom: 2px;">{{ prefijo }}-{{ num_documento }}</div>
+                <table width="100%" border="0" cellspacing="0" cellpadding="0">
                     <tr>
-                        <td style="width: 35%; text-align: right; border: none; padding: 0;">
+                        <td width="45%" align="right" valign="middle">
                             {% if qr_base64 %}
-                            <img src="data:image/png;base64,{{ qr_base64 }}" style="width: 2.2cm; height: 2.2cm;">
+                            <img src="data:image/png;base64,{{ qr_base64 }}" width="75" height="75">
                             {% endif %}
                         </td>
-                        <td style="width: 65%; text-align: center; border: none; padding: 0;">
-                            <div style="font-size: 12pt; font-weight: bold; margin-bottom: 3px;">{{ prefijo }}-{{ num_documento }}</div>
+                        <td width="55%" align="center" valign="middle">
                             {% if barcode_base64 %}
-                            <img src="data:image/png;base64,{{ barcode_base64 }}" style="width: 4cm; height: 1cm;">
+                            <img src="data:image/png;base64,{{ barcode_base64 }}" width="110" height="28"><br>
                             {% endif %}
-                            <div style="font-size: 8pt; font-weight: bold; margin-top: 2px;">Pag <span class="page"></span> de <span class="pages"></span></div>
+                            <div style="font-size: 7.5pt; font-weight: bold; margin-top: 2px;">Pag <pdf:pagenumber/> de <pdf:pagecount/></div>
                         </td>
                     </tr>
                 </table>
@@ -198,143 +154,143 @@
         </tr>
     </table>
 
-    <table class="customer-box">
+    <!-- DATOS DEL CLIENTE -->
+    <table class="customer-box" width="100%" border="1" cellspacing="0" cellpadding="3">
         <tr>
-            <td style="width: 40%;"><span class="label-bold">SEÑORES:</span> &nbsp;{{ nom_cliente }}</td>
-            <td style="width: 30%;"><span class="label-bold">NIT :</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{{ nit_cliente }}</td>
-            <td style="width: 30%;"><span class="label-bold">FECHA FACTURA:</span> {{ fch_factura }}</td>
+            <td width="42%"><strong>SEÑORES:</strong> {{ nom_cliente }}</td>
+            <td width="28%"><strong>NIT :</strong> {{ nit_cliente }}</td>
+            <td width="30%"><strong>FECHA FACTURA:</strong> {{ fch_factura }}</td>
         </tr>
         <tr>
-            <td><span class="label-bold">DIRECCIÓN:</span> {{ dir_cliente }}</td>
-            <td><span class="label-bold">MUNICIPIO:</span> {{ municipio_cliente }}</td>
-            <td><span class="label-bold">VENCIMIENTO:</span> &nbsp;&nbsp;{{ fch_vencimiento }}</td>
+            <td width="42%"><strong>DIRECCIÓN:</strong> {{ dir_cliente }}</td>
+            <td width="28%"><strong>MUNICIPIO:</strong> {{ municipio_cliente }}</td>
+            <td width="30%"><strong>VENCIMIENTO:</strong> {{ fch_vencimiento }}</td>
         </tr>
         <tr>
-            <td><span class="label-bold">TELÉFONO:</span> &nbsp;{{ tel_cliente }}</td>
-            <td><span class="label-bold">BARRIO:</span> &nbsp;&nbsp;&nbsp;&nbsp;{{ barrio_cliente }}</td>
-            <td><span class="label-bold">FORMA DE PAGO:</span> ** {{ forma_pago }} **</td>
+            <td width="42%"><strong>TELÉFONO:</strong> {{ tel_cliente }}</td>
+            <td width="28%"><strong>BARRIO:</strong> {{ barrio_cliente }}</td>
+            <td width="30%"><strong>FORMA DE PAGO:</strong> ** {{ forma_pago }} **</td>
         </tr>
         <tr>
-            <td><span class="label-bold">NEGOCIO:</span> &nbsp;&nbsp;&nbsp;{{ nom_negocio }}</td>
-            <td><span class="label-bold">VENDEDOR:</span> &nbsp;{{ vendedor }}</td>
-            <td><span class="label-bold">PLAZO:</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{{ plazo_dias }} días</td>
+            <td width="42%"><strong>NEGOCIO:</strong> {{ nom_negocio }}</td>
+            <td width="28%"><strong>VENDEDOR:</strong> {{ vendedor }}</td>
+            <td width="30%"><strong>PLAZO:</strong> {{ plazo_dias }} días</td>
         </tr>
         <tr>
-            <td colspan="3"><span class="label-bold">NOTA:</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{{ observaciones }}</td>
+            <td colspan="3"><strong>NOTA:</strong> {{ observaciones }}</td>
         </tr>
     </table>
 
-    <table class="items-table">
+    <!-- DETALLE DE ÍTEMS -->
+    <table class="items-table" width="100%" border="1" cellspacing="0" cellpadding="2">
         <thead>
             <tr>
-                <th style="width: 10%;">REFERENCIA</th>
-                <th style="width: 38%;">DESCRIPCIÓN</th>
-                <th style="width: 4%;">CAJAS</th>
-                <th style="width: 4%;">UNDS</th>
-                <th style="width: 7%;">UNDVTA</th>
-                <th style="width: 4%;">CANT.</th>
-                <th style="width: 10%;">VR/ UNITARIO</th>
-                <th style="width: 4%;">IVA</th>
-                <th style="width: 19%;">VALOR TOTAL</th>
+                <th width="11%" align="center">REFERENCIA</th>
+                <th width="35%" align="center">DESCRIPCIÓN</th>
+                <th width="5%" align="center">CAJAS</th>
+                <th width="5%" align="center">UNDS</th>
+                <th width="7%" align="center">UNDVTA</th>
+                <th width="5%" align="center">CANT.</th>
+                <th width="11%" align="center">VR/ UNITARIO</th>
+                <th width="5%" align="center">IVA</th>
+                <th width="16%" align="center">VALOR TOTAL</th>
             </tr>
         </thead>
         <tbody>
             {% for item in items %}
             <tr>
-                <td style="text-align: left;">{{ item.referencia }}</td>
-                <td class="left">{{ item.descripcion }}</td>
-                <td>{{ item.cajas }}</td>
-                <td>{{ item.unidades }}</td>
-                <td style="text-align: left;">{{ item.und_vta }}</td>
-                <td>{{ item.cantidad|floatformat:"0" }}</td>
-                <td class="right">{{ item.vlr_unitario }}</td>
-                <td>{{ item.porc_iva }}</td>
-                <td class="right">{{ item.vlr_total }}</td>
+                <td width="11%" align="left">{{ item.referencia }}</td>
+                <td width="35%" align="left">{{ item.descripcion }}</td>
+                <td width="5%" align="center">{{ item.cajas }}</td>
+                <td width="5%" align="center">{{ item.unidades }}</td>
+                <td width="7%" align="left">{{ item.und_vta }}</td>
+                <td width="5%" align="center">{{ item.cantidad }}</td>
+                <td width="11%" align="right">{{ item.vlr_unitario }}</td>
+                <td width="5%" align="center">{{ item.porc_iva }}</td>
+                <td width="16%" align="right">{{ item.vlr_total }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <table class="totals-table">
+    <!-- TABLA DE TOTALES -->
+    <table class="totals-table" width="100%" border="1" cellspacing="0" cellpadding="3">
         <thead>
             <tr>
-                <th style="width: 10%; text-align: left;">Total Kilos:</th>
-                <th style="width: 13%;">M/cia Excluida</th>
-                <th style="width: 15%;">M/cia Gravada 5%</th>
-                <th style="width: 16%;">M/cia Gravada 19%</th>
-                <th style="width: 15%;">Total Mercancia</th>
-                <th style="width: 14%;">Total IVA</th>
-                <th style="width: 17%;">Total Factura</th>
+                <th width="12%" align="left">Total Kilos:</th>
+                <th width="13%" align="center">M/cia Excluida</th>
+                <th width="15%" align="center">M/cia Gravada 5%</th>
+                <th width="16%" align="center">M/cia Gravada 19%</th>
+                <th width="15%" align="center">Total Mercancia</th>
+                <th width="13%" align="center">Total IVA</th>
+                <th width="16%" align="center">Total Factura</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td style="padding: 0; vertical-align: top;">
-                    <div style="text-align: right; padding: 4px; border-bottom: 1px solid #000; min-height: 12px;">{{ total_kilos|floatformat:"0" }}</div>
-                    <div style="text-align: left; padding: 4px;">
-                        <strong style="font-size: 6.5pt;">Total items:</strong>
-                        <div style="text-align: right; margin-top: 2px;">{{ total_items }}</div>
-                    </div>
-                </td>
-                <td style="vertical-align: middle;">{{ tot_excluida }}</td>
-                <td style="vertical-align: middle;">{{ tot_base_5 }}</td>
-                <td style="vertical-align: middle;">{{ tot_base_19 }}</td>
-                <td style="vertical-align: middle;">{{ subtotal }}</td>
-                <td style="vertical-align: middle;">{{ total_iva }}</td>
-                <td style="vertical-align: middle;"><strong style="font-size: 9pt;">{{ total_pagar }}</strong></td>
+                <td width="12%" align="right">{{ total_kilos }}</td>
+                <td width="13%" align="right">{{ tot_excluida }}</td>
+                <td width="15%" align="right">{{ tot_base_5 }}</td>
+                <td width="16%" align="right">{{ tot_base_19 }}</td>
+                <td width="15%" align="right">{{ subtotal }}</td>
+                <td width="13%" align="right">{{ total_iva }}</td>
+                <td width="16%" align="right"><strong>{{ total_pagar }}</strong></td>
             </tr>
             <tr>
-                <td colspan="7" style="text-align: left; border: 1px solid #000; padding: 4px; font-size: 7pt;">
-                    <strong>Son : </strong> {{ valor_en_letras|upper }}
+                <td colspan="7" align="left">
+                    <strong>Total items:</strong> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{{ total_items }}
+                </td>
+            </tr>
+            <tr>
+                <td colspan="7" align="left">
+                    <strong>Son :</strong> {{ valor_en_letras|upper }}
                 </td>
             </tr>
         </tbody>
     </table>
 
-    <table class="legal-footer">
+    <!-- PIE LEGAL Y FIRMAS -->
+    <table class="legal-footer" width="100%" border="1" cellspacing="0" cellpadding="4">
         <tr>
-            <td style="width: 14%; text-align: center; vertical-align: top;">
+            <td width="15%" align="center" valign="top">
                 <strong>Elaborado Por :</strong><br><br><br><br>{{ elaborado_por }}
             </td>
-            <td style="width: 8%; text-align: center; vertical-align: top;">
-                <div style="font-size: 8.5pt !important; font-weight: bold;">
-                    Total<br>Cajas<br><br><br>
-                    <span style="font-size: 12pt !important;">{{ total_cajas_factura }}</span>
-                </div>
+            <td width="10%" align="center" valign="top">
+                <strong>Total<br>Cajas</strong><br><br><br>
+                <strong style="font-size: 11pt;">{{ total_cajas_factura }}</strong>
             </td>
-            <td style="width: 8%; text-align: center; vertical-align: top;">
+            <td width="10%" align="center" valign="top">
                 <strong>Total<br>Varios</strong><br><br><br>{{ total_varios_factura }}
             </td>
-            <td rowspan="2" style="width: 35%; text-align: justify; vertical-align: top; padding: 6px;">
-                <div style="font-size: 6pt;">{{ texto_autorizacion }}</div>
-                <div style="border-top: 1px solid #000; width: 80%; margin-top: 50px; padding-top: 2px;">
+            <td width="32%" align="left" valign="top">
+                <div style="font-size: 5.5pt; text-align: justify;">{{ texto_autorizacion }}</div>
+                <div style="border-top: 1px solid #000; width: 85%; margin-top: 35px; padding-top: 2px;">
                     <strong>Firma Cliente o autorizado :</strong><br>
                     <strong>C. C. Cliente o autorizado :</strong>
                 </div>
             </td>
-            <td rowspan="2" style="width: 35%; text-align: justify; vertical-align: top; font-size: 6pt; padding: 6px;">
-                {{ mensaje_comercial }}<br><br>
-                <strong>Pagos, consignar en la cuenta :</strong><br>
-                {{ texto_cuentas|linebreaksbr }}<br><br>
-                <strong>Resol DIAN Num : </strong> {{ resolucion_dian_completa }}
+            <td width="33%" align="left" valign="top">
+                <div style="font-size: 5.5pt; text-align: justify;">
+                    {{ mensaje_comercial }}<br><br>
+                    <strong>Pagos, consignar en la cuenta :</strong><br>
+                    {{ texto_cuentas|linebreaksbr }}<br><br>
+                    <strong>Resol DIAN Num : </strong> {{ resolucion_dian_completa }}
+                </div>
             </td>
         </tr>
         <tr>
-            <td colspan="3" style="vertical-align: top; padding: 0;">
-                <table style="width: 100%; border-collapse: collapse; border: none; margin: 0;">
+            <td colspan="3" valign="top" style="padding: 2px 4px;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="0">
                     <tr>
-                        <td style="width: 50%; vertical-align: top; padding: 4px; border: none;">
-                            <strong>Entregado Por :</strong><br><br>{{ entregado_por }}
-                        </td>
-                        <td style="width: 50%; vertical-align: top; padding: 4px; border: none;">
-                            <strong>Impreso Por :</strong><br><br>{{ usuario_imprime }}
-                        </td>
+                        <td width="50%" align="left"><strong>Entregado Por :</strong> {{ entregado_por }}</td>
+                        <td width="50%" align="left"><strong>Impreso Por :</strong> {{ usuario_imprime }}</td>
                     </tr>
                 </table>
             </td>
+            <td colspan="2" valign="middle"></td>
         </tr>
         <tr>
-            <td colspan="5" style="font-size: 7pt; text-align: left; vertical-align: middle; padding: 2px;">
+            <td colspan="5" align="left" style="font-size: 6.5pt; padding: 3px 4px;">
                 <strong>CUFE:</strong> {{ cufe }}
             </td>
         </tr>
