@@ -10,7 +10,7 @@
             margin: 0.8cm 0.8cm;
             @frame page_counter {
                 -pdf-frame-content: pagenum_header;
-                top: 2.1cm; right: 0.8cm; width: 3.5cm; height: 0.6cm;
+                top: 3.6cm; right: 0.8cm; width: 3.5cm; height: 0.5cm;
             }
         }
 
@@ -74,8 +74,8 @@
         .items-table td {
             border-left: 1px solid #000;
             border-right: 1px solid #000;
-            border-top: 0px none #ffffff;
-            border-bottom: 0px none #ffffff;
+            border-top: none;
+            border-bottom: none;
             padding: 2px 3px;
             font-size: 7pt;
         }
@@ -153,9 +153,8 @@
                         </td>
                         <td width="55%" align="center" valign="middle">
                             {% if barcode_base64 %}
-                            <img src="data:image/png;base64,{{ barcode_base64 }}" width="110" height="28"><br>
+                            <img src="data:image/png;base64,{{ barcode_base64 }}" width="110" height="28">
                             {% endif %}
-                            <div style="font-size: 7.5pt; font-weight: bold; margin-top: 2px;">Pag <pdf:pagenumber> de <pdf:pagecount></div>
                         </td>
                     </tr>
                 </table>
