@@ -1,13 +1,3 @@
-import hashlib
-try:
-    hashlib.md5(b"", usedforsecurity=False)
-except TypeError:
-    _orig_md5 = hashlib.md5
-    def _safe_md5(string=b"", **kwargs):
-        kwargs.pop('usedforsecurity', None)
-        return _orig_md5(string, **kwargs)
-    hashlib.md5 = _safe_md5
-
 import os
 import io
 import base64
@@ -21,15 +11,8 @@ try:
     from weasyprint import HTML
     WEASYPRINT_AVAILABLE = True
 except (ImportError, OSError, Exception) as e:
-    print(f"Advertencia: WeasyPrint no pudo inicializarse ({e}). Se intentará con xhtml2pdf.")
+    print(f"Advertencia: WeasyPrint no pudo inicializarse ({e}). Se usará renderizado Dummy.")
     WEASYPRINT_AVAILABLE = False
-
-try:
-    from xhtml2pdf import pisa
-    XHTML2PDF_AVAILABLE = True
-except (ImportError, OSError, Exception) as e:
-    print(f"Advertencia: xhtml2pdf no pudo inicializarse ({e}).")
-    XHTML2PDF_AVAILABLE = False
 
 def dictfetchall(cursor):
     "Return all rows from a cursor as a dict"
@@ -59,6 +42,7 @@ def build_qr_base64(datos_fac, cufe):
     # Generar el QR estrictamente con la URL para asegurar compatibilidad con todos los móviles
     qr_string = f"https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey={cufe}"
     
+    factory = qrcode.image.svg.SvgPathImage
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
@@ -68,11 +52,10 @@ def build_qr_base64(datos_fac, cufe):
     qr.add_data(qr_string)
     qr.make(fit=True)
     
-    img = qr.make_image()
-    buffer_qr = io.BytesIO()
-    img.save(buffer_qr, format="PNG")
+    img = qr.make_image(image_factory=factory)
+    svg_bytes = img.to_string()
     
-    return base64.b64encode(buffer_qr.getvalue()).decode('utf-8')
+    return base64.b64encode(svg_bytes).decode('utf-8')
 
 
 import re
@@ -119,7 +102,7 @@ def _build_context(id_documento):
             SELECT 
                 doc.ID_DOCUMENTO, doc.NUM_DOCUMENTO, doc.FCH_DOCUMENTO, doc.TOT_DOCUMENTO, doc.OBSER as OBSERVACIONES,
                 NOMBRE_CORTO(doc.ID_RESPONSABLE) AS ELABORADO_POR,
-                NIT_TERCERO(ter.ID_TERCERO) AS NIT_TERCERO, ter.NOM_TERCERO, ter.DIR, ter.TELS, NVL(NOM_MUNICIPIO(ter.ID_MUNICIPIO), ter.ID_MUNICIPIO) AS MUNICIPIO, ter.DIR2 AS BARRIO, ter.NOM_NEGOCIO,
+                NIT_TERCERO(ter.ID_TERCERO) AS NIT_TERCERO, ter.NOM_TERCERO, ter.DIR, ter.TELS, ter.ID_MUNICIPIO AS MUNICIPIO, ter.DIR2 AS BARRIO, ter.NOM_NEGOCIO,
                 fel.CUFE,
                 ven.PLAZO_PAGO AS PLAZO, ven.CONDICIONES_PAGO AS ID_FORMA_PAGO,
                 ven.TOT_MERCANCIA, ven.TOT_IVA,
@@ -288,22 +271,8 @@ def _build_context(id_documento):
         
         cajas_calc = float(item.get('cajas_calculadas') or 0)
         unidades_calc = float(item.get('unidades_calculadas') or 0)
-        cantidad_linea = float(item.get('cantidad') or 0)
-        und_vta_str = str(item.get('und_vta') or '').upper().strip()
-
-        if cajas_calc > 0:
-            cajas_str = fmt_qty(cajas_calc)
-        elif cantidad_linea > 0 and und_vta_str not in ['UND', 'UNIDAD', 'UNDS']:
-            cajas_str = fmt_qty(cantidad_linea)
-        else:
-            cajas_str = ""
-
-        if unidades_calc > 0:
-            unidades_str = fmt_qty(unidades_calc)
-        elif cantidad_linea > 0 and und_vta_str in ['UND', 'UNIDAD', 'UNDS', 'LIB']:
-            unidades_str = fmt_qty(cantidad_linea)
-        else:
-            unidades_str = ""
+        cajas_str = fmt_qty(cajas_calc) if cajas_calc > 0 else ""
+        unidades_str = fmt_qty(unidades_calc) if unidades_calc > 0 else ""
 
         items_list.append({
             'referencia': item.get('referencia') or '',
@@ -391,73 +360,45 @@ def _build_context(id_documento):
         'nit_desarrollador': params_db.get('NIT_DESARROLLADOR', '900619134')
     }
     
-    return contexto, num_doc, header.get('fch_documento')
+    return contexto, num_doc
 
 def render_invoice_to_pdf(id_documento):
     """
-    Genera físicamente el PDF de una factura utilizando Weasyprint o xhtml2pdf (pisa) y retorna la ruta del archivo.
-    Guarda en la carpeta correspondiente a la FECHA DE LA FACTURA (FCH_DOCUMENTO).
+    Genera físicamente el PDF de una factura utilizando Weasyprint y retorna la ruta del archivo.
+    Aplica la lógica del Código QR requerida.
     """
-    context, num_documento, fch_documento = _build_context(id_documento)
+    context, num_documento = _build_context(id_documento)
 
     # 5. Renderizar la plantilla a STRING
     html_string = render_to_string('plantilla_factura_weasyprint.html', context)
     
-    # 6. Generar estructura de directorios según FECHA DE LA FACTURA
-    if fch_documento and hasattr(fch_documento, 'year'):
-        year_str = str(fch_documento.year)
-        month_str = f"{fch_documento.month:02d}"
-        day_str = f"{fch_documento.day:02d}"
-    else:
-        now = datetime.now()
-        year_str = str(now.year)
-        month_str = f"{now.month:02d}"
-        day_str = f"{now.day:02d}"
-
-    media_dir = os.path.join(settings.MEDIA_ROOT, 'facturas', year_str, month_str, day_str)
+    # 6. Generar estructura de directorios
+    now = datetime.now()
+    media_dir = os.path.join(settings.MEDIA_ROOT, 'facturas', str(now.year), f"{now.month:02d}", f"{now.day:02d}")
     os.makedirs(media_dir, exist_ok=True)
     
     pdf_filename = f"FES_{num_documento}.pdf"
     file_path = os.path.join(media_dir, pdf_filename)
     
-    # 1. Intentar WeasyPrint primero
+    # 7. Salida a disco
     if WEASYPRINT_AVAILABLE:
         try:
             HTML(string=html_string).write_pdf(file_path)
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 1000:
-                return file_path
         except Exception as e:
             print(f"Error nativo WeasyPrint: {str(e)}")
-
-    # 2. Intentar xhtml2pdf (pisa) dinámicamente como motor principal de alto rendimiento
-    try:
-        from xhtml2pdf import pisa
-        import re
-        clean_html = re.sub(r'@bottom-center\s*\{[\s\S]*?\}', '', html_string)
-        clean_html = clean_html.replace('<span class="page">1</span>', '<pdf:pagenumber>')
-        clean_html = clean_html.replace('<span class="pages">1</span>', '<pdf:pagecount>')
-        clean_html = clean_html.replace('<span class="page"></span>', '<pdf:pagenumber>')
-        clean_html = clean_html.replace('<span class="pages"></span>', '<pdf:pagecount>')
-        clean_html = clean_html.replace('<pdf:pagenumber/>', '<pdf:pagenumber>')
-        clean_html = clean_html.replace('<pdf:pagecount/>', '<pdf:pagecount>')
+            _generate_dummy_pdf(file_path, num_documento, html_string)
+    else:
+        _generate_dummy_pdf(file_path, num_documento, html_string)
         
-        with open(file_path, 'wb') as f:
-            pisa_status = pisa.CreatePDF(src=clean_html, dest=f)
-            
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 2000:
-            print(f"PDF real generado exitosamente ({os.path.getsize(file_path)} bytes).")
-            return file_path
-        else:
-            print(f"xhtml2pdf no superó validación de tamaño: err={pisa_status.err}, size={os.path.getsize(file_path) if os.path.exists(file_path) else 0}")
-    except Exception as e:
-        import traceback
-        print(f"Excepción en xhtml2pdf: {e}\n{traceback.format_exc()}")
-
-    # 3. Fallback final (Dummy PDF simple)
-    _generate_dummy_pdf(file_path, num_documento, html_string)
     return file_path
 
 def _generate_dummy_pdf(file_path, num_doc, html_string):
-    """Fallback si fallan todos los generadores. Crea un PDF básico."""
+    """Fallback por si falla WeasyPrint en el servidor. Crea un PDF en blanco y el HTML real para inspección."""
+    # 1. Crear el PDF Dummy
     with open(file_path, 'wb') as f:
         f.write(b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000056 00000 n\n0000000111 00000 n\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF")
+        
+    # 2. Guardar el archivo HTML para que el usuario pueda visualizar cómo quedó el diseño
+    html_path = file_path.replace('.pdf', '.html')
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(html_string)
