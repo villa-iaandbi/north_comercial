@@ -102,7 +102,7 @@ def _build_context(id_documento):
             SELECT 
                 doc.ID_DOCUMENTO, doc.NUM_DOCUMENTO, doc.FCH_DOCUMENTO, doc.TOT_DOCUMENTO, doc.OBSER as OBSERVACIONES,
                 NOMBRE_CORTO(doc.ID_RESPONSABLE) AS ELABORADO_POR,
-                NIT_TERCERO(ter.ID_TERCERO) AS NIT_TERCERO, ter.NOM_TERCERO, ter.DIR, ter.TELS, NVL(NOM_MUNICIPIO(ter.ID_MUNICIPIO), ter.ID_MUNICIPIO) AS MUNICIPIO, ter.DIR2 AS BARRIO, ter.NOM_NEGOCIO,
+                NIT_TERCERO(ter.ID_TERCERO) AS NIT_TERCERO, ter.NOM_TERCERO, ter.DIR, ter.TELS, NVL(NOM_MUNICIPIO_DIAN(ter.ID_MUNICIPIO_DIAN), NVL(NOM_MUNICIPIO_DIAN(ter.ID_MUNICIPIO), ter.ID_MUNICIPIO)) AS MUNICIPIO, ter.DIR2 AS BARRIO, ter.NOM_NEGOCIO,
                 fel.CUFE,
                 ven.PLAZO_PAGO AS PLAZO, ven.CONDICIONES_PAGO AS ID_FORMA_PAGO,
                 ven.TOT_MERCANCIA, ven.TOT_IVA,
@@ -273,8 +273,22 @@ def _build_context(id_documento):
         
         cajas_calc = float(item.get('cajas_calculadas') or 0)
         unidades_calc = float(item.get('unidades_calculadas') or 0)
-        cajas_str = fmt_qty(cajas_calc) if cajas_calc > 0 else ""
-        unidades_str = fmt_qty(unidades_calc) if unidades_calc > 0 else ""
+        cantidad_linea = float(item.get('cantidad') or 0)
+        und_vta_str = str(item.get('und_vta') or '').upper().strip()
+
+        if cajas_calc > 0:
+            cajas_str = fmt_qty(cajas_calc)
+        elif cantidad_linea > 0 and und_vta_str in ['CAJA', 'CAJAS', 'CJ', 'CJS']:
+            cajas_str = fmt_qty(cantidad_linea)
+        else:
+            cajas_str = ""
+
+        if unidades_calc > 0:
+            unidades_str = fmt_qty(unidades_calc)
+        elif cantidad_linea > 0 and (cajas_str == "" or und_vta_str not in ['CAJA', 'CAJAS', 'CJ', 'CJS']):
+            unidades_str = fmt_qty(cantidad_linea)
+        else:
+            unidades_str = ""
 
         items_list.append({
             'referencia': item.get('referencia') or '',

@@ -16,19 +16,59 @@
   </div>
 
   <!-- Controles Superiores -->
-  <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-6 flex flex-col md:flex-row md:items-center justify-between space-y-4 md:space-y-0">
-    <div class="relative w-full md:w-96">
-      <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-        <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
-        </svg>
-      </span>
-      <input type="text" id="docSearch" name="q" placeholder="Buscar factura o cliente..." 
-             class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 px-3 border"
-             hx-get="{% url 'impresion:impresion_table_results' %}"
-             hx-trigger="keyup changed delay:500ms, search"
-             hx-target="#impresion-tbody"
-             hx-swap="innerHTML">
+  <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
+      <div class="relative w-full sm:w-80">
+        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+          </svg>
+        </span>
+        <input type="text" id="docSearch" name="q" placeholder="Buscar factura o cliente..." 
+               class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 px-3 border"
+               hx-get="{% url 'impresion:impresion_table_results' %}"
+               hx-trigger="keyup changed delay:400ms, search"
+               hx-include="#estadoFilterInput"
+               hx-target="#impresion-tbody"
+               hx-swap="innerHTML">
+      </div>
+
+      <!-- Filtro de Estado (Pestañas) -->
+      <div class="inline-flex items-center bg-gray-100 p-1 rounded-lg border border-gray-200" x-data="{ activeTab: 'pendiente' }">
+        <input type="hidden" id="estadoFilterInput" name="estado" x-model="activeTab">
+        
+        <button type="button" 
+                @click="activeTab = 'pendiente'"
+                :class="activeTab === 'pendiente' ? 'bg-white text-amber-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900 font-medium'"
+                class="px-3 py-1.5 text-xs rounded-md transition-all duration-150 flex items-center space-x-1.5"
+                hx-get="{% url 'impresion:impresion_table_results' %}?estado=pendiente"
+                hx-include="#docSearch"
+                hx-target="#impresion-tbody">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span>Pendientes</span>
+        </button>
+
+        <button type="button" 
+                @click="activeTab = 'impreso'"
+                :class="activeTab === 'impreso' ? 'bg-white text-emerald-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900 font-medium'"
+                class="px-3 py-1.5 text-xs rounded-md transition-all duration-150 flex items-center space-x-1.5"
+                hx-get="{% url 'impresion:impresion_table_results' %}?estado=impreso"
+                hx-include="#docSearch"
+                hx-target="#impresion-tbody">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>Impresos</span>
+        </button>
+
+        <button type="button" 
+                @click="activeTab = 'todos'"
+                :class="activeTab === 'todos' ? 'bg-white text-indigo-700 shadow-sm font-semibold' : 'text-gray-600 hover:text-gray-900 font-medium'"
+                class="px-3 py-1.5 text-xs rounded-md transition-all duration-150 flex items-center space-x-1"
+                hx-get="{% url 'impresion:impresion_table_results' %}?estado=todos"
+                hx-include="#docSearch"
+                hx-target="#impresion-tbody">
+          <span>Todos</span>
+        </button>
+      </div>
     </div>
 
     <button hx-post="{% url 'impresion:generar_pdfs_masivos' %}"
@@ -37,7 +77,7 @@
             hx-target="body"
             hx-swap="beforeend"
             hx-indicator="#gen-btn-spinner"
-            class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-sm transition-colors duration-200 flex items-center space-x-2">
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-sm transition-colors duration-200 flex items-center space-x-2 shrink-0">
       <svg id="gen-btn-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
       <svg id="gen-btn-spinner" class="animate-spin hidden h-5 w-5 text-white htmx-indicator" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

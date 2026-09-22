@@ -34,18 +34,27 @@ def impresion_table_results(request):
     Trae los documentos y hace JOIN con co_terceros para el nombre del cliente.
     """
     search_query = request.GET.get('q', '').strip()
+    estado_filter = request.GET.get('estado', 'todos').strip().lower()
     
-    # Construir clausula WHERE dinámicamente
-    where_clauses = ["1=1"] # Base simple, sin restricción dura de FES para que cargue todas las facturas/documentos
+    # Construir cláusula WHERE dinámicamente
+    where_clauses = ["1=1"]
     params = []
     
     if search_query:
         where_clauses.append("(LOWER(doc.NUM_DOCUMENTO) LIKE LOWER(%s) OR LOWER(ter.NOM_TERCERO) LIKE LOWER(%s))")
         params.extend([f"%{search_query}%", f"%{search_query}%"])
-        
-    where_sql = ""
-    if where_clauses:
-        where_sql = "WHERE " + " AND ".join(where_clauses)
+
+    if estado_filter == 'pendiente':
+        where_clauses.append("NVL(doc.SIONO_IMPRESO, 'N') = 'N'")
+    elif estado_filter == 'impreso':
+        where_clauses.append("NVL(doc.SIONO_IMPRESO, 'N') = 'S'")
+
+    where_sql = "WHERE " + " AND ".join(where_clauses)
+    
+    if estado_filter == 'todos':
+        order_sql = "ORDER BY NVL(doc.SIONO_IMPRESO, 'N') ASC, doc.FCH_DOCUMENTO DESC"
+    else:
+        order_sql = "ORDER BY doc.FCH_DOCUMENTO DESC"
         
     try:
         page_number = int(request.GET.get('page', 1))
@@ -56,7 +65,7 @@ def impresion_table_results(request):
     offset = (page_number - 1) * limit
     upper_bound = offset + limit + 1
         
-    # Query nativo a Oracle con patrón Anti-Paginación ORM
+    # Query nativo a Oracle
     sql = f"""
     SELECT * FROM (
         SELECT a.*, ROWNUM rnum FROM (
@@ -74,7 +83,7 @@ def impresion_table_results(request):
             LEFT JOIN CO_TERCEROS ter ON doc.ID_TERCERO = ter.ID_TERCERO
             LEFT JOIN CT_VENDEDORES ven ON doc.ID_VENDEDOR = ven.ID_VENDEDOR
             {where_sql}
-            ORDER BY NVL(doc.SIONO_IMPRESO, 'N') ASC, doc.FCH_DOCUMENTO DESC
+            {order_sql}
         ) a WHERE ROWNUM <= %s
     ) WHERE rnum > %s
     """
@@ -104,7 +113,8 @@ def impresion_table_results(request):
         'resultados': resultados,
         'has_next': has_next,
         'next_page_number': page_number + 1 if has_next else None,
-        'search': search_query
+        'search': search_query,
+        'estado': estado_filter
     })
 
 def descargar_factura_pdf(request, id_documento):
