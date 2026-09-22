@@ -102,7 +102,7 @@ def _build_context(id_documento):
             SELECT 
                 doc.ID_DOCUMENTO, doc.NUM_DOCUMENTO, doc.FCH_DOCUMENTO, doc.TOT_DOCUMENTO, doc.OBSER as OBSERVACIONES,
                 NOMBRE_CORTO(doc.ID_RESPONSABLE) AS ELABORADO_POR,
-                NIT_TERCERO(ter.ID_TERCERO) AS NIT_TERCERO, ter.NOM_TERCERO, ter.DIR, ter.TELS, ter.ID_MUNICIPIO AS MUNICIPIO, ter.DIR2 AS BARRIO, ter.NOM_NEGOCIO,
+                NIT_TERCERO(ter.ID_TERCERO) AS NIT_TERCERO, ter.NOM_TERCERO, ter.DIR, ter.TELS, NVL(NOM_MUNICIPIO(ter.ID_MUNICIPIO), ter.ID_MUNICIPIO) AS MUNICIPIO, ter.DIR2 AS BARRIO, ter.NOM_NEGOCIO,
                 fel.CUFE,
                 ven.PLAZO_PAGO AS PLAZO, ven.CONDICIONES_PAGO AS ID_FORMA_PAGO,
                 ven.TOT_MERCANCIA, ven.TOT_IVA,
@@ -152,10 +152,12 @@ def _build_context(id_documento):
         """, [id_documento])
         items_db = dictfetchall(cursor)
 
-    # Convertir LOGO a Base64 desde el archivo local
+    # Convertir LOGO a Base64 desde el archivo local (priorizando logo_surtidor.png)
     logo_base64 = ""
     try:
-        ruta_logo = os.path.join(settings.BASE_DIR, 'templates', 'logo_credito.jpeg')
+        ruta_logo = os.path.join(settings.BASE_DIR, 'templates', 'logo_surtidor.png')
+        if not os.path.exists(ruta_logo):
+            ruta_logo = os.path.join(settings.BASE_DIR, 'templates', 'logo_credito.jpeg')
         with open(ruta_logo, "rb") as image_file:
             logo_base64 = base64.b64encode(image_file.read()).decode('utf-8')
     except Exception as e:
@@ -384,12 +386,33 @@ def render_invoice_to_pdf(id_documento):
     if WEASYPRINT_AVAILABLE:
         try:
             HTML(string=html_string).write_pdf(file_path)
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 1000:
+                return file_path
         except Exception as e:
             print(f"Error nativo WeasyPrint: {str(e)}")
-            _generate_dummy_pdf(file_path, num_documento, html_string)
-    else:
-        _generate_dummy_pdf(file_path, num_documento, html_string)
+
+    # 2. Intentar xhtml2pdf (pisa) como motor de alto rendimiento para Windows Server
+    try:
+        from xhtml2pdf import pisa
+        import re
+        clean_html = re.sub(r'@bottom-center\s*\{[\s\S]*?\}', '', html_string)
+        clean_html = clean_html.replace('<span class="page">1</span>', '<pdf:pagenumber>')
+        clean_html = clean_html.replace('<span class="pages">1</span>', '<pdf:pagecount>')
+        clean_html = clean_html.replace('<span class="page"></span>', '<pdf:pagenumber>')
+        clean_html = clean_html.replace('<span class="pages"></span>', '<pdf:pagecount>')
+        clean_html = clean_html.replace('<pdf:pagenumber/>', '<pdf:pagenumber>')
+        clean_html = clean_html.replace('<pdf:pagecount/>', '<pdf:pagecount>')
         
+        with open(file_path, 'wb') as f:
+            pisa_status = pisa.CreatePDF(src=clean_html, dest=f)
+            
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 2000:
+            print(f"PDF real generado exitosamente ({os.path.getsize(file_path)} bytes).")
+            return file_path
+    except Exception as e:
+        print(f"Excepción en xhtml2pdf: {e}")
+
+    _generate_dummy_pdf(file_path, num_documento, html_string)
     return file_path
 
 def _generate_dummy_pdf(file_path, num_doc, html_string):
