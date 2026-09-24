@@ -257,12 +257,18 @@
         </tbody>
     </table>
 
-    <div style="margin-top: 5px; font-size: 6.5pt; page-break-inside: avoid; break-inside: avoid;">
-        <div style="font-weight: bold; font-size: 7pt; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 3px;">
+    <div style="margin-top: 4px; page-break-inside: avoid; break-inside: avoid;">
+        <div style="font-weight: bold; font-size: 5pt; border-bottom: 1px solid #000; padding-bottom: 1px; margin-bottom: 2px;">
             OBSERVACIONES :
         </div>
-        <div style="font-size: 6.5pt; line-height: 1.2;">
-            {{ texto_pie_productos }}
+        <div style="font-size: 4.5pt; line-height: 1.2;">
+            {% if texto_pie_productos %}
+                {% if "ESTIMADO CLIENTE:" in texto_pie_productos %}
+                    {{ texto_pie_productos }}
+                {% else %}
+                    <strong>ESTIMADO CLIENTE:</strong> {{ texto_pie_productos }}
+                {% endif %}
+            {% endif %}
         </div>
     </div>
 
