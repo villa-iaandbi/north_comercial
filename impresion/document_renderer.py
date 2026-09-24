@@ -356,6 +356,7 @@ def _build_context(id_documento):
         'texto_autorizacion': params_db.get('BAPP_TX3', ''),
         'texto_pagare': params_db.get('BAPP_TX4', ''),
         'mensaje_comercial': params_db.get('BAPP_TX4', ''),
+        'texto_pie_productos': params_db.get('BAPP_TX5', ''),
         'texto_cuentas': empresa_data['obser2'],
         
         # Mantenemos estas por compatibilidad temporal si la plantilla las usa

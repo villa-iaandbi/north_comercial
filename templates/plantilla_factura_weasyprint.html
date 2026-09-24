@@ -104,12 +104,12 @@
             border-right: 1px solid #000;
             text-align: center;
             padding: 2px; /* Reducido para compactar */
-            font-size: 7.5pt; /* INCREMENTADO */
+            font-size: 6.5pt;
         }
 
         .items-table td.left {
             text-align: left;
-            font-size: 6.5pt; /* EXCEPTO NOMBRE ARTICULO */
+            font-size: 5.5pt; /* EXCEPTO NOMBRE ARTICULO */
         }
 
         .items-table td.right {
@@ -256,6 +256,15 @@
             {% endfor %}
         </tbody>
     </table>
+
+    <div style="margin-top: 5px; font-size: 6.5pt; page-break-inside: avoid; break-inside: avoid;">
+        <div style="font-weight: bold; font-size: 7pt; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 3px;">
+            OBSERVACIONES :
+        </div>
+        <div style="font-size: 6.5pt; line-height: 1.2;">
+            {{ texto_pie_productos }}
+        </div>
+    </div>
 
     <table class="totals-table">
         <thead>
