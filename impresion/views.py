@@ -212,7 +212,7 @@ def generar_pdfs_seleccionados(request):
     """
     
     response = HttpResponse(html_response)
-    response['HX-Trigger'] = 'refreshTable'
+    response['HX-Trigger'] = 'reloadTable'
     return response
 
 
