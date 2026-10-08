@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Análisis de Ventas por Clientes - North Comercial{% endblock %}
+{% block page_title %}Análisis de Ventas por Clientes{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6" id="analytics-dashboard">
+    <!-- Filtros -->
+    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-5 gap-4">
+        <select id="filtro-anio" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+            <option value="">Todo el Año</option>
+            {% for anio in filtros.anios %}<option value="{{ anio }}" {% if forloop.first %}selected{% endif %}>{{ anio }}</option>{% endfor %}
+        </select>
+        <select id="filtro-zona" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+            <option value="">Toda Zona/Vendedor</option>
+            {% for zona in filtros.zonas_vendedor %}<option value="{{ zona }}">{{ zona }}</option>{% endfor %}
+        </select>
+        <select id="filtro-proveedor" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+            <option value="">Todo Proveedor</option>
+            {% for prov in filtros.proveedores %}<option value="{{ prov }}">{{ prov }}</option>{% endfor %}
+        </select>
+        <select id="filtro-linea" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+            <option value="">Toda Línea</option>
+            {% for linea in filtros.lineas %}<option value="{{ linea }}">{{ linea }}</option>{% endfor %}
+        </select>
+        <select id="filtro-canal" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+            <option value="">Todo Canal</option>
+            {% for canal in filtros.canales %}<option value="{{ canal }}">{{ canal }}</option>{% endfor %}
+        </select>
+    </div>
+
+    <!-- Contenedores de Gráficos -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+            <h4 class="text-base font-bold text-gray-900 mb-3">Ventas vs. Clientes por Canal</h4>
+            <div id="chart-canal" class="h-96"></div>
+        </div>
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200">
+            <h4 class="text-base font-bold text-gray-900 mb-3">Ventas por Vendedor (Zona)</h4>
+            <div id="chart-treemap" class="h-96"></div>
+        </div>
+    </div>
+
+    <!-- Tablas -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+             <div class="p-4 border-b border-gray-200 bg-gray-50">
+                <h4 class="text-base font-bold text-gray-900">Top 20 Municipios por Venta</h4>
+            </div>
+            <div class="overflow-y-auto h-96">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b sticky top-0">
+                        <tr>
+                            <th class="p-3">Municipio</th>
+                            <th class="p-3 text-right">Venta (sin IVA)</th>
+                            <th class="p-3 text-right"># Clientes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-municipios" class="divide-y divide-gray-200">
+                        <!-- Los datos se insertarán aquí vía JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 lg:col-span-1">
+             <div class="p-4 border-b border-gray-200 bg-gray-50">
+                <h4 class="text-base font-bold text-gray-900">Matriz de Ventas Mensuales por Cliente</h4>
+            </div>
+            <div id="contenedor-matriz" class="overflow-x-auto">
+                 <!-- La matriz se insertará aquí vía JS -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const csrfToken = '{{ csrf_token }}';
+    const url = "{% url 'reportes:analisis_ventas_clientes' %}";
+    
+    // Inicializar ECharts
+    const chartCanal = echarts.init(document.getElementById('chart-canal'));
+    const chartTreemap = echarts.init(document.getElementById('chart-treemap'));
+
+    // Función para renderizar los datos
+    function renderData(data) {
+        // 1. Gráfico de Canal
+        const canalOption = {
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['Venta (sin IVA)', '# Clientes'] },
+            xAxis: { type: 'category', data: data.canal.map(c => c.CANAL) },
+            yAxis: [
+                { type: 'value', name: 'Venta (sin IVA)' },
+                { type: 'value', name: '# Clientes' }
+            ],
+            series: [
+                { name: 'Venta (sin IVA)', type: 'bar', data: data.canal.map(c => c.VENTA_SIN_IVA) },
+                { name: '# Clientes', type: 'line', yAxisIndex: 1, data: data.canal.map(c => c.QCLIENTES) }
+            ]
+        };
+        chartCanal.setOption(canalOption);
+
+        // 2. Treemap
+        const treemapOption = {
+            tooltip: { trigger: 'item' },
+            series: [{
+                type: 'treemap',
+                data: data.treemap
+            }]
+        };
+        chartTreemap.setOption(treemapOption);
+
+        // 3. Tabla Municipios
+        const municipiosBody = document.getElementById('tabla-municipios');
+        municipiosBody.innerHTML = data.municipios.map(m => `
+            <tr class="hover:bg-gray-50">
+                <td class="p-3 font-bold">${ m.MUNICIPIO }</td>
+                <td class="p-3 text-right font-mono font-bold">$ ${parseFloat(m.VENTA_SIN_IVA).toLocaleString('es-CO', {minimumFractionDigits: 2})}</td>
+                <td class="p-3 text-right font-mono">${ m.QCLIENTES }</td>
+            </tr>
+        `).join('');
+        
+        // 4. Matriz Pivot
+        const matrizContainer = document.getElementById('contenedor-matriz');
+        matrizContainer.innerHTML = data.matriz_html;
+    }
+
+    // Función para obtener datos del backend
+    function fetchData() {
+        const filtros = {
+            anio: document.getElementById('filtro-anio').value,
+            zona_vendedor: document.getElementById('filtro-zona').value,
+            proveedor: document.getElementById('filtro-proveedor').value,
+            linea: document.getElementById('filtro-linea').value,
+            canal: document.getElementById('filtro-canal').value,
+        };
+        
+        const queryParams = new URLSearchParams(filtros).toString();
+        
+        fetch(`${url}?${queryParams}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            renderData(data);
+        });
+    }
+
+    // Event Listeners para los filtros
+    ['filtro-anio', 'filtro-zona', 'filtro-proveedor', 'filtro-linea', 'filtro-canal'].forEach(id => {
+        document.getElementById(id).addEventListener('change', fetchData);
+    });
+
+    // Carga inicial de datos
+    fetchData();
+});
+</script>
+{% endblock %}

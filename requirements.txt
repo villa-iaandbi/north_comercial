@@ -13,3 +13,4 @@ pytz
 python-barcode
 num2words
 xhtml2pdf
+pandas>=1.0.0

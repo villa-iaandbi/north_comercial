@@ -281,7 +281,62 @@ def cierre_caja_view(request):
 
     if not turno:
         context = {'turno_encontrado': False, 'message': 'No se encontraron turnos de caja registrados.'}
-        return render(request, 'reportes/cierre_caja.html', context)
+    return render(request, 'reportes/cierre_caja.html', context)
+
+from django.http import JsonResponse
+from .services_analisis_ventas import VentasClientesAnalyticsService
+import json
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return str(obj)
+        return super(DecimalEncoder, self).default(obj)
+
+def analisis_ventas_clientes_view(request):
+    """
+    Vista para el dashboard de análisis de ventas por clientes.
+    """
+    filtros = {
+        'anio': request.GET.get('anio'),
+        'zona_vendedor': request.GET.get('zona_vendedor'),
+        'proveedor': request.GET.get('proveedor'),
+        'linea': request.GET.get('linea'),
+        'canal': request.GET.get('canal'),
+    }
+    # Limpiar filtros vacíos
+    filtros = {k: v for k, v in filtros.items() if v}
+
+    service = VentasClientesAnalyticsService(filtros)
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        datos_tablero = service.get_datos_tablero()
+        matriz_pivot = service.get_matriz_pivot_mensual()
+        
+        # Convertir el DataFrame de pivot a HTML
+        matriz_html = matriz_pivot.to_html(classes="w-full text-left text-sm", border=0)
+        
+        # Reemplazar clases de pandas por las de tailwind
+        matriz_html = matriz_html.replace('<table border="1" class="dataframe"><tbody>', '<table class="w-full text-left text-sm"><tbody class="divide-y divide-gray-200">')
+        matriz_html = matriz_html.replace('<thead>', '<thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b">')
+        matriz_html = matriz_html.replace('<th>', '<th class="p-3">')
+        matriz_html = matriz_html.replace('<td>', '<td class="p-3 text-right font-mono">')
+
+
+        data = {
+            'canal': datos_tablero['canal'],
+            'municipios': datos_tablero['municipios'],
+            'treemap': datos_tablero['treemap'],
+            'matriz_html': matriz_html
+        }
+        return JsonResponse(data, encoder=DecimalEncoder)
+
+    # Petición inicial, solo carga los filtros.
+    context = {
+        'filtros': service.get_filtros_disponibles()
+    }
+    return render(request, 'reportes/analisis_ventas_clientes.html', context)
+
 
     tickets = turno.tickets.all()
     

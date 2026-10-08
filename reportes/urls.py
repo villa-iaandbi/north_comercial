@@ -6,5 +6,6 @@ app_name = 'reportes'
 urlpatterns = [
     path('dashboard/', views.dashboard_view, name='dashboard'),
     path('cartera/', views.cartera_view, name='cartera'),
-    path('cierre-caja/', views.cierre_caja_view, name='cierre_caja'),
+        path('cierre-caja/', views.cierre_caja_view, name='cierre_caja'),
+    path('analisis-ventas/', views.analisis_ventas_clientes_view, name='analisis_ventas_clientes'),
 ]
