@@ -57,7 +57,7 @@
   <td colspan="8" class="px-6 py-6 text-center">
     <button class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white font-medium text-sm rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 transition-colors duration-200 shadow-sm"
             hx-indicator="#btn-spinner-imp"
-            hx-get="{% url 'impresion:impresion_table_results' %}?page={{ next_page_number }}&q={{ search }}"
+            hx-get="{% url 'impresion:impresion_table_results' %}?page={{ next_page_number }}&q={{ search }}&estado={{ estado }}"
             hx-target="#load-more-row"
             hx-swap="outerHTML">
       <span id="btn-text-imp">Cargar más documentos</span>
