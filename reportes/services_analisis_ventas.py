@@ -147,17 +147,37 @@ class VentasClientesAnalyticsService:
         return datos
 
     def get_matriz_pivot_mensual(self):
-        # Excluir el filtro de mes para ver la tendencia de los 12 meses
+        # Excluir el filtro de mes para ver la matriz anual completa
         where_matriz = [
-            c for c in self.where_clauses if not c.startswith('v.MES_NUM')]
-        where_sql = ("WHERE " + " AND ".join(where_matriz)
-                     ) if where_matriz else ""
+            c for c in self.where_clauses if not c.startswith('v.MES_NUM')
+        ]
+        where_sql = (
+            ('WHERE ' + ' AND '.join(where_matriz)) if where_matriz else ''
+        )
         params_matriz = {k: v for k, v in self.params.items() if k != 'mes'}
 
+        # Si ya creaste MV_VENTAS_CLIENTE_MENSUAL usa esa tabla,
+        # si aún no la creas, cámbialo temporalmente por BI_VENTASNETAS
+        tabla_origen = 'MV_VENTAS_CLIENTE_MENSUAL'  # O BI_VENTASNETAS
+
         query = f"""
-            SELECT NVL(v.NOM_CLIENTE, 'CLIENTE SIN NOMBRE') AS CLIENTE, v.MES_NUM, SUM(v.VENTA_SIN_IVA) AS VENTA
-            FROM BI_VENTASNETAS v {where_sql}
-            GROUP BY NVL(v.NOM_CLIENTE, 'CLIENTE SIN NOMBRE'), v.MES_NUM
+            WITH TOP_CLI AS (
+                SELECT * FROM (
+                    SELECT v.NOM_CLIENTE, SUM(v.VENTA_SIN_IVA) AS TOTAL_ANUAL
+                    FROM {tabla_origen} v
+                    {where_sql}
+                    GROUP BY v.NOM_CLIENTE
+                    ORDER BY TOTAL_ANUAL DESC
+                ) WHERE ROWNUM <= 50
+            )
+            SELECT 
+                v.NOM_CLIENTE AS CLIENTE,
+                TO_NUMBER(v.MES_NUM) AS MES_NUM,
+                SUM(v.VENTA_SIN_IVA) AS VENTA
+            FROM {tabla_origen} v
+            JOIN TOP_CLI tc ON tc.NOM_CLIENTE = v.NOM_CLIENTE
+            {where_sql}
+            GROUP BY v.NOM_CLIENTE, TO_NUMBER(v.MES_NUM)
         """
 
         try:
@@ -169,12 +189,12 @@ class VentasClientesAnalyticsService:
 
                 df = pd.DataFrame(
                     rows, columns=['CLIENTE', 'MES_NUM', 'VENTA'])
-                df['VENTA'] = df['VENTA'].fillna(0).apply(
-                    lambda x: int(round(Decimal(str(x)))))
-
-            top_clientes = df.groupby(
-                'CLIENTE')['VENTA'].sum().nlargest(50).index
-            df = df[df['CLIENTE'].isin(top_clientes)]
+                df['VENTA'] = (
+                    df['VENTA']
+                    .fillna(0)
+                    .apply(lambda x: int(round(Decimal(str(x)))))
+                )
+                df['MES_NUM'] = df['MES_NUM'].astype(int)
 
             pivot_df = pd.pivot_table(
                 df,
@@ -182,19 +202,44 @@ class VentasClientesAnalyticsService:
                 columns='MES_NUM',
                 values='VENTA',
                 aggfunc='sum',
-                fill_value=0
+                fill_value=0,
             )
+
+            # Asegurar los 12 meses
+            meses_nombres = {
+                1: 'Ene',
+                2: 'Feb',
+                3: 'Mar',
+                4: 'Abr',
+                5: 'May',
+                6: 'Jun',
+                7: 'Jul',
+                8: 'Ago',
+                9: 'Sep',
+                10: 'Oct',
+                11: 'Nov',
+                12: 'Dic',
+            }
 
             for mes in range(1, 13):
                 if mes not in pivot_df.columns:
                     pivot_df[mes] = 0
 
-            pivot_df = pivot_df[sorted(pivot_df.columns)]
+            # Ordenar columnas 1..12
+            pivot_df = pivot_df[[m for m in range(1, 13)]]
             pivot_df['Total'] = pivot_df.sum(axis=1)
-            pivot_df.loc['Total'] = pivot_df.sum()
+
+            # Ordenar clientes por mayor venta acumulada
+            pivot_df = pivot_df.sort_values(by='Total', ascending=False)
+
+            # Renombrar columnas 1..12 a nombres de meses
+            pivot_df.rename(columns=meses_nombres, inplace=True)
+
+            # Fila de totales
+            pivot_df.loc['Total General'] = pivot_df.sum()
 
             return pivot_df
 
         except Exception as e:
-            print(f"Error al generar la matriz pivot: {e}")
+            print(f'Error al generar la matriz pivot: {e}')
             return pd.DataFrame()
