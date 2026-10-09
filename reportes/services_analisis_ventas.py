@@ -37,9 +37,10 @@ class VentasClientesAnalyticsService:
             return ""
         return "WHERE " + " AND ".join(self.where_clauses)
 
-    def _ejecutar_consulta(self, cursor, query):
-        if self.params:
-            cursor.execute(query, self.params)
+    def _ejecutar_consulta(self, cursor, query, params=None):
+        consulta_params = params if params is not None else self.params
+        if consulta_params:
+            cursor.execute(query, consulta_params)
         else:
             cursor.execute(query)
 
@@ -90,7 +91,7 @@ class VentasClientesAnalyticsService:
 
         try:
             with connection.cursor() as cursor:
-                # Canal
+                # 1. Canal
                 query_canal = f"""
                     SELECT CANAL, SUM(VENTA_SIN_IVA) AS VENTA, COUNT(DISTINCT ID_TERCERO) AS QCLIENTES
                     FROM BI_VENTASNETAS v {where_sql}
@@ -107,7 +108,7 @@ class VentasClientesAnalyticsService:
                     for row in cursor.fetchall()
                 ]
 
-                # Municipios Top 20
+                # 2. Municipios Top 20
                 query_municipios = f"""
                     SELECT MUNICIPIO, SUM(VENTA_SIN_IVA) AS VENTA, COUNT(DISTINCT ID_TERCERO) AS QCLIENTES
                     FROM BI_VENTASNETAS v {where_sql}
@@ -124,7 +125,7 @@ class VentasClientesAnalyticsService:
                     for row in cursor.fetchall()[:20]
                 ]
 
-                # Treemap
+                # 3. Treemap Vendedores
                 filtro_extra = "WHERE v.ZONA_VENDEDOR IS NOT NULL" if not where_sql else f"{where_sql} AND v.ZONA_VENDEDOR IS NOT NULL"
                 query_treemap = f"""
                     SELECT ZONA_VENDEDOR, SUM(VENTA_SIN_IVA) AS VENTA
@@ -146,57 +147,43 @@ class VentasClientesAnalyticsService:
         return datos
 
     def get_matriz_pivot_mensual(self):
-         # Prepara una copia de los filtros y parámetros para la matriz, excluyendo el mes
-         params_matriz = self.params.copy()
-         where_clauses_matriz = self.where_clauses[:]
-         if 'mes' in params_matriz:
-             del params_matriz['mes']
-             where_clauses_matriz = [cl for cl in where_clauses_matriz if "v.MES_NUM" not in cl]
-        
-         where_sql_matriz = ""
-         if where_clauses_matriz:
-             where_sql_matriz = "WHERE " + " AND ".join(where_clauses_matriz)
+        # Excluir el filtro de mes para ver la tendencia de los 12 meses
+        where_matriz = [
+            c for c in self.where_clauses if not c.startswith('v.MES_NUM')]
+        where_sql = ("WHERE " + " AND ".join(where_matriz)
+                     ) if where_matriz else ""
+        params_matriz = {k: v for k, v in self.params.items() if k != 'mes'}
 
-         # Top 50 clientes por venta del periodo filtrado (sin mes)
-         query = f"""
-             SELECT * FROM (
-                 SELECT 
-                     COALESCE(v.NOM_CLIENTE, v.NOM_TERCERO, 'CLIENTE SIN NOMBRE') AS CLIENTE, 
-                     v.MES_NUM, 
-                     SUM(v.VENTA_SIN_IVA) AS VENTA,
-                     SUM(SUM(v.VENTA_SIN_IVA)) OVER (PARTITION BY COALESCE(v.NOM_CLIENTE, v.NOM_TERCERO, 'CLIENTE SIN NOMBRE')) as VENTA_TOTAL_CLIENTE
-                 FROM BI_VENTASNETAS v {where_sql_matriz}
-                 GROUP BY COALESCE(v.NOM_CLIENTE, v.NOM_TERCERO, 'CLIENTE SIN NOMBRE'), v.MES_NUM
-             ) 
-             ORDER BY VENTA_TOTAL_CLIENTE DESC
-         """
+        query = f"""
+            SELECT NVL(v.NOM_CLIENTE, 'CLIENTE SIN NOMBRE') AS CLIENTE, v.MES_NUM, SUM(v.VENTA_SIN_IVA) AS VENTA
+            FROM BI_VENTASNETAS v {where_sql}
+            GROUP BY NVL(v.NOM_CLIENTE, 'CLIENTE SIN NOMBRE'), v.MES_NUM
+        """
 
         try:
-             with connection.cursor() as cursor:
-                 if params_matriz:
-                     cursor.execute(query, params_matriz)
-                 else:
-                     cursor.execute(query)
-                 rows = cursor.fetchall()
-                 if not rows:
-                     return pd.DataFrame()
- 
-                 # Acotar a los 50 clientes mas grandes (la consulta ya deberia hacerlo, pero como fallback)
-                 df = pd.DataFrame(rows, columns=['CLIENTE', 'MES_NUM', 'VENTA', 'VENTA_TOTAL_CLIENTE'])
-                 top_clientes = df.groupby('CLIENTE')['VENTA_TOTAL_CLIENTE'].first().nlargest(50).index
-                 df = df[df['CLIENTE'].isin(top_clientes)]
+            with connection.cursor() as cursor:
+                self._ejecutar_consulta(cursor, query, params=params_matriz)
+                rows = cursor.fetchall()
+                if not rows:
+                    return pd.DataFrame()
 
-                 df['VENTA'] = df['VENTA'].fillna(0).apply(
-                     lambda x: int(round(Decimal(str(x)))))
- 
-             pivot_df = pd.pivot_table(
-                 df,
-                 index='CLIENTE',
-                 columns='MES_NUM',
-                 values='VENTA',
-                 aggfunc='sum',
-                 fill_value=0
-             )
+                df = pd.DataFrame(
+                    rows, columns=['CLIENTE', 'MES_NUM', 'VENTA'])
+                df['VENTA'] = df['VENTA'].fillna(0).apply(
+                    lambda x: int(round(Decimal(str(x)))))
+
+            top_clientes = df.groupby(
+                'CLIENTE')['VENTA'].sum().nlargest(50).index
+            df = df[df['CLIENTE'].isin(top_clientes)]
+
+            pivot_df = pd.pivot_table(
+                df,
+                index='CLIENTE',
+                columns='MES_NUM',
+                values='VENTA',
+                aggfunc='sum',
+                fill_value=0
+            )
 
             for mes in range(1, 13):
                 if mes not in pivot_df.columns:

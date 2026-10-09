@@ -1,48 +1,47 @@
+# -*- coding: utf-8 -*-
+import json
 import logging
 from decimal import Decimal
 from django.shortcuts import render
+from django.http import JsonResponse
 from django.db import connection
 from django.utils import timezone
 from pos.models import PosTurno, PosTicketHeader
+from .services_analisis_ventas import VentasClientesAnalyticsService
 
 logger = logging.getLogger(__name__)
 
+
 def format_cop(value) -> str:
-    """Formatea valores numéricos a Pesos Colombianos (COP) utilizando decimal.Decimal."""
+    """Formatea valores numericos a Pesos Colombianos (COP)."""
     if value is None:
-        dec_val = Decimal('0.00')
+        dec_val = Decimal('0')
     elif isinstance(value, Decimal):
         dec_val = value
     else:
         try:
             dec_val = Decimal(str(value))
         except Exception:
-            dec_val = Decimal('0.00')
-            
-    formatted = f"{dec_val:,.2f}"
-    return "$ " + formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+            dec_val = Decimal('0')
+
+    formatted = f"{int(round(dec_val)):,}"
+    return "$ " + formatted.replace(",", ".")
 
 
 def dashboard_view(request):
-    """
-    Vista principal del Dashboard del Vendedor / Supervisor:
-    KPIs: Total Ventas, Drop Size, Impactos (Clientes con compra).
-    Tabla Resumen: Ventas agrupadas por Proveedor, Familia y Línea.
-    """
-    periodo = request.GET.get('periodo', 'mes') # 'dia', 'mes', 'ano'
+    """Vista principal del Dashboard del Vendedor / Supervisor."""
+    periodo = request.GET.get('periodo', 'mes')
     now_dt = timezone.now()
     if timezone.is_aware(now_dt):
         now_dt = timezone.localtime(now_dt)
-    
-    # 1. Indicadores KPIs (Ventas, Drop Size, Impactos)
-    total_ventas = Decimal('0.00')
+
+    total_ventas = Decimal('0')
     cant_pedidos = 0
-    drop_size = Decimal('0.00')
+    drop_size = Decimal('0')
     impactos_clientes = 0
     agrupacion_productos = []
     ventas_tendencia = []
 
-    # Consulta a Oracle 11g
     query_kpis = """
     SELECT 
         NVL(SUM(d.TOT_DOCUMENTO), 0) AS TOT_VENTAS,
@@ -70,13 +69,12 @@ def dashboard_view(request):
                 if cant_pedidos > 0:
                     drop_size = total_ventas / Decimal(str(cant_pedidos))
 
-            # Tabla Agrupada por Proveedor, Familia y Línea
             query_agrupada = """
             SELECT * FROM (
                 SELECT 
                     NVL(p.NOM_TERCERO, 'PROVEEDOR GENERAL') AS PROVEEDOR,
                     NVL(f.NOM_FAMILIA, 'FAMILIA GENERAL') AS FAMILIA,
-                    NVL(l.NOM_LINEA, 'LÍNEA GENERAL') AS LINEA,
+                    NVL(l.NOM_LINEA, 'LINEA GENERAL') AS LINEA,
                     SUM(m.CANTIDAD) AS CANTIDAD_TOTAL,
                     SUM(m.CANTIDAD * m.VLR_UNITARIO) AS TOT_MERCANCIA
                 FROM IN_MOV_INVENTARIOS m
@@ -87,23 +85,21 @@ def dashboard_view(request):
                 GROUP BY 
                     NVL(p.NOM_TERCERO, 'PROVEEDOR GENERAL'),
                     NVL(f.NOM_FAMILIA, 'FAMILIA GENERAL'),
-                    NVL(l.NOM_LINEA, 'LÍNEA GENERAL')
+                    NVL(l.NOM_LINEA, 'LINEA GENERAL')
                 ORDER BY TOT_MERCANCIA DESC
             ) WHERE ROWNUM <= 20
             """
             cursor.execute(query_agrupada)
-            rows_ag = cursor.fetchall()
-            for r in rows_ag:
+            for r in cursor.fetchall():
                 agrupacion_productos.append({
                     'proveedor': r[0],
                     'familia': r[1],
                     'linea': r[2],
                     'cantidad': float(r[3] or 0),
-                    'tot_mercancia': Decimal(str(r[4] or 0)),
+                    'tot_mercancia': int(round(Decimal(str(r[4] or 0)))),
                     'tot_mercancia_cop': format_cop(r[4])
                 })
 
-            # Tendencia Diaria del Mes (Chart.js)
             query_chart = """
             SELECT 
                 TO_CHAR(d.FCH_DOCUMENTO, 'DD/MM') AS DIA,
@@ -115,22 +111,19 @@ def dashboard_view(request):
             ORDER BY MIN(d.FCH_DOCUMENTO)
             """
             cursor.execute(query_chart)
-            rows_ch = cursor.fetchall()
-            for r in rows_ch:
+            for r in cursor.fetchall():
                 ventas_tendencia.append({
                     'dia': r[0],
                     'monto': float(r[1] or 0)
                 })
 
     except Exception as e:
-        logger.error(f"Error al consultar métricas del Dashboard en Oracle: {e}")
-        # Complemento local desde SQLite (Tickets POS)
+        logger.error(f"Error en Dashboard: {e}")
         tickets_local = PosTicketHeader.objects.all()
         if tickets_local.exists():
-            tot_loc = sum((t.tot_ticket for t in tickets_local), Decimal('0.00'))
+            tot_loc = sum((t.tot_ticket for t in tickets_local), Decimal('0'))
             cnt_loc = tickets_local.count()
             imp_loc = len(set(t.id_tercero for t in tickets_local))
-            
             total_ventas += tot_loc
             cant_pedidos += cnt_loc
             impactos_clientes += imp_loc
@@ -152,22 +145,16 @@ def dashboard_view(request):
 
 
 def cartera_view(request):
-    """
-    Informe de Cartera y Recaudos del Día:
-    - Agrupación de saldos por edades (Corriente, 1-30, 31-60, 61-90, 90+ días).
-    - Recaudos del día actual.
-    - Tabla detallada por Cliente (CO_TERCEROS).
-    """
-    total_cartera = Decimal('0.00')
-    cartera_corriente = Decimal('0.00')
-    cartera_1_30 = Decimal('0.00')
-    cartera_31_60 = Decimal('0.00')
-    cartera_61_90 = Decimal('0.00')
-    cartera_90_mas = Decimal('0.00')
-    recaudos_dia = Decimal('0.00')
+    """Informe de Cartera y Recaudos del Dia."""
+    total_cartera = Decimal('0')
+    cartera_corriente = Decimal('0')
+    cartera_1_30 = Decimal('0')
+    cartera_31_60 = Decimal('0')
+    cartera_61_90 = Decimal('0')
+    cartera_90_mas = Decimal('0')
+    recaudos_dia = Decimal('0')
     clientes_cartera = []
 
-    # Consulta de Edades de Cartera a Oracle 11g
     query_cartera_edades = """
     SELECT 
         NVL(SUM(vlr_saldo), 0) AS TOTAL_CARTERA,
@@ -235,8 +222,7 @@ def cartera_view(request):
                 recaudos_dia = Decimal(str(row_rec[0] or 0))
 
             cursor.execute(query_top_cartera)
-            rows_top = cursor.fetchall()
-            for r in rows_top:
+            for r in cursor.fetchall():
                 clientes_cartera.append({
                     'id_tercero': r[0],
                     'nom_tercero': r[1],
@@ -248,7 +234,7 @@ def cartera_view(request):
                     'dias_90_mas': format_cop(r[7]),
                 })
     except Exception as e:
-        logger.error(f"Error al consultar Informe de Cartera en Oracle: {e}")
+        logger.error(f"Error en Cartera: {e}")
 
     context = {
         'total_cartera': total_cartera,
@@ -266,54 +252,96 @@ def cartera_view(request):
 
 
 def cierre_caja_view(request):
-    """
-    Informe de Cierre Z / Arqueo de Caja POS:
-    Cruza la base económica inicial con los tickets emitidos y medios de pago
-    para calcular el 'Efectivo Esperado' vs. 'Efectivo Declarado' y alertar descuadres.
-    """
+    """Informe de Cierre Z / Arqueo de Caja POS."""
     turno_id = request.GET.get('turno_id')
     caja_id = request.GET.get('caja_id', 'CAJA-01')
-    
+
     if turno_id:
         turno = PosTurno.objects.filter(pk=turno_id).first()
     else:
-        turno = PosTurno.objects.filter(caja_id=caja_id).order_by('-id_turno').first()
+        turno = PosTurno.objects.filter(
+            caja_id=caja_id).order_by('-id_turno').first()
 
     if not turno:
-        context = {'turno_encontrado': False, 'message': 'No se encontraron turnos de caja registrados.'}
+        context = {'turno_encontrado': False,
+                   'message': 'No se encontraron turnos de caja registrados.'}
+        return render(request, 'reportes/cierre_caja.html', context)
+
+    tickets = turno.tickets.all()
+    base_economica = turno.base_economica
+    tot_efectivo = sum((t.pago_efectivo for t in tickets), Decimal('0'))
+    tot_tarjeta = sum((t.pago_tarjeta for t in tickets), Decimal('0'))
+    tot_transferencia = sum(
+        (t.pago_transferencia for t in tickets), Decimal('0'))
+    tot_puntos = sum((t.pago_puntos for t in tickets), Decimal('0'))
+    tot_ventas = sum((t.tot_ticket for t in tickets), Decimal('0'))
+    efectivo_esperado = base_economica + tot_efectivo
+
+    raw_declarado = request.GET.get('efectivo_declarado')
+    efectivo_declarado = None
+    descuadre = Decimal('0')
+    if raw_declarado is not None:
+        try:
+            efectivo_declarado = Decimal(str(raw_declarado))
+            descuadre = efectivo_declarado - efectivo_esperado
+        except Exception:
+            efectivo_declarado = None
+
+    context = {
+        'turno_encontrado': True,
+        'turno': turno,
+        'tickets_count': tickets.count(),
+        'base_economica': base_economica,
+        'base_economica_cop': format_cop(base_economica),
+        'tot_efectivo': tot_efectivo,
+        'tot_efectivo_cop': format_cop(tot_efectivo),
+        'tot_tarjeta': tot_tarjeta,
+        'tot_tarjeta_cop': format_cop(tot_tarjeta),
+        'tot_transferencia': tot_transferencia,
+        'tot_transferencia_cop': format_cop(tot_transferencia),
+        'tot_puntos': tot_puntos,
+        'tot_puntos_cop': format_cop(tot_puntos),
+        'tot_ventas': tot_ventas,
+        'tot_ventas_cop': format_cop(tot_ventas),
+        'efectivo_esperado': efectivo_esperado,
+        'efectivo_esperado_cop': format_cop(efectivo_esperado),
+        'efectivo_declarado': efectivo_declarado,
+        'efectivo_declarado_cop': format_cop(efectivo_declarado) if efectivo_declarado is not None else None,
+        'descuadre': descuadre,
+        'descuadre_cop': format_cop(descuadre),
+        'es_cuadrado': (descuadre == Decimal('0')) if efectivo_declarado is not None else True,
+        'todos_turnos': PosTurno.objects.order_by('-id_turno')[:10]
+    }
     return render(request, 'reportes/cierre_caja.html', context)
 
-from django.http import JsonResponse
-from .services_analisis_ventas import VentasClientesAnalyticsService
-import json
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
-            return float(obj)
+            return int(round(obj))
         return super(DecimalEncoder, self).default(obj)
 
+
 def analisis_ventas_clientes_view(request):
-    """
-    Vista para el dashboard de analisis de ventas por clientes (SPEC-001).
-    """
+    """Vista para el dashboard de analisis de ventas por clientes (SPEC-001)."""
     service_for_filters = VentasClientesAnalyticsService()
     all_filtros = service_for_filters.get_filtros_disponibles()
 
-    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.GET.get('ajax') == '1'
-    
+    is_ajax = request.headers.get(
+        'x-requested-with') == 'XMLHttpRequest' or request.GET.get('ajax') == '1'
+
     if is_ajax:
         request_filtros = {
             'anio': request.GET.get('anio'),
+            'mes': request.GET.get('mes'),
             'zona_vendedor': request.GET.get('zona') or request.GET.get('vendedor'),
             'proveedor': request.GET.get('proveedor'),
             'linea': request.GET.get('linea'),
-             'canal': request.GET.get('canal'),
-             'mes': request.GET.get('mes'),
+            'canal': request.GET.get('canal'),
         }
-        applied_filtros = {k: v for k, v in request_filtros.items() if v and v != 'todos'}
+        applied_filtros = {k: v for k,
+                           v in request_filtros.items() if v and v != 'todos'}
     else:
-        # Carga inicial: aplicar filtro del anio mas reciente por defecto
         if all_filtros.get('anios'):
             applied_filtros = {'anio': all_filtros['anios'][0]}
         else:
@@ -323,17 +351,23 @@ def analisis_ventas_clientes_view(request):
     datos_tablero = service.get_datos_tablero()
     matriz_pivot = service.get_matriz_pivot_mensual()
 
-    # Convertir el DataFrame de pivot a HTML
     if not matriz_pivot.empty:
-        # Formatear valores a enteros con separador de miles
-        matriz_pivot = matriz_pivot.applymap(lambda x: f"{int(x):,}".replace(",", "."))
-        matriz_html = matriz_pivot.to_html(classes="w-full text-left text-sm", border=0, escape=False)
-        matriz_html = matriz_html.replace('<table border="1" class="dataframe">', '<table class="w-full text-left text-sm">')
-        matriz_html = matriz_html.replace('<thead>', '<thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b sticky top-0">')
+        # Formatear numeros enteros con separador de miles
+        matriz_formateada = matriz_pivot.applymap(lambda x: f"$ {int(x):,}".replace(",", ".") if isinstance(
+            x, (int, float)) and x > 0 else ("$ 0" if isinstance(x, (int, float)) else x))
+        matriz_html = matriz_formateada.to_html(
+            classes="w-full text-left text-sm", border=0, escape=False)
+        matriz_html = matriz_html.replace(
+            '<table border="1" class="dataframe">', '<table class="w-full text-left text-sm">')
+        matriz_html = matriz_html.replace(
+            '<thead>', '<thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b sticky top-0">')
         matriz_html = matriz_html.replace('<th>', '<th class="p-3">')
-        matriz_html = matriz_html.replace('<tbody>', '<tbody class="divide-y divide-gray-200">')
-        matriz_html = matriz_html.replace('<tr>', '<tr class="hover:bg-gray-50">')
-        matriz_html = matriz_html.replace('<td>', '<td class="p-3 text-right font-mono">')
+        matriz_html = matriz_html.replace(
+            '<tbody>', '<tbody class="divide-y divide-gray-200">')
+        matriz_html = matriz_html.replace(
+            '<tr>', '<tr class="hover:bg-gray-50">')
+        matriz_html = matriz_html.replace(
+            '<td>', '<td class="p-3 text-right font-mono">')
     else:
         matriz_html = '<div class="p-4 text-center text-gray-500">No hay datos disponibles para los filtros seleccionados.</div>'
 
@@ -347,7 +381,6 @@ def analisis_ventas_clientes_view(request):
     if is_ajax:
         return JsonResponse(payload, encoder=DecimalEncoder)
 
-    # Para GET inicial: serializar con DecimalEncoder para evitar 'Decimal is not defined' en JavaScript
     datos_iniciales_json = json.dumps(payload, cls=DecimalEncoder)
 
     context = {
