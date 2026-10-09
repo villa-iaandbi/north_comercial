@@ -29,4 +29,18 @@ logs/
 facturas/
 
 agent_venv/
+# Entornos virtuales (evita el error Function not implemented por symlinks)
+agent_venv/
+.venv/
+venv/
+env/
+
+# Archivos de caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Variables de entorno y configuraciones locales
+.env
+*.local
 
