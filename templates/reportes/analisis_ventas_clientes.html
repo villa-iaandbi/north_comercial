@@ -15,8 +15,23 @@
         <select id="filtro-anio" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
             <option value="">Todo el Año</option>
             {% for anio in filtros.anios %}<option value="{{ anio }}" {% if forloop.first %}selected{% endif %}>{{ anio }}</option>{% endfor %}
-        </select>
-        <select id="filtro-zona" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+         </select>
+         <select id="filtro-mes" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+             <option value="">Todos los Meses</option>
+             <option value="1">Enero</option>
+             <option value="2">Febrero</option>
+             <option value="3">Marzo</option>
+             <option value="4">Abril</option>
+             <option value="5">Mayo</option>
+             <option value="6">Junio</option>
+             <option value="7">Julio</option>
+             <option value="8">Agosto</option>
+             <option value="9">Septiembre</option>
+             <option value="10">Octubre</option>
+             <option value="11">Noviembre</option>
+             <option value="12">Diciembre</option>
+         </select>
+         <select id="filtro-zona" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
             <option value="">Toda Zona/Vendedor</option>
             {% for vendedor in filtros.vendedores %}<option value="{{ vendedor.id }}">{{ vendedor.nombre }}</option>{% endfor %}
         </select>
@@ -92,14 +107,25 @@ document.addEventListener('DOMContentLoaded', function () {
     // Función para renderizar los datos
     function renderData(data) {
         // 1. Gráfico de Canal
-        const canalOption = {
-            tooltip: { trigger: 'axis' },
-            legend: { data: ['Venta (sin IVA)', '# Clientes'] },
-            xAxis: { type: 'category', data: data.canal.map(c => c.CANAL) },
-            yAxis: [
-                { type: 'value', name: 'Venta (sin IVA)' },
-                { type: 'value', name: '# Clientes' }
-            ],
+         const canalOption = {
+             tooltip: { trigger: 'axis' },
+            grid: { left: '8%', right: '8%', bottom: '12%', containLabel: true },
+             legend: { data: ['Venta (sin IVA)', '# Clientes'] },
+             xAxis: { type: 'category', data: data.canal.map(c => c.CANAL) },
+             yAxis: [
+                 { 
+                    type: 'value', 
+                    name: 'Venta (sin IVA)',
+                    axisLabel: {
+                        formatter: function (value) {
+                            if (value >= 1000000000) return '$' + Math.round(value / 1000000000) + 'B';
+                            if (value >= 1000000) return '$' + Math.round(value / 1000000) + 'M';
+                            return '$' + Math.round(value / 1000) + 'K';
+                        }
+                    }
+                },
+                 { type: 'value', name: '# Clientes' }
+             ],
             series: [
                 { name: 'Venta (sin IVA)', type: 'bar', data: data.canal.map(c => c.VENTA_SIN_IVA) },
                 { name: '# Clientes', type: 'line', yAxisIndex: 1, data: data.canal.map(c => c.QCLIENTES) }
@@ -122,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function () {
         municipiosBody.innerHTML = data.municipios.map(m => `
             <tr class="hover:bg-gray-50">
                 <td class="p-3 font-bold">${ m.MUNICIPIO }</td>
-                <td class="p-3 text-right font-mono font-bold">$ ${parseFloat(m.VENTA_SIN_IVA).toLocaleString('es-CO', {minimumFractionDigits: 2})}</td>
+                 <td class="p-3 text-right font-mono font-bold">$ ${parseInt(m.VENTA_SIN_IVA).toLocaleString('es-CO')}</td>
                 <td class="p-3 text-right font-mono">${ m.QCLIENTES }</td>
             </tr>
         `).join('');
@@ -139,7 +165,8 @@ document.addEventListener('DOMContentLoaded', function () {
             zona_vendedor: document.getElementById('filtro-zona').value,
             proveedor: document.getElementById('filtro-proveedor').value,
             linea: document.getElementById('filtro-linea').value,
-            canal: document.getElementById('filtro-canal').value,
+             canal: document.getElementById('filtro-canal').value,
+             mes: document.getElementById('filtro-mes').value,
         };
         
         const queryParams = new URLSearchParams(filtros).toString();
@@ -159,7 +186,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Event Listeners para los filtros
-    ['filtro-anio', 'filtro-zona', 'filtro-proveedor', 'filtro-linea', 'filtro-canal'].forEach(id => {
+    ['filtro-anio', 'filtro-zona', 'filtro-proveedor', 'filtro-linea', 'filtro-canal', 'filtro-mes'].forEach(id => {
         document.getElementById(id).addEventListener('change', fetchData);
     });
 });

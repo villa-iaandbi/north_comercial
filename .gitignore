@@ -27,3 +27,6 @@ temp_check.py
 sqlite_db/
 logs/
 facturas/
+
+agent_venv/
+

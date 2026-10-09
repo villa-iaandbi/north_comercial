@@ -308,7 +308,8 @@ def analisis_ventas_clientes_view(request):
             'zona_vendedor': request.GET.get('zona') or request.GET.get('vendedor'),
             'proveedor': request.GET.get('proveedor'),
             'linea': request.GET.get('linea'),
-            'canal': request.GET.get('canal'),
+             'canal': request.GET.get('canal'),
+             'mes': request.GET.get('mes'),
         }
         applied_filtros = {k: v for k, v in request_filtros.items() if v and v != 'todos'}
     else:
@@ -324,6 +325,8 @@ def analisis_ventas_clientes_view(request):
 
     # Convertir el DataFrame de pivot a HTML
     if not matriz_pivot.empty:
+        # Formatear valores a enteros con separador de miles
+        matriz_pivot = matriz_pivot.applymap(lambda x: f"{int(x):,}".replace(",", "."))
         matriz_html = matriz_pivot.to_html(classes="w-full text-left text-sm", border=0, escape=False)
         matriz_html = matriz_html.replace('<table border="1" class="dataframe">', '<table class="w-full text-left text-sm">')
         matriz_html = matriz_html.replace('<thead>', '<thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b sticky top-0">')
@@ -352,53 +355,3 @@ def analisis_ventas_clientes_view(request):
         'datos_iniciales_json': datos_iniciales_json,
     }
     return render(request, 'reportes/analisis_ventas_clientes.html', context)
-
-
-    tickets = turno.tickets.all()
-    
-    base_economica = turno.base_economica
-    tot_efectivo = sum((t.pago_efectivo for t in tickets), Decimal('0.00'))
-    tot_tarjeta = sum((t.pago_tarjeta for t in tickets), Decimal('0.00'))
-    tot_transferencia = sum((t.pago_transferencia for t in tickets), Decimal('0.00'))
-    tot_puntos = sum((t.pago_puntos for t in tickets), Decimal('0.00'))
-    tot_ventas = sum((t.tot_ticket for t in tickets), Decimal('0.00'))
-
-    efectivo_esperado = base_economica + tot_efectivo
-
-    # Efectivo Declarado por el usuario (parámetro POST o GET)
-    raw_declarado = request.GET.get('efectivo_declarado')
-    efectivo_declarado = None
-    descuadre = Decimal('0.00')
-    if raw_declarado is not None:
-        try:
-            efectivo_declarado = Decimal(str(raw_declarado))
-            descuadre = efectivo_declarado - efectivo_esperado
-        except Exception:
-            efectivo_declarado = None
-
-    context = {
-        'turno_encontrado': True,
-        'turno': turno,
-        'tickets_count': tickets.count(),
-        'base_economica': base_economica,
-        'base_economica_cop': format_cop(base_economica),
-        'tot_efectivo': tot_efectivo,
-        'tot_efectivo_cop': format_cop(tot_efectivo),
-        'tot_tarjeta': tot_tarjeta,
-        'tot_tarjeta_cop': format_cop(tot_tarjeta),
-        'tot_transferencia': tot_transferencia,
-        'tot_transferencia_cop': format_cop(tot_transferencia),
-        'tot_puntos': tot_puntos,
-        'tot_puntos_cop': format_cop(tot_puntos),
-        'tot_ventas': tot_ventas,
-        'tot_ventas_cop': format_cop(tot_ventas),
-        'efectivo_esperado': efectivo_esperado,
-        'efectivo_esperado_cop': format_cop(efectivo_esperado),
-        'efectivo_declarado': efectivo_declarado,
-        'efectivo_declarado_cop': format_cop(efectivo_declarado) if efectivo_declarado is not None else None,
-        'descuadre': descuadre,
-        'descuadre_cop': format_cop(descuadre),
-        'es_cuadrado': (descuadre == Decimal('0.00')) if efectivo_declarado is not None else True,
-        'todos_turnos': PosTurno.objects.order_by('-id_turno')[:10]
-    }
-    return render(request, 'reportes/cierre_caja.html', context)

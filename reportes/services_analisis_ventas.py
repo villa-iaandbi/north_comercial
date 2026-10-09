@@ -23,9 +23,12 @@ class VentasClientesAnalyticsService:
             if self.filtros.get('linea'):
                 self.where_clauses.append("v.LINEA = :linea")
                 self.params['linea'] = str(self.filtros['linea'])
-            if self.filtros.get('canal'):
-                self.where_clauses.append("v.CANAL = :canal")
-                self.params['canal'] = str(self.filtros['canal'])
+             if self.filtros.get('canal'):
+                 self.where_clauses.append("v.CANAL = :canal")
+                 self.params['canal'] = str(self.filtros['canal'])
+             if self.filtros.get('mes'):
+                 self.where_clauses.append("v.MES_NUM = :mes")
+                 self.params['mes'] = int(self.filtros['mes'])
 
     def _get_where_sql(self):
         if not self.where_clauses:
@@ -89,10 +92,10 @@ class VentasClientesAnalyticsService:
                     ORDER BY VENTA DESC
                 """
                 self._ejecutar_consulta(cursor, query_canal)
-                datos['canal'] = [
-                    {'CANAL': row[0] or 'SIN CANAL', 'VENTA_SIN_IVA': Decimal(str(row[1] or 0)), 'QCLIENTES': row[2]}
-                    for row in cursor.fetchall()
-                ]
+                 datos['canal'] = [
+                     {'CANAL': row[0] or 'SIN CANAL', 'VENTA_SIN_IVA': int(round(Decimal(str(row[1] or 0)))), 'QCLIENTES': row[2]}
+                     for row in cursor.fetchall()
+                 ]
 
                 # Municipios Top 20
                 query_municipios = f"""
@@ -102,10 +105,10 @@ class VentasClientesAnalyticsService:
                     ORDER BY VENTA DESC
                 """
                 self._ejecutar_consulta(cursor, query_municipios)
-                datos['municipios'] = [
-                    {'MUNICIPIO': row[0] or 'SIN MUNICIPIO', 'VENTA_SIN_IVA': Decimal(str(row[1] or 0)), 'QCLIENTES': row[2]}
-                    for row in cursor.fetchall()[:20]
-                ]
+                 datos['municipios'] = [
+                     {'MUNICIPIO': row[0] or 'SIN MUNICIPIO', 'VENTA_SIN_IVA': int(round(Decimal(str(row[1] or 0)))), 'QCLIENTES': row[2]}
+                     for row in cursor.fetchall()[:20]
+                 ]
 
                 # Treemap
                 filtro_extra = "WHERE v.ZONA_VENDEDOR IS NOT NULL" if not where_sql else f"{where_sql} AND v.ZONA_VENDEDOR IS NOT NULL"
@@ -116,21 +119,29 @@ class VentasClientesAnalyticsService:
                     ORDER BY VENTA DESC
                 """
                 self._ejecutar_consulta(cursor, query_treemap)
-                datos['treemap'] = [
-                    {'name': row[0], 'value': Decimal(str(row[1] or 0))}
-                    for row in cursor.fetchall()
-                ]
+                 datos['treemap'] = [
+                     {'name': row[0], 'value': int(round(Decimal(str(row[1] or 0))))}
+                     for row in cursor.fetchall()
+                 ]
         except Exception as e:
             print(f"Error al obtener datos del tablero: {e}")
 
         return datos
 
     def get_matriz_pivot_mensual(self):
-        where_sql = self._get_where_sql()
-        query = f"""
-            SELECT NOM_CLIENTE, MES_NUM, VENTA_SIN_IVA
-            FROM BI_VENTASNETAS v {where_sql}
-        """
+         where_sql = self._get_where_sql()
+         query = f"""
+            SELECT * FROM (
+                SELECT
+                    NVL(v.NOM_CLIENTE, v.RAZON_SOCIAL) as CLIENTE,
+                    v.MES_NUM,
+                    v.VENTA_SIN_IVA,
+                    SUM(v.VENTA_SIN_IVA) OVER (PARTITION BY NVL(v.NOM_CLIENTE, v.RAZON_SOCIAL)) as VENTA_TOTAL_CLIENTE
+                FROM BI_VENTASNETAS v {where_sql}
+            )
+            ORDER BY VENTA_TOTAL_CLIENTE DESC
+            FETCH FIRST 50 ROWS ONLY
+         """
 
         try:
             with connection.cursor() as cursor:
@@ -139,21 +150,21 @@ class VentasClientesAnalyticsService:
                 if not rows:
                     return pd.DataFrame()
 
-                df = pd.DataFrame(rows, columns=['NOM_CLIENTE', 'MES_NUM', 'VENTA_SIN_IVA'])
-                df['VENTA_SIN_IVA'] = df['VENTA_SIN_IVA'].fillna(0).apply(lambda x: Decimal(str(x)))
+                 df = pd.DataFrame(rows, columns=['CLIENTE', 'MES_NUM', 'VENTA_SIN_IVA', 'VENTA_TOTAL_CLIENTE'])
+                 df['VENTA_SIN_IVA'] = df['VENTA_SIN_IVA'].fillna(0).apply(lambda x: int(round(Decimal(str(x)))))
+ 
+             pivot_df = pd.pivot_table(
+                 df,
+                 index='CLIENTE',
+                 columns='MES_NUM',
+                 values='VENTA_SIN_IVA',
+                 aggfunc='sum',
+                 fill_value=0
+             )
 
-            pivot_df = pd.pivot_table(
-                df,
-                index='NOM_CLIENTE',
-                columns='MES_NUM',
-                values='VENTA_SIN_IVA',
-                aggfunc='sum',
-                fill_value=Decimal('0.00')
-            )
-
-            for mes in range(1, 13):
-                if mes not in pivot_df.columns:
-                    pivot_df[mes] = Decimal('0.00')
+             for mes in range(1, 13):
+                 if mes not in pivot_df.columns:
+                     pivot_df[mes] = 0
 
             pivot_df = pivot_df[sorted(pivot_df.columns)]
             pivot_df['Total'] = pivot_df.sum(axis=1)
