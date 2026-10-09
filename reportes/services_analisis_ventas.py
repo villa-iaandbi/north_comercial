@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
 import oracledb
 import pandas as pd
 from decimal import Decimal
 from django.db import connection
+
 
 class VentasClientesAnalyticsService:
     def __init__(self, filtros=None):
@@ -16,7 +16,8 @@ class VentasClientesAnalyticsService:
                 self.params['anio'] = int(self.filtros['anio'])
             if self.filtros.get('zona_vendedor'):
                 self.where_clauses.append("v.ZONA_VENDEDOR = :zona_vendedor")
-                self.params['zona_vendedor'] = str(self.filtros['zona_vendedor'])
+                self.params['zona_vendedor'] = str(
+                    self.filtros['zona_vendedor'])
             if self.filtros.get('proveedor'):
                 self.where_clauses.append("v.PROVEEDOR = :proveedor")
                 self.params['proveedor'] = str(self.filtros['proveedor'])
