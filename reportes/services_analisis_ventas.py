@@ -39,27 +39,37 @@ class VentasClientesAnalyticsService:
         """Obtiene los valores únicos para los filtros desde la vista."""
         filtros = {
             'anios': [],
-            'zonas_vendedor': [],
+            'vendedores': [],
             'proveedores': [],
             'lineas': [],
             'canales': []
         }
         try:
             with connection.cursor() as cursor:
+                # Años
                 cursor.execute("SELECT DISTINCT ANIO FROM BI_VENTASNETAS ORDER BY ANIO DESC")
                 filtros['anios'] = [row[0] for row in cursor.fetchall()]
 
-                cursor.execute("SELECT DISTINCT ZONA_VENDEDOR FROM BI_VENTASNETAS WHERE ZONA_VENDEDOR IS NOT NULL ORDER BY ZONA_VENDEDOR")
-                filtros['zonas_vendedor'] = [row[0] for row in cursor.fetchall()]
+                # Vendedores
+                cursor.execute("""
+                    SELECT V.ID_VENDEDOR, NVL(V.COD_VENDEDOR, V.ID_VENDEDOR) || ' - ' || NVL(P.NOM_PERSONA, 'SIN ASIGNAR') AS NOMBRE
+                    FROM CT_VENDEDORES V
+                    LEFT JOIN SG_PERSONAS P ON V.ID_PERSONA = P.ID_PERSONA
+                    ORDER BY NOMBRE
+                """)
+                filtros['vendedores'] = [{'id': row[0], 'nombre': row[1]} for row in cursor.fetchall()]
 
-                cursor.execute("SELECT DISTINCT PROVEEDOR FROM BI_VENTASNETAS WHERE PROVEEDOR IS NOT NULL ORDER BY PROVEEDOR")
-                filtros['proveedores'] = [row[0] for row in cursor.fetchall()]
+                # Proveedores (Grupos)
+                cursor.execute("SELECT ID_GRUPO, NOM_GRUPO FROM IN_GRUPOS ORDER BY NOM_GRUPO")
+                filtros['proveedores'] = [{'id': row[0], 'nombre': row[1]} for row in cursor.fetchall()]
 
-                cursor.execute("SELECT DISTINCT LINEA FROM BI_VENTASNETAS WHERE LINEA IS NOT NULL ORDER BY LINEA")
-                filtros['lineas'] = [row[0] for row in cursor.fetchall()]
+                # Líneas
+                cursor.execute("SELECT ID_LINEA, NOM_LINEA FROM IN_LINEAS ORDER BY NOM_LINEA")
+                filtros['lineas'] = [{'id': row[0], 'nombre': row[1]} for row in cursor.fetchall()]
 
-                cursor.execute("SELECT DISTINCT CANAL FROM BI_VENTASNETAS WHERE CANAL IS NOT NULL ORDER BY CANAL")
-                filtros['canales'] = [row[0] for row in cursor.fetchall()]
+                # Canales
+                cursor.execute("SELECT ID_CANAL, NOM_CANAL FROM CT_CANALES ORDER BY NOM_CANAL")
+                filtros['canales'] = [{'id': row[0], 'nombre': row[1]} for row in cursor.fetchall()]
         except oracledb.DatabaseError as e:
             print(f"Error al obtener filtros: {e}")
             # En caso de error (ej. vista no existe), devolver vacío para no bloquear la UI

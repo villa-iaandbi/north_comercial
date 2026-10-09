@@ -297,32 +297,45 @@ def analisis_ventas_clientes_view(request):
     """
     Vista para el dashboard de análisis de ventas por clientes.
     """
-    filtros = {
-        'anio': request.GET.get('anio'),
-        'zona_vendedor': request.GET.get('zona_vendedor'),
-        'proveedor': request.GET.get('proveedor'),
-        'linea': request.GET.get('linea'),
-        'canal': request.GET.get('canal'),
-    }
-    # Limpiar filtros vacíos
-    filtros = {k: v for k, v in filtros.items() if v}
+    # Inicializar el servicio SIN filtros para obtener las listas completas de filtros
+    service_for_filters = VentasClientesAnalyticsService()
+    all_filtros = service_for_filters.get_filtros_disponibles()
 
-    service = VentasClientesAnalyticsService(filtros)
+    # Determinar los filtros a aplicar
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    if is_ajax:
+        request_filtros = {
+            'anio': request.GET.get('anio'),
+            'vendedor': request.GET.get('vendedor'),
+            'proveedor': request.GET.get('proveedor'),
+            'linea': request.GET.get('linea'),
+            'canal': request.GET.get('canal'),
+        }
+        # Limpiar filtros vacíos para la consulta AJAX
+        applied_filtros = {k: v for k, v in request_filtros.items() if v}
+    else:
+        # Carga inicial (GET no-AJAX): aplicar filtro del año más reciente por defecto
+        if all_filtros.get('anios'):
+            applied_filtros = {'anio': all_filtros['anios'][0]}
+        else:
+            applied_filtros = {}
 
-    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-        datos_tablero = service.get_datos_tablero()
-        matriz_pivot = service.get_matriz_pivot_mensual()
-        
-        # Convertir el DataFrame de pivot a HTML
-        matriz_html = matriz_pivot.to_html(classes="w-full text-left text-sm", border=0)
-        
-        # Reemplazar clases de pandas por las de tailwind
-        matriz_html = matriz_html.replace('<table border="1" class="dataframe"><tbody>', '<table class="w-full text-left text-sm"><tbody class="divide-y divide-gray-200">')
-        matriz_html = matriz_html.replace('<thead>', '<thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b">')
-        matriz_html = matriz_html.replace('<th>', '<th class="p-3">')
-        matriz_html = matriz_html.replace('<td>', '<td class="p-3 text-right font-mono">')
+    # Crear una instancia del servicio con los filtros APLICADOS
+    service = VentasClientesAnalyticsService(applied_filtros)
+    datos_tablero = service.get_datos_tablero()
+    matriz_pivot = service.get_matriz_pivot_mensual()
 
+    # Convertir el DataFrame de pivot a HTML
+    matriz_html = matriz_pivot.to_html(classes="w-full text-left text-sm", border=0, escape=False)
+    matriz_html = matriz_html.replace('<table border="1" class="dataframe">', '<table class="w-full text-left text-sm">')
+    matriz_html = matriz_html.replace('<thead>', '<thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b sticky top-0">')
+    matriz_html = matriz_html.replace('<th>', '<th class="p-3">')
+    matriz_html = matriz_html.replace('<tbody>', '<tbody class="divide-y divide-gray-200">')
+    matriz_html = matriz_html.replace('<tr>', '<tr class="hover:bg-gray-50">')
+    matriz_html = matriz_html.replace('<td>', '<td class="p-3 text-right font-mono">')
 
+    # Si es una petición AJAX, responder con JSON
+    if is_ajax:
         data = {
             'canal': datos_tablero['canal'],
             'municipios': datos_tablero['municipios'],
@@ -331,9 +344,15 @@ def analisis_ventas_clientes_view(request):
         }
         return JsonResponse(data, encoder=DecimalEncoder)
 
-    # Petición inicial, solo carga los filtros.
+    # Si es una petición GET inicial, renderizar el template con todo el contexto
     context = {
-        'filtros': service.get_filtros_disponibles()
+        'filtros': all_filtros,
+        'datos_iniciales': {
+            'canal': datos_tablero['canal'],
+            'municipios': datos_tablero['municipios'],
+            'treemap': datos_tablero['treemap'],
+            'matriz_html': matriz_html
+        }
     }
     return render(request, 'reportes/analisis_ventas_clientes.html', context)
 

@@ -18,19 +18,19 @@
         </select>
         <select id="filtro-zona" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
             <option value="">Toda Zona/Vendedor</option>
-            {% for zona in filtros.zonas_vendedor %}<option value="{{ zona }}">{{ zona }}</option>{% endfor %}
+            {% for vendedor in filtros.vendedores %}<option value="{{ vendedor.id }}">{{ vendedor.nombre }}</option>{% endfor %}
         </select>
         <select id="filtro-proveedor" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
             <option value="">Todo Proveedor</option>
-            {% for prov in filtros.proveedores %}<option value="{{ prov }}">{{ prov }}</option>{% endfor %}
+            {% for prov in filtros.proveedores %}<option value="{{ prov.id }}">{{ prov.nombre }}</option>{% endfor %}
         </select>
         <select id="filtro-linea" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
             <option value="">Toda Línea</option>
-            {% for linea in filtros.lineas %}<option value="{{ linea }}">{{ linea }}</option>{% endfor %}
+            {% for linea in filtros.lineas %}<option value="{{ linea.id }}">{{ linea.nombre }}</option>{% endfor %}
         </select>
         <select id="filtro-canal" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
             <option value="">Todo Canal</option>
-            {% for canal in filtros.canales %}<option value="{{ canal }}">{{ canal }}</option>{% endfor %}
+            {% for canal in filtros.canales %}<option value="{{ canal.id }}">{{ canal.nombre }}</option>{% endfor %}
         </select>
     </div>
 
@@ -86,6 +86,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Inicializar ECharts
     const chartCanal = echarts.init(document.getElementById('chart-canal'));
     const chartTreemap = echarts.init(document.getElementById('chart-treemap'));
+
+    const initialData = {{ datos_iniciales|safe }};
 
     // Función para renderizar los datos
     function renderData(data) {
@@ -151,13 +153,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // Carga inicial de datos
+    if (initialData) {
+        renderData(initialData);
+    }
+
     // Event Listeners para los filtros
     ['filtro-anio', 'filtro-zona', 'filtro-proveedor', 'filtro-linea', 'filtro-canal'].forEach(id => {
         document.getElementById(id).addEventListener('change', fetchData);
     });
-
-    // Carga inicial de datos
-    fetchData();
 });
 </script>
 {% endblock %}
