@@ -11,42 +11,64 @@
 {% block content %}
 <div class="space-y-6" id="analytics-dashboard">
     <!-- Filtros -->
-    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-5 gap-4">
-        <select id="filtro-anio" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-            <option value="">Todo el Año</option>
-            {% for anio in filtros.anios %}<option value="{{ anio }}" {% if forloop.first %}selected{% endif %}>{{ anio }}</option>{% endfor %}
-         </select>
-         <select id="filtro-mes" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-             <option value="">Todos los Meses</option>
-             <option value="1">Enero</option>
-             <option value="2">Febrero</option>
-             <option value="3">Marzo</option>
-             <option value="4">Abril</option>
-             <option value="5">Mayo</option>
-             <option value="6">Junio</option>
-             <option value="7">Julio</option>
-             <option value="8">Agosto</option>
-             <option value="9">Septiembre</option>
-             <option value="10">Octubre</option>
-             <option value="11">Noviembre</option>
-             <option value="12">Diciembre</option>
-         </select>
-         <select id="filtro-zona" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-            <option value="">Toda Zona/Vendedor</option>
-            {% for vendedor in filtros.vendedores %}<option value="{{ vendedor.id }}">{{ vendedor.nombre }}</option>{% endfor %}
-        </select>
-        <select id="filtro-proveedor" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-            <option value="">Todo Proveedor</option>
-            {% for prov in filtros.proveedores %}<option value="{{ prov.id }}">{{ prov.nombre }}</option>{% endfor %}
-        </select>
-        <select id="filtro-linea" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-            <option value="">Toda Línea</option>
-            {% for linea in filtros.lineas %}<option value="{{ linea.id }}">{{ linea.nombre }}</option>{% endfor %}
-        </select>
-        <select id="filtro-canal" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-            <option value="">Todo Canal</option>
-            {% for canal in filtros.canales %}<option value="{{ canal.id }}">{{ canal.nombre }}</option>{% endfor %}
-        </select>
+    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-7 gap-4 items-end">
+        <div class="md:col-span-1">
+            <label for="filtro-anio" class="block mb-2 text-xs font-medium text-gray-900">Año</label>
+            <select id="filtro-anio" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                <option value="">Todo el Año</option>
+                {% for anio in filtros.anios %}<option value="{{ anio }}" {% if forloop.first %}selected{% endif %}>{{ anio }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-1">
+            <label for="filtro-mes" class="block mb-2 text-xs font-medium text-gray-900">Mes</label>
+            <select id="filtro-mes" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                <option value="">Todos los Meses</option>
+                <option value="1">Enero</option>
+                <option value="2">Febrero</option>
+                <option value="3">Marzo</option>
+                <option value="4">Abril</option>
+                <option value="5">Mayo</option>
+                <option value="6">Junio</option>
+                <option value="7">Julio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+            </select>
+        </div>
+        <div class="md:col-span-1">
+            <label for="filtro-zona" class="block mb-2 text-xs font-medium text-gray-900">Vendedor/Zona</label>
+            <select id="filtro-zona" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                <option value="">Toda Zona/Vendedor</option>
+                {% for vendedor in filtros.vendedores %}<option value="{{ vendedor.id }}">{{ vendedor.nombre }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-1">
+            <label for="filtro-proveedor" class="block mb-2 text-xs font-medium text-gray-900">Proveedor</label>
+            <select id="filtro-proveedor" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                <option value="">Todo Proveedor</option>
+                {% for prov in filtros.proveedores %}<option value="{{ prov.id }}">{{ prov.nombre }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-1">
+            <label for="filtro-linea" class="block mb-2 text-xs font-medium text-gray-900">Línea</label>
+            <select id="filtro-linea" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                <option value="">Toda Línea</option>
+                {% for linea in filtros.lineas %}<option value="{{ linea.id }}">{{ linea.nombre }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-1">
+            <label for="filtro-canal" class="block mb-2 text-xs font-medium text-gray-900">Canal</label>
+            <select id="filtro-canal" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                <option value="">Todo Canal</option>
+                {% for canal in filtros.canales %}<option value="{{ canal.id }}">{{ canal.nombre }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-1 flex space-x-2">
+            <button id="btn-filtrar" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow w-full">Filtrar</button>
+            <button id="btn-limpiar" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded w-full">Limpiar</button>
+        </div>
     </div>
 
     <!-- Contenedores de Gráficos -->
@@ -185,9 +207,17 @@ document.addEventListener('DOMContentLoaded', function () {
         renderData(initialData);
     }
 
-    // Event Listeners para los filtros
-    ['filtro-anio', 'filtro-zona', 'filtro-proveedor', 'filtro-linea', 'filtro-canal', 'filtro-mes'].forEach(id => {
-        document.getElementById(id).addEventListener('change', fetchData);
+    // Event Listeners para los botones
+    document.getElementById('btn-filtrar').addEventListener('click', fetchData);
+
+    document.getElementById('btn-limpiar').addEventListener('click', () => {
+        document.getElementById('filtro-anio').value = '{{ filtros.anios.0 }}';
+        document.getElementById('filtro-mes').value = '';
+        document.getElementById('filtro-zona').value = '';
+        document.getElementById('filtro-proveedor').value = '';
+        document.getElementById('filtro-linea').value = '';
+        document.getElementById('filtro-canal').value = '';
+        fetchData();
     });
 });
 </script>
