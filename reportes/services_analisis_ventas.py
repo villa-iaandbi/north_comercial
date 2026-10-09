@@ -15,19 +15,19 @@ class VentasClientesAnalyticsService:
 
         if self.filtros:
             if self.filtros.get('anio'):
-                self.where_clauses.append("v.ANIO = :anio")
+                self.where_clauses.append("bv.ANIO = :anio")
                 self.params.append(self.filtros['anio'])
             if self.filtros.get('zona_vendedor'):
-                self.where_clauses.append("v.ZONA_VENDEDOR = :zona_vendedor")
+                self.where_clauses.append("bv.ZONA_VENDEDOR = :zona_vendedor")
                 self.params.append(self.filtros['zona_vendedor'])
             if self.filtros.get('proveedor'):
-                self.where_clauses.append("v.PROVEEDOR = :proveedor")
+                self.where_clauses.append("bv.PROVEEDOR = :proveedor")
                 self.params.append(self.filtros['proveedor'])
             if self.filtros.get('linea'):
-                self.where_clauses.append("v.LINEA = :linea")
+                self.where_clauses.append("bv.LINEA = :linea")
                 self.params.append(self.filtros['linea'])
             if self.filtros.get('canal'):
-                self.where_clauses.append("v.CANAL = :canal")
+                self.where_clauses.append("bv.CANAL = :canal")
                 self.params.append(self.filtros['canal'])
 
     def _get_where_sql(self):
@@ -51,12 +51,12 @@ class VentasClientesAnalyticsService:
                 filtros['anios'] = [row[0] for row in cursor.fetchall()]
 
                 # Vendedores
-                cursor.execute("""
-                    SELECT V.ID_VENDEDOR, NVL(V.COD_VENDEDOR, V.ID_VENDEDOR) || ' - ' || NVL(P.NOM_PERSONA, 'SIN ASIGNAR') AS NOMBRE
-                    FROM CT_VENDEDORES V
-                    LEFT JOIN SG_PERSONAS P ON V.ID_PERSONA = P.ID_PERSONA
-                    ORDER BY NOMBRE
-                """)
+                 cursor.execute("""
+                     SELECT VND.ID_VENDEDOR, NVL(VND.COD_VENDEDOR, VND.ID_VENDEDOR) || ' - ' || NVL(PER.NOM_PERSONA, 'SIN ASIGNAR') AS NOMBRE
+                     FROM CT_VENDEDORES VND
+                     LEFT JOIN SG_PERSONAS PER ON VND.ID_PERSONA = PER.ID_PERSONA
+                     ORDER BY NOMBRE
+                 """)
                 filtros['vendedores'] = [{'id': row[0], 'nombre': row[1]} for row in cursor.fetchall()]
 
                 # Proveedores (Grupos)
@@ -90,7 +90,7 @@ class VentasClientesAnalyticsService:
                 # Gráfico Canal
                 query_canal = f"""
                     SELECT CANAL, SUM(VENTA_SIN_IVA) AS VENTA, COUNT(DISTINCT ID_TERCERO) AS QCLIENTES
-                    FROM BI_VENTASNETAS v {where_sql}
+                    FROM BI_VENTASNETAS bv {where_sql}
                     GROUP BY CANAL
                     ORDER BY VENTA DESC
                 """
@@ -100,7 +100,7 @@ class VentasClientesAnalyticsService:
                 # Tabla Municipios
                 query_municipios = f"""
                     SELECT MUNICIPIO, SUM(VENTA_SIN_IVA) AS VENTA, COUNT(DISTINCT ID_TERCERO) AS QCLIENTES
-                    FROM BI_VENTASNETAS v {where_sql}
+                    FROM BI_VENTASNETAS bv {where_sql}
                     GROUP BY MUNICIPIO
                     ORDER BY VENTA DESC
                 """
@@ -110,8 +110,8 @@ class VentasClientesAnalyticsService:
                 # Treemap Vendedor
                 query_treemap = f"""
                     SELECT ZONA_VENDEDOR, SUM(VENTA_SIN_IVA) AS VENTA
-                    FROM BI_VENTASNETAS v {where_sql}
-                    WHERE v.ZONA_VENDEDOR IS NOT NULL
+                    FROM BI_VENTASNETAS bv {where_sql}
+                    WHERE bv.ZONA_VENDEDOR IS NOT NULL
                     GROUP BY ZONA_VENDEDOR
                     ORDER BY VENTA DESC
                 """
@@ -129,7 +129,7 @@ class VentasClientesAnalyticsService:
         
         query = f"""
             SELECT NOM_CLIENTE, MES_NUM, VENTA_SIN_IVA
-            FROM BI_VENTASNETAS v {where_sql}
+            FROM BI_VENTASNETAS bv {where_sql}
         """
         
         try:
