@@ -1,42 +1,44 @@
+# -*- coding: utf-8 -*-
 import oracledb
 import pandas as pd
 from decimal import Decimal
 from django.db import connection
 
 class VentasClientesAnalyticsService:
-    """
-    Servicio para el análisis de ventas por clientes. Lee de la vista agregada BI_VENTASNETAS.
-    """
-
     def __init__(self, filtros=None):
         self.filtros = filtros if filtros else {}
         self.where_clauses = []
-        self.params = []
+        self.params = {}
 
         if self.filtros:
             if self.filtros.get('anio'):
-                self.where_clauses.append("bv.ANIO = :anio")
-                self.params.append(self.filtros['anio'])
+                self.where_clauses.append("v.ANIO = :anio")
+                self.params['anio'] = int(self.filtros['anio'])
             if self.filtros.get('zona_vendedor'):
-                self.where_clauses.append("bv.ZONA_VENDEDOR = :zona_vendedor")
-                self.params.append(self.filtros['zona_vendedor'])
+                self.where_clauses.append("v.ZONA_VENDEDOR = :zona_vendedor")
+                self.params['zona_vendedor'] = str(self.filtros['zona_vendedor'])
             if self.filtros.get('proveedor'):
-                self.where_clauses.append("bv.PROVEEDOR = :proveedor")
-                self.params.append(self.filtros['proveedor'])
+                self.where_clauses.append("v.PROVEEDOR = :proveedor")
+                self.params['proveedor'] = str(self.filtros['proveedor'])
             if self.filtros.get('linea'):
-                self.where_clauses.append("bv.LINEA = :linea")
-                self.params.append(self.filtros['linea'])
+                self.where_clauses.append("v.LINEA = :linea")
+                self.params['linea'] = str(self.filtros['linea'])
             if self.filtros.get('canal'):
-                self.where_clauses.append("bv.CANAL = :canal")
-                self.params.append(self.filtros['canal'])
+                self.where_clauses.append("v.CANAL = :canal")
+                self.params['canal'] = str(self.filtros['canal'])
 
     def _get_where_sql(self):
         if not self.where_clauses:
             return ""
         return "WHERE " + " AND ".join(self.where_clauses)
 
+    def _ejecutar_consulta(self, cursor, query):
+        if self.params:
+            cursor.execute(query, self.params)
+        else:
+            cursor.execute(query)
+
     def get_filtros_disponibles(self):
-        """Obtiene los valores únicos para los filtros desde la vista."""
         filtros = {
             'anios': [],
             'vendedores': [],
@@ -46,38 +48,30 @@ class VentasClientesAnalyticsService:
         }
         try:
             with connection.cursor() as cursor:
-                # Años
-                cursor.execute("SELECT DISTINCT ANIO FROM BI_VENTASNETAS ORDER BY ANIO DESC")
+                # Anios
+                cursor.execute("SELECT DISTINCT ANIO FROM BI_VENTASNETAS WHERE ANIO IS NOT NULL ORDER BY ANIO DESC")
                 filtros['anios'] = [row[0] for row in cursor.fetchall()]
 
-                # Vendedores
-                 cursor.execute("""
-                     SELECT VND.ID_VENDEDOR, NVL(VND.COD_VENDEDOR, VND.ID_VENDEDOR) || ' - ' || NVL(PER.NOM_PERSONA, 'SIN ASIGNAR') AS NOMBRE
-                     FROM CT_VENDEDORES VND
-                     LEFT JOIN SG_PERSONAS PER ON VND.ID_PERSONA = PER.ID_PERSONA
-                     ORDER BY NOMBRE
-                 """)
-                filtros['vendedores'] = [{'id': row[0], 'nombre': row[1]} for row in cursor.fetchall()]
+                # Vendedores / Zonas reales de la vista
+                cursor.execute("SELECT DISTINCT ZONA_VENDEDOR FROM BI_VENTASNETAS WHERE ZONA_VENDEDOR IS NOT NULL ORDER BY ZONA_VENDEDOR")
+                filtros['vendedores'] = [{'id': row[0], 'nombre': row[0]} for row in cursor.fetchall()]
 
-                # Proveedores (Grupos)
-                cursor.execute("SELECT ID_GRUPO, NOM_GRUPO FROM IN_GRUPOS ORDER BY NOM_GRUPO")
-                filtros['proveedores'] = [{'id': row[0], 'nombre': row[1]} for row in cursor.fetchall()]
+                # Proveedores
+                cursor.execute("SELECT DISTINCT PROVEEDOR FROM BI_VENTASNETAS WHERE PROVEEDOR IS NOT NULL ORDER BY PROVEEDOR")
+                filtros['proveedores'] = [{'id': row[0], 'nombre': row[0]} for row in cursor.fetchall()]
 
-                # Líneas
-                cursor.execute("SELECT ID_LINEA, NOM_LINEA FROM IN_LINEAS ORDER BY NOM_LINEA")
-                filtros['lineas'] = [{'id': row[0], 'nombre': row[1]} for row in cursor.fetchall()]
+                # Lineas
+                cursor.execute("SELECT DISTINCT LINEA FROM BI_VENTASNETAS WHERE LINEA IS NOT NULL ORDER BY LINEA")
+                filtros['lineas'] = [{'id': row[0], 'nombre': row[0]} for row in cursor.fetchall()]
 
                 # Canales
-                cursor.execute("SELECT ID_CANAL, NOM_CANAL FROM CT_CANALES ORDER BY NOM_CANAL")
-                filtros['canales'] = [{'id': row[0], 'nombre': row[1]} for row in cursor.fetchall()]
-        except oracledb.DatabaseError as e:
+                cursor.execute("SELECT DISTINCT CANAL FROM BI_VENTASNETAS WHERE CANAL IS NOT NULL ORDER BY CANAL")
+                filtros['canales'] = [{'id': row[0], 'nombre': row[0]} for row in cursor.fetchall()]
+        except Exception as e:
             print(f"Error al obtener filtros: {e}")
-            # En caso de error (ej. vista no existe), devolver vacío para no bloquear la UI
-            pass
         return filtros
 
     def get_datos_tablero(self):
-        """Consulta los datos agregados para los gráficos y tablas del tablero."""
         where_sql = self._get_where_sql()
         datos = {
             'canal': [],
@@ -87,87 +81,86 @@ class VentasClientesAnalyticsService:
 
         try:
             with connection.cursor() as cursor:
-                # Gráfico Canal
+                # Canal
                 query_canal = f"""
                     SELECT CANAL, SUM(VENTA_SIN_IVA) AS VENTA, COUNT(DISTINCT ID_TERCERO) AS QCLIENTES
-                    FROM BI_VENTASNETAS bv {where_sql}
+                    FROM BI_VENTASNETAS v {where_sql}
                     GROUP BY CANAL
                     ORDER BY VENTA DESC
                 """
-                cursor.execute(query_canal, self.params)
-                datos['canal'] = [{'CANAL': row[0], 'VENTA_SIN_IVA': Decimal(row[1]), 'QCLIENTES': row[2]} for row in cursor.fetchall()]
+                self._ejecutar_consulta(cursor, query_canal)
+                datos['canal'] = [
+                    {'CANAL': row[0] or 'SIN CANAL', 'VENTA_SIN_IVA': Decimal(str(row[1] or 0)), 'QCLIENTES': row[2]}
+                    for row in cursor.fetchall()
+                ]
 
-                # Tabla Municipios
+                # Municipios Top 20
                 query_municipios = f"""
                     SELECT MUNICIPIO, SUM(VENTA_SIN_IVA) AS VENTA, COUNT(DISTINCT ID_TERCERO) AS QCLIENTES
-                    FROM BI_VENTASNETAS bv {where_sql}
+                    FROM BI_VENTASNETAS v {where_sql}
                     GROUP BY MUNICIPIO
                     ORDER BY VENTA DESC
                 """
-                cursor.execute(query_municipios, self.params)
-                datos['municipios'] = [{'MUNICIPIO': row[0], 'VENTA_SIN_IVA': Decimal(row[1]), 'QCLIENTES': row[2]} for row in cursor.fetchall()[:20]] # Top 20
+                self._ejecutar_consulta(cursor, query_municipios)
+                datos['municipios'] = [
+                    {'MUNICIPIO': row[0] or 'SIN MUNICIPIO', 'VENTA_SIN_IVA': Decimal(str(row[1] or 0)), 'QCLIENTES': row[2]}
+                    for row in cursor.fetchall()[:20]
+                ]
 
-                # Treemap Vendedor
+                # Treemap
+                filtro_extra = "WHERE v.ZONA_VENDEDOR IS NOT NULL" if not where_sql else f"{where_sql} AND v.ZONA_VENDEDOR IS NOT NULL"
                 query_treemap = f"""
                     SELECT ZONA_VENDEDOR, SUM(VENTA_SIN_IVA) AS VENTA
-                    FROM BI_VENTASNETAS bv {where_sql}
-                    WHERE bv.ZONA_VENDEDOR IS NOT NULL
+                    FROM BI_VENTASNETAS v {filtro_extra}
                     GROUP BY ZONA_VENDEDOR
                     ORDER BY VENTA DESC
                 """
-                cursor.execute(query_treemap, self.params)
-                datos['treemap'] = [{'name': row[0], 'value': Decimal(row[1])} for row in cursor.fetchall()]
-
-        except oracledb.DatabaseError as e:
+                self._ejecutar_consulta(cursor, query_treemap)
+                datos['treemap'] = [
+                    {'name': row[0], 'value': Decimal(str(row[1] or 0))}
+                    for row in cursor.fetchall()
+                ]
+        except Exception as e:
             print(f"Error al obtener datos del tablero: {e}")
 
         return datos
 
     def get_matriz_pivot_mensual(self):
-        """Obtiene los datos para la matriz pivot y la procesa con Pandas."""
         where_sql = self._get_where_sql()
-        
         query = f"""
             SELECT NOM_CLIENTE, MES_NUM, VENTA_SIN_IVA
-            FROM BI_VENTASNETAS bv {where_sql}
+            FROM BI_VENTASNETAS v {where_sql}
         """
-        
+
         try:
-            # Usar Pandas para leer directamente de la consulta
             with connection.cursor() as cursor:
-                # Pandas no puede manejar cursores directamente, se necesita un paso intermedio
-                cursor.execute(query, self.params)
+                self._ejecutar_consulta(cursor, query)
                 rows = cursor.fetchall()
                 if not rows:
-                    return pd.DataFrame() # Devuelve un DataFrame vacío si no hay datos
-                
-                df = pd.DataFrame(rows, columns=['NOM_CLIENTE', 'MES_NUM', 'VENTA_SIN_IVA'])
-                df['VENTA_SIN_IVA'] = df['VENTA_SIN_IVA'].apply(Decimal)
+                    return pd.DataFrame()
 
-            # Crear la tabla pivot
+                df = pd.DataFrame(rows, columns=['NOM_CLIENTE', 'MES_NUM', 'VENTA_SIN_IVA'])
+                df['VENTA_SIN_IVA'] = df['VENTA_SIN_IVA'].fillna(0).apply(lambda x: Decimal(str(x)))
+
             pivot_df = pd.pivot_table(
                 df,
                 index='NOM_CLIENTE',
                 columns='MES_NUM',
                 values='VENTA_SIN_IVA',
                 aggfunc='sum',
-                fill_value=Decimal(0)
+                fill_value=Decimal('0.00')
             )
 
-            # Asegurarse que todos los meses (1-12) están presentes
             for mes in range(1, 13):
                 if mes not in pivot_df.columns:
-                    pivot_df[mes] = Decimal(0)
-            
-            # Ordenar columnas por mes
-            pivot_df = pivot_df[sorted(pivot_df.columns)]
+                    pivot_df[mes] = Decimal('0.00')
 
-            # Añadir totales
+            pivot_df = pivot_df[sorted(pivot_df.columns)]
             pivot_df['Total'] = pivot_df.sum(axis=1)
             pivot_df.loc['Total'] = pivot_df.sum()
 
             return pivot_df
 
-        except (oracledb.DatabaseError, Exception) as e:
+        except Exception as e:
             print(f"Error al generar la matriz pivot: {e}")
-            return pd.DataFrame() # Retornar DF vacío en caso de error
+            return pd.DataFrame()

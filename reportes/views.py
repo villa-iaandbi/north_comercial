@@ -290,69 +290,66 @@ import json
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
-            return str(obj)
+            return float(obj)
         return super(DecimalEncoder, self).default(obj)
 
 def analisis_ventas_clientes_view(request):
     """
-    Vista para el dashboard de análisis de ventas por clientes.
+    Vista para el dashboard de analisis de ventas por clientes (SPEC-001).
     """
-    # Inicializar el servicio SIN filtros para obtener las listas completas de filtros
     service_for_filters = VentasClientesAnalyticsService()
     all_filtros = service_for_filters.get_filtros_disponibles()
 
-    # Determinar los filtros a aplicar
-    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.GET.get('ajax') == '1'
+    
     if is_ajax:
         request_filtros = {
             'anio': request.GET.get('anio'),
-            'vendedor': request.GET.get('vendedor'),
+            'zona_vendedor': request.GET.get('zona') or request.GET.get('vendedor'),
             'proveedor': request.GET.get('proveedor'),
             'linea': request.GET.get('linea'),
             'canal': request.GET.get('canal'),
         }
-        # Limpiar filtros vacíos para la consulta AJAX
-        applied_filtros = {k: v for k, v in request_filtros.items() if v}
+        applied_filtros = {k: v for k, v in request_filtros.items() if v and v != 'todos'}
     else:
-        # Carga inicial (GET no-AJAX): aplicar filtro del año más reciente por defecto
+        # Carga inicial: aplicar filtro del anio mas reciente por defecto
         if all_filtros.get('anios'):
             applied_filtros = {'anio': all_filtros['anios'][0]}
         else:
             applied_filtros = {}
 
-    # Crear una instancia del servicio con los filtros APLICADOS
     service = VentasClientesAnalyticsService(applied_filtros)
     datos_tablero = service.get_datos_tablero()
     matriz_pivot = service.get_matriz_pivot_mensual()
 
     # Convertir el DataFrame de pivot a HTML
-    matriz_html = matriz_pivot.to_html(classes="w-full text-left text-sm", border=0, escape=False)
-    matriz_html = matriz_html.replace('<table border="1" class="dataframe">', '<table class="w-full text-left text-sm">')
-    matriz_html = matriz_html.replace('<thead>', '<thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b sticky top-0">')
-    matriz_html = matriz_html.replace('<th>', '<th class="p-3">')
-    matriz_html = matriz_html.replace('<tbody>', '<tbody class="divide-y divide-gray-200">')
-    matriz_html = matriz_html.replace('<tr>', '<tr class="hover:bg-gray-50">')
-    matriz_html = matriz_html.replace('<td>', '<td class="p-3 text-right font-mono">')
+    if not matriz_pivot.empty:
+        matriz_html = matriz_pivot.to_html(classes="w-full text-left text-sm", border=0, escape=False)
+        matriz_html = matriz_html.replace('<table border="1" class="dataframe">', '<table class="w-full text-left text-sm">')
+        matriz_html = matriz_html.replace('<thead>', '<thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b sticky top-0">')
+        matriz_html = matriz_html.replace('<th>', '<th class="p-3">')
+        matriz_html = matriz_html.replace('<tbody>', '<tbody class="divide-y divide-gray-200">')
+        matriz_html = matriz_html.replace('<tr>', '<tr class="hover:bg-gray-50">')
+        matriz_html = matriz_html.replace('<td>', '<td class="p-3 text-right font-mono">')
+    else:
+        matriz_html = '<div class="p-4 text-center text-gray-500">No hay datos disponibles para los filtros seleccionados.</div>'
 
-    # Si es una petición AJAX, responder con JSON
+    payload = {
+        'canal': datos_tablero['canal'],
+        'municipios': datos_tablero['municipios'],
+        'treemap': datos_tablero['treemap'],
+        'matriz_html': matriz_html
+    }
+
     if is_ajax:
-        data = {
-            'canal': datos_tablero['canal'],
-            'municipios': datos_tablero['municipios'],
-            'treemap': datos_tablero['treemap'],
-            'matriz_html': matriz_html
-        }
-        return JsonResponse(data, encoder=DecimalEncoder)
+        return JsonResponse(payload, encoder=DecimalEncoder)
 
-    # Si es una petición GET inicial, renderizar el template con todo el contexto
+    # Para GET inicial: serializar con DecimalEncoder para evitar 'Decimal is not defined' en JavaScript
+    datos_iniciales_json = json.dumps(payload, cls=DecimalEncoder)
+
     context = {
         'filtros': all_filtros,
-        'datos_iniciales': {
-            'canal': datos_tablero['canal'],
-            'municipios': datos_tablero['municipios'],
-            'treemap': datos_tablero['treemap'],
-            'matriz_html': matriz_html
-        }
+        'datos_iniciales_json': datos_iniciales_json,
     }
     return render(request, 'reportes/analisis_ventas_clientes.html', context)
 
