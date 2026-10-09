@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const chartCanal = echarts.init(document.getElementById('chart-canal'));
     const chartTreemap = echarts.init(document.getElementById('chart-treemap'));
 
-    const initialData = {{ datos_iniciales|safe }};
+    const initialData = {{ datos_iniciales_json|safe }};
 
     // Función para renderizar los datos
     function renderData(data) {
