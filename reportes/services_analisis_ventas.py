@@ -16,24 +16,24 @@ class VentasClientesAnalyticsService:
 
         if self.filtros:
             if self.filtros.get('anio'):
-                self.where_clauses.append("v.ANIO = :anio")
+                self.where_clauses.append("VND.ANIO = :anio")
                 self.params['anio'] = str(self.filtros['anio'])
             if self.filtros.get('mes'):
                 mes_val = str(self.filtros['mes']).zfill(2)
-                self.where_clauses.append("v.MES_NUM = :mes")
+                self.where_clauses.append("VND.MES_NUM = :mes")
                 self.params['mes'] = mes_val
             if self.filtros.get('zona_vendedor'):
-                self.where_clauses.append("v.ZONA_VENDEDOR = :zona_vendedor")
+                self.where_clauses.append("VND.ZONA_VENDEDOR = :zona_vendedor")
                 self.params['zona_vendedor'] = str(
                     self.filtros['zona_vendedor'])
             if self.filtros.get('proveedor'):
-                self.where_clauses.append("v.PROVEEDOR = :proveedor")
+                self.where_clauses.append("VND.PROVEEDOR = :proveedor")
                 self.params['proveedor'] = str(self.filtros['proveedor'])
             if self.filtros.get('linea'):
-                self.where_clauses.append("v.LINEA = :linea")
+                self.where_clauses.append("VND.LINEA = :linea")
                 self.params['linea'] = str(self.filtros['linea'])
             if self.filtros.get('canal'):
-                self.where_clauses.append("v.CANAL = :canal")
+                self.where_clauses.append("VND.CANAL = :canal")
                 self.params['canal'] = str(self.filtros['canal'])
 
     def _get_where_sql(self):
@@ -94,17 +94,20 @@ class VentasClientesAnalyticsService:
         where_sql = self._get_where_sql()
         datos = {
             'canal': [],
+            'treemap': [],
+            'deptos': [],
             'municipios': [],
-            'treemap': []
+            'barrios': [],
+            'clientes_raw': []
         }
 
         try:
             with connection.cursor() as cursor:
-                # 1. Canal desde BI_VENTAS_CLIENTE_MENSUAL
+                # 1. Canal
                 query_canal = f"""
-                    SELECT CANAL, SUM(VENTA_NETA) AS VENTA, COUNT(DISTINCT ID_TERCERO) AS QCLIENTES
-                    FROM BI_VENTAS_CLIENTE_MENSUAL v {where_sql}
-                    GROUP BY CANAL
+                    SELECT VND.CANAL, SUM(VND.VENTA_NETA) AS VENTA, COUNT(DISTINCT VND.ID_TERCERO) AS QCLIENTES
+                    FROM BI_VENTAS_CLIENTE_MENSUAL VND {where_sql}
+                    GROUP BY VND.CANAL
                     ORDER BY VENTA DESC
                 """
                 self._ejecutar_consulta(cursor, query_canal)
@@ -117,12 +120,12 @@ class VentasClientesAnalyticsService:
                     for row in cursor.fetchall()
                 ]
 
-                # 2. Treemap Vendedores desde BI_VENTAS_CLIENTE_MENSUAL
-                filtro_extra = "WHERE v.ZONA_VENDEDOR IS NOT NULL" if not where_sql else f"{where_sql} AND v.ZONA_VENDEDOR IS NOT NULL"
+                # 2. Vendedores (Top)
+                filtro_extra = "WHERE VND.ZONA_VENDEDOR IS NOT NULL" if not where_sql else f"{where_sql} AND VND.ZONA_VENDEDOR IS NOT NULL"
                 query_treemap = f"""
-                    SELECT ZONA_VENDEDOR, SUM(VENTA_NETA) AS VENTA
-                    FROM BI_VENTAS_CLIENTE_MENSUAL v {filtro_extra}
-                    GROUP BY ZONA_VENDEDOR
+                    SELECT VND.ZONA_VENDEDOR, SUM(VND.VENTA_NETA) AS VENTA
+                    FROM BI_VENTAS_CLIENTE_MENSUAL VND {filtro_extra}
+                    GROUP BY VND.ZONA_VENDEDOR
                     ORDER BY VENTA DESC
                 """
                 self._ejecutar_consulta(cursor, query_treemap)
@@ -134,21 +137,90 @@ class VentasClientesAnalyticsService:
                     for row in cursor.fetchall()
                 ]
 
-                # 3. Municipios Top 20 (desde BI_VENTASNETAS)
-                query_municipios = f"""
-                    SELECT MUNICIPIO, SUM(VENTA_SIN_IVA) AS VENTA, COUNT(DISTINCT ID_TERCERO) AS QCLIENTES
-                    FROM BI_VENTASNETAS v {where_sql}
-                    GROUP BY MUNICIPIO
+                # 3. Departamentos
+                query_deptos = f"""
+                    SELECT NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO') AS DEPTO, 
+                           SUM(VND.VENTA_NETA) AS VENTA, 
+                           COUNT(DISTINCT VND.ID_TERCERO) AS QCLIENTES
+                    FROM BI_VENTAS_CLIENTE_MENSUAL VND {where_sql}
+                    GROUP BY NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO')
                     ORDER BY VENTA DESC
                 """
-                self._ejecutar_consulta(cursor, query_municipios)
+                self._ejecutar_consulta(cursor, query_deptos)
+                datos['deptos'] = [
+                    {
+                        'nombre': row[0],
+                        'venta': int(round(Decimal(str(row[1] or 0)))),
+                        'clientes': row[2]
+                    }
+                    for row in cursor.fetchall()
+                ]
+
+                # 4. Municipios (incluye Departamento para filtrado jerárquico)
+                query_muni = f"""
+                    SELECT NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO') AS DEPTO,
+                           NVL(VND.MUNICIPIO, 'SIN MUNICIPIO') AS MUNICIPIO, 
+                           SUM(VND.VENTA_NETA) AS VENTA, 
+                           COUNT(DISTINCT VND.ID_TERCERO) AS QCLIENTES
+                    FROM BI_VENTAS_CLIENTE_MENSUAL VND {where_sql}
+                    GROUP BY NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO'), NVL(VND.MUNICIPIO, 'SIN MUNICIPIO')
+                    ORDER BY VENTA DESC
+                """
+                self._ejecutar_consulta(cursor, query_muni)
                 datos['municipios'] = [
                     {
-                        'MUNICIPIO': row[0] or 'SIN MUNICIPIO',
-                        'VENTA_SIN_IVA': int(round(Decimal(str(row[1] or 0)))),
-                        'QCLIENTES': row[2]
+                        'depto': row[0],
+                        'nombre': row[1],
+                        'venta': int(round(Decimal(str(row[2] or 0)))),
+                        'clientes': row[3]
                     }
-                    for row in cursor.fetchall()[:20]
+                    for row in cursor.fetchall()
+                ]
+
+                # 5. Barrios (incluye Municipio y Departamento)
+                query_barrios = f"""
+                    SELECT NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO') AS DEPTO,
+                           NVL(VND.MUNICIPIO, 'SIN MUNICIPIO') AS MUNICIPIO,
+                           NVL(VND.BARRIO, 'SIN BARRIO') AS BARRIO,
+                           SUM(VND.VENTA_NETA) AS VENTA, 
+                           COUNT(DISTINCT VND.ID_TERCERO) AS QCLIENTES
+                    FROM BI_VENTAS_CLIENTE_MENSUAL VND {where_sql}
+                    GROUP BY NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO'), NVL(VND.MUNICIPIO, 'SIN MUNICIPIO'), NVL(VND.BARRIO, 'SIN BARRIO')
+                    ORDER BY VENTA DESC
+                """
+                self._ejecutar_consulta(cursor, query_barrios)
+                datos['barrios'] = [
+                    {
+                        'depto': row[0],
+                        'muni': row[1],
+                        'nombre': row[2],
+                        'venta': int(round(Decimal(str(row[3] or 0)))),
+                        'clientes': row[4]
+                    }
+                    for row in cursor.fetchall()
+                ]
+
+                # 6. Clientes con dimensión geográfica para reactividad Top 10 cruzado
+                query_clientes = f"""
+                    SELECT NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO') AS DEPTO,
+                           NVL(VND.MUNICIPIO, 'SIN MUNICIPIO') AS MUNICIPIO,
+                           NVL(VND.BARRIO, 'SIN BARRIO') AS BARRIO,
+                           VND.NOM_CLIENTE,
+                           SUM(VND.VENTA_NETA) AS VENTA
+                    FROM BI_VENTAS_CLIENTE_MENSUAL VND {where_sql}
+                    GROUP BY NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO'), NVL(VND.MUNICIPIO, 'SIN MUNICIPIO'), NVL(VND.BARRIO, 'SIN BARRIO'), VND.NOM_CLIENTE
+                    ORDER BY VENTA DESC
+                """
+                self._ejecutar_consulta(cursor, query_clientes)
+                datos['clientes_raw'] = [
+                    {
+                        'depto': row[0],
+                        'muni': row[1],
+                        'barrio': row[2],
+                        'cliente': row[3],
+                        'venta': int(round(Decimal(str(row[4] or 0))))
+                    }
+                    for row in cursor.fetchall()
                 ]
 
         except Exception as e:
@@ -158,7 +230,7 @@ class VentasClientesAnalyticsService:
 
     def get_matriz_pivot_mensual(self):
         where_matriz = [
-            c for c in self.where_clauses if not c.startswith('v.MES_NUM')]
+            c for c in self.where_clauses if not c.startswith('VND.MES_NUM')]
         where_sql = ("WHERE " + " AND ".join(where_matriz)
                      ) if where_matriz else ""
         params_matriz = {k: v for k, v in self.params.items() if k != 'mes'}
@@ -166,21 +238,21 @@ class VentasClientesAnalyticsService:
         query = f"""
             WITH TOP_CLI AS (
                 SELECT * FROM (
-                    SELECT v.NOM_CLIENTE, SUM(v.VENTA_NETA) AS TOTAL_ANUAL
-                    FROM BI_VENTAS_CLIENTE_MENSUAL v
+                    SELECT VND.NOM_CLIENTE, SUM(VND.VENTA_NETA) AS TOTAL_ANUAL
+                    FROM BI_VENTAS_CLIENTE_MENSUAL VND
                     {where_sql}
-                    GROUP BY v.NOM_CLIENTE
+                    GROUP BY VND.NOM_CLIENTE
                     ORDER BY TOTAL_ANUAL DESC
                 ) WHERE ROWNUM <= 50
             )
             SELECT 
-                v.NOM_CLIENTE AS CLIENTE,
-                TO_NUMBER(v.MES_NUM) AS MES_NUM,
-                SUM(v.VENTA_NETA) AS VENTA
-            FROM BI_VENTAS_CLIENTE_MENSUAL v
-            JOIN TOP_CLI tc ON tc.NOM_CLIENTE = v.NOM_CLIENTE
+                VND.NOM_CLIENTE AS CLIENTE,
+                TO_NUMBER(VND.MES_NUM) AS MES_NUM,
+                SUM(VND.VENTA_NETA) AS VENTA
+            FROM BI_VENTAS_CLIENTE_MENSUAL VND
+            JOIN TOP_CLI tc ON tc.NOM_CLIENTE = VND.NOM_CLIENTE
             {where_sql}
-            GROUP BY v.NOM_CLIENTE, TO_NUMBER(v.MES_NUM)
+            GROUP BY VND.NOM_CLIENTE, TO_NUMBER(VND.MES_NUM)
         """
 
         try:

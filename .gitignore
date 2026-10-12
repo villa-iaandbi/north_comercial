@@ -44,3 +44,8 @@ __pycache__/
 .env
 *.local
 
+# Entorno WSL específico
+.venv_wsl/
+.open_code/
+.opencode/
+
