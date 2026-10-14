@@ -1,4 +1,3 @@
-// Variables globales reactivas en window
 window.globalData = null;
 window.nivelGeoActual = 'muni';
 window.filtroZonaActivo = null;
@@ -7,7 +6,16 @@ window.offsetMatriz = 0;
 document.addEventListener('DOMContentLoaded', function () {
     const url = '/reportes/analisis-ventas/';
 
-    // Inicializar instancias ECharts
+    function showLoader() {
+        const loader = document.getElementById('global-loader');
+        if (loader) loader.classList.remove('hidden');
+    }
+
+    function hideLoader() {
+        const loader = document.getElementById('global-loader');
+        if (loader) loader.classList.add('hidden');
+    }
+
     const canalElem = document.getElementById('chart-canal');
     const treemapElem = document.getElementById('chart-treemap');
     const geoElem = document.getElementById('chart-geo');
@@ -16,7 +24,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const chartTreemap = treemapElem ? echarts.init(treemapElem) : null;
     const chartGeo = geoElem ? echarts.init(geoElem) : null;
 
-    // Switch Vendedores (Top 10 vs Tabla)
     const btnGrafica = document.getElementById('btn-vista-grafica');
     const btnTabla = document.getElementById('btn-vista-tabla');
     const boxTreemap = document.getElementById('contenedor-treemap');
@@ -39,7 +46,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Switch Geo (Gráfica vs Tabla)
     const btnGeoGrafica = document.getElementById('btn-geo-grafica');
     const btnGeoTabla = document.getElementById('btn-geo-tabla');
     const boxGeoGrafica = document.getElementById('contenedor-geo-grafica');
@@ -62,7 +68,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Selector Nivel Geo (Depto / Muni / Barrio)
     const btnDepto = document.getElementById('btn-geo-depto');
     const btnMuni = document.getElementById('btn-geo-muni');
     const btnBarrio = document.getElementById('btn-geo-barrio');
@@ -124,14 +129,13 @@ document.addEventListener('DOMContentLoaded', function () {
         window.seleccionarZona(nombre);
     };
 
-    // Renderizado del Top 10 Clientes por Zona (AJAX)
     async function renderTopClientes() {
         const tbody = document.getElementById('tabla-top-clientes-body');
         if (!tbody) return;
 
-        tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-gray-500">
-                <svg class="animate-spin inline mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                Cargando Top 10 Clientes...
+        tbody.innerHTML = `<tr><td colspan="3" class="py-2 text-center text-gray-500">
+                <svg class="animate-spin inline mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                Cargando Top 20...
             </td></tr>`;
 
         const filtros = {
@@ -149,11 +153,7 @@ document.addEventListener('DOMContentLoaded', function () {
         let valor = '';
 
         if (window.filtroZonaActivo && window.filtroZonaActivo.valor) {
-            const mapaNiveles = {
-                'depto': 'DEPARTAMENTO',
-                'muni': 'MUNICIPIO',
-                'barrio': 'BARRIO'
-            };
+            const mapaNiveles = { 'depto': 'DEPARTAMENTO', 'muni': 'MUNICIPIO', 'barrio': 'BARRIO' };
             tipo = mapaNiveles[window.nivelGeoActual] || 'GLOBAL';
             valor = window.filtroZonaActivo.valor;
         }
@@ -169,23 +169,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 tbody.innerHTML = result.clientes.map(item => {
                     const ventaFormateada = `$ ${parseInt(item.venta).toLocaleString('es-CO')}`;
                     return `
-                        <tr class="hover:bg-gray-800/60">
-                            <td class="p-2.5 font-medium text-gray-200">${item.cliente}</td>
-                            <td class="p-2.5 text-right font-mono font-bold text-gray-100">${ventaFormateada}</td>
-                            <td class="p-2.5 text-right font-mono font-semibold text-blue-400">${item.participacion} %</td>
+                        <tr class="hover:bg-gray-700 transition-colors">
+                            <td class="py-1 px-2 font-medium text-gray-200">${item.cliente}</td>
+                            <td class="py-1 px-2 text-right font-mono font-bold text-gray-100">${ventaFormateada}</td>
+                            <td class="py-1 px-2 text-right font-mono font-semibold text-blue-400">${item.participacion} %</td>
                         </tr>
                     `;
                 }).join('');
             } else {
-                tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-gray-500">Sin clientes registrados en esta zona o para los filtros seleccionados.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="3" class="py-2 text-center text-gray-500">Sin clientes en esta zona.</td></tr>`;
             }
         } catch (error) {
-            console.error("Error al cargar el Top 10 Clientes:", error);
-            tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-red-500">Error al cargar clientes.</td></tr>`;
+            console.error("Error al cargar el Top 20 Clientes:", error);
+            tbody.innerHTML = `<tr><td colspan="3" class="py-2 text-center text-red-500">Error al cargar clientes.</td></tr>`;
         }
     }
 
-    // Renderizado del componente geográfico (Gráfica / Tabla)
     function renderGeoVisuals() {
         if (!window.globalData) return;
 
@@ -196,17 +195,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const totalVentaGeo = lista.reduce((acc, curr) => acc + (Number(curr.venta) || 0), 0);
 
-        // 1. Gráfica de Barras Horizontales Top 10 Geo
         if (chartGeo) {
             chartGeo.clear();
-
             if (lista.length === 0) {
-                chartGeo.showLoading({
-                    text: 'Sin registros geográficos',
-                    color: '#3b82f6',
-                    textColor: '#9ca3af',
-                    maskColor: 'rgba(17, 24, 39, 0.8)'
-                });
+                chartGeo.showLoading({ text: 'Sin registros', color: '#3b82f6', textColor: '#9ca3af', maskColor: 'rgba(17, 24, 39, 0.8)' });
             } else {
                 chartGeo.hideLoading();
                 const top10 = lista.slice(0, 10);
@@ -225,7 +217,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             return `<strong>${item.name}</strong><br/>` +
                                 `Venta: $ ${parseInt(val).toLocaleString('es-CO')}<br/>` +
                                 `Participación: ${porc} %<br/>` +
-                                `<span style="color:#60a5fa;font-size:10px;">(Haz clic en la barra para filtrar clientes)</span>`;
+                                `<span style="color:#60a5fa;font-size:10px;">(Clic para filtrar)</span>`;
                         }
                     },
                     grid: { left: '3%', right: '14%', bottom: '5%', top: '5%', containLabel: true },
@@ -243,41 +235,28 @@ document.addEventListener('DOMContentLoaded', function () {
                     yAxis: {
                         type: 'category',
                         data: nombresY,
-                        axisLabel: {
-                            fontSize: 10,
-                            formatter: function (v) { return v.length > 18 ? v.substring(0, 16) + '...' : v; }
-                        }
+                        axisLabel: { fontSize: 10, formatter: function (v) { return v.length > 18 ? v.substring(0, 16) + '...' : v; } }
                     },
                     series: [{
-                        name: 'Venta',
-                        type: 'bar',
-                        data: valoresX,
+                        name: 'Venta', type: 'bar', data: valoresX,
                         itemStyle: {
                             borderRadius: [0, 4, 4, 0],
-                            color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
-                                { offset: 0, color: '#10b981' },
-                                { offset: 1, color: '#047857' }
-                            ])
+                            color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#10b981' }, { offset: 1, color: '#047857' }])
                         },
                         label: {
-                            show: true,
-                            position: 'right',
+                            show: true, position: 'right', fontSize: 10, color: '#6ee7b7',
                             formatter: function (p) {
                                 const val = p.value || 0;
                                 const porc = totalVentaGeo > 0 ? ((val / totalVentaGeo) * 100).toFixed(1) : '0';
                                 if (val >= 1000000000) return `$${(val / 1000000000).toFixed(1)}B (${porc}%)`;
                                 if (val >= 1000000) return `$${Math.round(val / 1000000)}M (${porc}%)`;
                                 return `$${Math.round(val / 1000)}K (${porc}%)`;
-                            },
-                            fontSize: 10,
-                            color: '#6ee7b7'
+                            }
                         }
                     }]
                 };
-
                 chartGeo.setOption(geoOption, true);
                 chartGeo.resize();
-
                 chartGeo.off('click');
                 chartGeo.on('click', function (params) {
                     if (params.name) window.seleccionarZona(params.name);
@@ -285,49 +264,39 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        // 2. Tabla Geo
         const tbodyGeo = document.getElementById('tabla-geo-body');
         if (tbodyGeo) {
             if (lista.length > 0) {
                 tbodyGeo.innerHTML = lista.map(item => `
-                    <tr class="hover:bg-gray-800/60">
-                        <td class="p-2.5 font-medium text-gray-200">${item.nombre}</td>
-                        <td class="p-2.5 text-right font-mono font-bold text-gray-100">$ ${parseInt(item.venta).toLocaleString('es-CO')}</td>
-                        <td class="p-2.5 text-right font-mono text-gray-300">${item.clientes || 0}</td>
-                        <td class="p-2.5 text-center">
+                    <tr class="hover:bg-gray-700 transition-colors">
+                        <td class="py-1 px-2 font-medium text-gray-200">${item.nombre}</td>
+                        <td class="py-1 px-2 text-right font-mono font-bold text-gray-100">$ ${parseInt(item.venta).toLocaleString('es-CO')}</td>
+                        <td class="py-1 px-2 text-right font-mono text-gray-300">${item.clientes || 0}</td>
+                        <td class="py-1 px-2 text-center">
                             <button onclick="window.filtrarDesdeTabla('${item.nombre.replace(/'/g, "\\'")}')" 
-                                    class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded transition-colors">
-                                Ver Top
-                            </button>
+                                    class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded transition-colors">Ver Top</button>
                         </td>
                     </tr>
                 `).join('');
             } else {
-                tbodyGeo.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-500">Sin datos registrados para esta vista.</td></tr>`;
+                tbodyGeo.innerHTML = `<tr><td colspan="4" class="py-2 text-center text-gray-500">Sin datos registrados para esta vista.</td></tr>`;
             }
         }
     }
 
-    // Renderizado general del tablero
     function renderData(data) {
         if (!data) return;
         window.globalData = data;
 
-        // 1. Gráfico Canales
         if (chartCanal) {
             const canalOption = {
                 tooltip: { trigger: 'axis' },
                 grid: { left: '8%', right: '8%', bottom: '22%', containLabel: true },
                 legend: { data: ['Venta (sin IVA)', '# Clientes'], textStyle: { color: '#9ca3af' } },
-                xAxis: {
-                    type: 'category',
-                    data: (data.canal || []).map(c => c.CANAL),
-                    axisLabel: { interval: 0, rotate: 45, fontSize: 10 }
-                },
+                xAxis: { type: 'category', data: (data.canal || []).map(c => c.CANAL), axisLabel: { interval: 0, rotate: 45, fontSize: 10 } },
                 yAxis: [
                     {
-                        type: 'value',
-                        name: 'Venta',
+                        type: 'value', name: 'Venta',
                         axisLabel: {
                             formatter: function (value) {
                                 if (value >= 1000000000) return '$' + Math.round(value / 1000000000).toFixed(1) + 'B';
@@ -340,25 +309,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     { type: 'value', name: '# Clientes', splitLine: { show: false } }
                 ],
                 series: [
-                    {
-                        name: 'Venta (sin IVA)',
-                        type: 'bar',
-                        itemStyle: { color: '#3b82f6' },
-                        data: (data.canal || []).map(c => c.VENTA_SIN_IVA)
-                    },
-                    {
-                        name: '# Clientes',
-                        type: 'line',
-                        yAxisIndex: 1,
-                        itemStyle: { color: '#10b981' },
-                        data: (data.canal || []).map(c => c.QCLIENTES)
-                    }
+                    { name: 'Venta (sin IVA)', type: 'bar', itemStyle: { color: '#3b82f6' }, data: (data.canal || []).map(c => c.VENTA_SIN_IVA) },
+                    { name: '# Clientes', type: 'line', yAxisIndex: 1, itemStyle: { color: '#10b981' }, data: (data.canal || []).map(c => c.QCLIENTES) }
                 ]
             };
             chartCanal.setOption(canalOption);
         }
 
-        // 2. Gráfico Vendedores
         const treemapData = data.treemap || [];
         const totalVentaVendedores = treemapData.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
         const vendedoresDesc = [...treemapData].sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
@@ -371,15 +328,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const barOption = {
                 tooltip: {
-                    trigger: 'axis',
-                    axisPointer: { type: 'shadow' },
+                    trigger: 'axis', axisPointer: { type: 'shadow' },
                     formatter: function (params) {
                         const item = params[0];
                         const val = item.value || 0;
                         const porc = totalVentaVendedores > 0 ? ((val / totalVentaVendedores) * 100).toFixed(2) : '0.00';
-                        return `<strong>${item.name}</strong><br/>` +
-                            `Venta: $ ${parseInt(val).toLocaleString('es-CO')}<br/>` +
-                            `Participación: ${porc} %`;
+                        return `<strong>${item.name}</strong><br/>Venta: $ ${parseInt(val).toLocaleString('es-CO')}<br/>Participación: ${porc} %`;
                     }
                 },
                 grid: { left: '3%', right: '14%', bottom: '5%', top: '5%', containLabel: true },
@@ -394,37 +348,22 @@ document.addEventListener('DOMContentLoaded', function () {
                     },
                     splitLine: { lineStyle: { color: '#374151', type: 'dashed' } }
                 },
-                yAxis: {
-                    type: 'category',
-                    data: nombresY,
-                    axisLabel: {
-                        fontSize: 10,
-                        formatter: function (v) { return v.length > 20 ? v.substring(0, 18) + '...' : v; }
-                    }
-                },
+                yAxis: { type: 'category', data: nombresY, axisLabel: { fontSize: 10, formatter: function (v) { return v.length > 20 ? v.substring(0, 18) + '...' : v; } } },
                 series: [{
-                    name: 'Venta',
-                    type: 'bar',
-                    data: valoresX,
+                    name: 'Venta', type: 'bar', data: valoresX,
                     itemStyle: {
                         borderRadius: [0, 4, 4, 0],
-                        color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
-                            { offset: 0, color: '#3b82f6' },
-                            { offset: 1, color: '#1d4ed8' }
-                        ])
+                        color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#3b82f6' }, { offset: 1, color: '#1d4ed8' }])
                     },
                     label: {
-                        show: true,
-                        position: 'right',
+                        show: true, position: 'right', fontSize: 10, color: '#93c5fd',
                         formatter: function (p) {
                             const val = p.value || 0;
                             const porc = totalVentaVendedores > 0 ? ((val / totalVentaVendedores) * 100).toFixed(1) : '0';
                             if (val >= 1000000000) return `$${(val / 1000000000).toFixed(1)}B (${porc}%)`;
                             if (val >= 1000000) return `$${Math.round(val / 1000000)}M (${porc}%)`;
                             return `$${Math.round(val / 1000)}K (${porc}%)`;
-                        },
-                        fontSize: 10,
-                        color: '#93c5fd'
+                        }
                     }
                 }]
             };
@@ -437,32 +376,29 @@ document.addEventListener('DOMContentLoaded', function () {
                 const val = Number(v.value) || 0;
                 const porc = totalVentaVendedores > 0 ? ((val / totalVentaVendedores) * 100).toFixed(2) : '0.00';
                 return `
-                    <tr class="hover:bg-gray-800/60">
-                        <td class="p-2.5 font-medium text-gray-200">${v.name}</td>
-                        <td class="p-2.5 text-right font-mono font-bold text-gray-100">$ ${parseInt(val).toLocaleString('es-CO')}</td>
-                        <td class="p-2.5 text-right font-mono font-semibold text-blue-400">${porc} %</td>
+                    <tr class="hover:bg-gray-700 transition-colors">
+                        <td class="py-1 px-2 font-medium text-gray-200">${v.name}</td>
+                        <td class="py-1 px-2 text-right font-mono font-bold text-gray-100">$ ${parseInt(val).toLocaleString('es-CO')}</td>
+                        <td class="py-1 px-2 text-right font-mono font-semibold text-blue-400">${porc} %</td>
                     </tr>
                 `;
             }).join('');
         }
 
-        // 3. Renderizar componentes geográficos y Top 10 Clientes inicial
         renderGeoVisuals();
         renderTopClientes();
 
-        // 4. Renderizar Matriz Pivot
         const matrizTbody = document.getElementById('matriz-tbody');
         const btnCargarMas = document.getElementById('btn-cargar-mas-clientes');
-
         const filasHtml = data.rows_html || data.nuevas_filas_html || '';
 
         if (matrizTbody) {
             matrizTbody.innerHTML = '';
             if (filasHtml && filasHtml.trim() !== '') {
                 matrizTbody.innerHTML = filasHtml;
-                window.offsetMatriz = 50; // Ya se renderizaron los primeros 50
+                window.offsetMatriz = 50;
             } else {
-                matrizTbody.innerHTML = `<tr><td colspan="14" class="p-6 text-center text-gray-500 font-sans">No hay datos disponibles para los filtros seleccionados.</td></tr>`;
+                matrizTbody.innerHTML = `<tr><td colspan="14" class="py-4 text-center text-gray-500 font-sans">No hay datos disponibles para los filtros seleccionados.</td></tr>`;
             }
         }
 
@@ -476,8 +412,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // Petición AJAX general del tablero
     async function fetchData() {
+        showLoader(); // Muestra el overlay de carga general
         const anio = document.getElementById('filtro-anio')?.value || '';
         const mes = document.getElementById('filtro-mes')?.value || '';
         const zona = document.getElementById('filtro-zona')?.value || '';
@@ -486,66 +422,43 @@ document.addEventListener('DOMContentLoaded', function () {
         const canal = document.getElementById('filtro-canal')?.value || '';
 
         const params = new URLSearchParams({
-            anio: anio,
-            mes: mes,
-            zona: zona,
-            proveedor: proveedor,
-            linea: linea,
-            canal: canal,
-            offset_matriz: 0,
-            limit_matriz: 50
+            anio: anio, mes: mes, zona: zona, proveedor: proveedor,
+            linea: linea, canal: canal, offset_matriz: 0, limit_matriz: 50
         });
 
         try {
-            const response = await fetch(`${url}?${params.toString()}`, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
+            const response = await fetch(`${url}?${params.toString()}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
             renderData(data);
         } catch (error) {
             console.error("Error al obtener datos:", error);
             alert("Error al cargar los datos. Por favor intente de nuevo.");
+        } finally {
+            hideLoader(); // Lo oculta al terminar
         }
     }
 
-    // Carga progresiva de la matriz
     async function loadMoreClientes() {
+        showLoader(); // Muestra el overlay al cargar la siguiente página de matriz
         const btnCargarMas = document.getElementById('btn-cargar-mas-clientes');
-        if (!btnCargarMas) return;
-
-        btnCargarMas.disabled = true;
-        btnCargarMas.innerHTML = `
-            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-400 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span>Cargando más clientes...</span>
-        `;
-
-        const anio = document.getElementById('filtro-anio')?.value || '';
-        const mes = document.getElementById('filtro-mes')?.value || '';
-        const zona = document.getElementById('filtro-zona')?.value || '';
-        const proveedor = document.getElementById('filtro-proveedor')?.value || '';
-        const linea = document.getElementById('filtro-linea')?.value || '';
-        const canal = document.getElementById('filtro-canal')?.value || '';
+        if (btnCargarMas) {
+            btnCargarMas.disabled = true;
+            btnCargarMas.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-400 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Cargando más clientes...</span>`;
+        }
 
         const filtros = {
-            solo_matriz: '1',
-            offset_matriz: window.offsetMatriz,
-            limit_matriz: 50,
-            anio: anio,
-            mes: mes,
-            zona: zona,
-            proveedor: proveedor,
-            linea: linea,
-            canal: canal
+            solo_matriz: '1', offset_matriz: window.offsetMatriz, limit_matriz: 50,
+            anio: document.getElementById('filtro-anio')?.value || '',
+            mes: document.getElementById('filtro-mes')?.value || '',
+            zona: document.getElementById('filtro-zona')?.value || '',
+            proveedor: document.getElementById('filtro-proveedor')?.value || '',
+            linea: document.getElementById('filtro-linea')?.value || '',
+            canal: document.getElementById('filtro-canal')?.value || ''
         };
 
         try {
-            const response = await fetch(`${url}?${new URLSearchParams(filtros).toString()}`, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
+            const response = await fetch(`${url}?${new URLSearchParams(filtros).toString()}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
 
@@ -556,44 +469,44 @@ document.addEventListener('DOMContentLoaded', function () {
                 window.offsetMatriz += (data.total_filas || 50);
             }
 
-            if (data.has_more) {
-                btnCargarMas.classList.remove('hidden');
-                btnCargarMas.innerHTML = '<span>Cargar más clientes...</span>';
-            } else {
-                btnCargarMas.classList.add('hidden');
+            if (btnCargarMas) {
+                if (data.has_more) {
+                    btnCargarMas.classList.remove('hidden');
+                    btnCargarMas.innerHTML = '<span>Cargar más clientes...</span>';
+                } else {
+                    btnCargarMas.classList.add('hidden');
+                }
             }
         } catch (error) {
             console.error("Error al paginar matriz:", error);
-            btnCargarMas.innerHTML = '<span>Reintentar cargar clientes</span>';
+            if (btnCargarMas) btnCargarMas.innerHTML = '<span>Reintentar cargar clientes</span>';
         } finally {
-            btnCargarMas.disabled = false;
+            if (btnCargarMas) btnCargarMas.disabled = false;
+            hideLoader();
         }
     }
 
-    // Listeners de Filtros
     const btnFiltrar = document.getElementById('btn-filtrar');
     if (btnFiltrar) {
-        btnFiltrar.addEventListener('click', () => {
-            window.offsetMatriz = 0;
-            fetchData();
-        });
+        btnFiltrar.addEventListener('click', () => { window.offsetMatriz = 0; fetchData(); });
     }
 
     const btnLimpiar = document.getElementById('btn-limpiar');
     if (btnLimpiar) {
         btnLimpiar.addEventListener('click', () => {
-            const anioSelect = document.getElementById('filtro-anio');
-            if (anioSelect && anioSelect.options.length > 0) anioSelect.selectedIndex = 0;
+            if (document.getElementById('filtro-anio')) document.getElementById('filtro-anio').selectedIndex = 0;
             if (document.getElementById('filtro-mes')) document.getElementById('filtro-mes').value = '';
             if (document.getElementById('filtro-zona')) document.getElementById('filtro-zona').value = '';
             if (document.getElementById('filtro-proveedor')) document.getElementById('filtro-proveedor').value = '';
             if (document.getElementById('filtro-linea')) document.getElementById('filtro-linea').value = '';
             if (document.getElementById('filtro-canal')) document.getElementById('filtro-canal').value = '';
+
             window.filtroZonaActivo = null;
             const btnReset = document.getElementById('btn-reset-zona');
             if (btnReset) btnReset.classList.add('hidden');
             const lbl = document.getElementById('lbl-zona-activa');
             if (lbl) lbl.textContent = "Filtrando: Toda la empresa (Global)";
+
             window.offsetMatriz = 0;
             fetchData();
         });
@@ -604,7 +517,6 @@ document.addEventListener('DOMContentLoaded', function () {
         btnCargarMasClientes.addEventListener('click', loadMoreClientes);
     }
 
-    // Arranque inicial blindado
     try {
         const rawJson = document.getElementById('initial-data')?.textContent;
         if (rawJson && rawJson.trim() !== '') {
@@ -612,7 +524,6 @@ document.addEventListener('DOMContentLoaded', function () {
             if (cleanJson.includes('\\u0022')) cleanJson = cleanJson.replace(/\\u0022/g, '"');
             const initialData = JSON.parse(cleanJson);
 
-            // Si el initialData no trajo filas, forzar fetch inicial
             if (!initialData.rows_html && !initialData.nuevas_filas_html) {
                 fetchData();
             } else {

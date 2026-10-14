@@ -341,7 +341,6 @@ def analisis_ventas_clientes_view(request):
             'linea': request.GET.get('linea'),
             'canal': request.GET.get('canal'),
         }
-        # Aplicación estricta de ADR-014 en parámetros para cruce de matriz
         request_filtros['departamento'] = request.GET.get('departamento')
         request_filtros['municipio'] = request.GET.get('municipio')
         request_filtros['barrio'] = request.GET.get('barrio')
@@ -356,7 +355,7 @@ def analisis_ventas_clientes_view(request):
 
     service = VentasClientesAnalyticsService(applied_filtros)
 
-    # --- ADR-013: RUTINA AISLADA DE PAGINACIÓN DE MATRIZ ---
+    # --- PAGINACIÓN DE MATRIZ ---
     if solo_matriz:
         offset = int(request.GET.get('offset_matriz', 0))
         limit = int(request.GET.get('limit_matriz', 50))
@@ -377,11 +376,11 @@ def analisis_ventas_clientes_view(request):
             if match:
                 filas_html = match.group(1)
                 filas_html = filas_html.replace(
-                    '<tr>', '<tr class="hover:bg-gray-800/60 transition-colors">')
+                    '<tr>', '<tr class="hover:bg-gray-700 transition-colors">')
                 filas_html = filas_html.replace(
-                    '<th>', '<td class="p-2.5 text-left font-bold text-gray-200">')
+                    '<th>', '<td class="py-1 px-2 text-left font-bold text-gray-200">')
                 filas_html = filas_html.replace(
-                    '<td>', '<td class="p-2.5 text-right font-mono text-gray-300">')
+                    '<td>', '<td class="py-1 px-2 text-right font-mono text-gray-300">')
             total_filas = len(matriz_pivot)
 
         return JsonResponse({
@@ -390,7 +389,7 @@ def analisis_ventas_clientes_view(request):
             'has_more': total_filas == limit
         })
 
-    # --- RUTINA DE CARGA INICIAL Y REDIBUJO COMPLETO DE FILTROS ---
+    # --- RUTINA DE CARGA INICIAL ---
     datos_tablero = service.get_datos_tablero()
 
     offset = int(request.GET.get('offset_matriz', 0))
@@ -411,11 +410,11 @@ def analisis_ventas_clientes_view(request):
         if match:
             filas_html = match.group(1)
             filas_html = filas_html.replace(
-                '<tr>', '<tr class="hover:bg-gray-800/60 transition-colors">')
+                '<tr>', '<tr class="hover:bg-gray-700 transition-colors">')
             filas_html = filas_html.replace(
-                '<th>', '<td class="p-2.5 text-left font-bold text-gray-200">')
+                '<th>', '<td class="py-1 px-2 text-left font-bold text-gray-200">')
             filas_html = filas_html.replace(
-                '<td>', '<td class="p-2.5 text-right font-mono text-gray-300">')
+                '<td>', '<td class="py-1 px-2 text-right font-mono text-gray-300">')
         has_more = len(matriz_pivot) == limit
 
     payload = {
@@ -441,7 +440,7 @@ def analisis_ventas_clientes_view(request):
 
 
 def api_top_clientes_zona(request):
-    """Retorna el Top 10 de clientes filtrado por zona geográfica para SPEC-001."""
+    """Retorna el Top 20 de clientes filtrado por zona geográfica para SPEC-001."""
     tipo = request.GET.get('tipo', '').upper()
     valor = request.GET.get('valor', '').strip()
 
@@ -468,9 +467,8 @@ def api_top_clientes_zona(request):
     filtros = {k: v for k, v in filtros.items() if v and v != 'todos'}
 
     try:
-        # ADR-012: Delegación absoluta al motor relacional de Oracle (sin loops en Python)
         service = VentasClientesAnalyticsService(filtros=filtros)
-        top_clientes_raw, total_venta_zona = service.get_top_clientes(limit=10)
+        top_clientes_raw, total_venta_zona = service.get_top_clientes(limit=20)
 
         top_clientes = []
         for c in top_clientes_raw:
@@ -483,7 +481,6 @@ def api_top_clientes_zona(request):
                 'participacion': part
             })
 
-        # CRÍTICO: Se corrigió la llave para sincronizar con la espera del JS (`result.clientes`)
         return JsonResponse({'status': 'ok', 'clientes': top_clientes})
     except Exception as e:
         logger.error(f"Error en api_top_clientes_zona: {e}")
