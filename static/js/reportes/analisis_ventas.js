@@ -4,26 +4,39 @@ window.filtroZonaActivo = null;
 window.offsetMatriz = 0;
 
 document.addEventListener('DOMContentLoaded', function () {
+
+    // --- SOLUCIÓN NATIVA AL MENÚ COLAPSADO ---
+    document.body.classList.add('sidebar-collapse');
+    const btnToggle = document.querySelector('[data-widget="pushmenu"]') || document.querySelector('.sidebar-toggle');
+    if (btnToggle && !document.body.classList.contains('sidebar-collapse')) {
+        btnToggle.click();
+    }
+
     const url = '/reportes/analisis-ventas/';
 
-    function showLoader() {
-        const loader = document.getElementById('global-loader');
-        if (loader) loader.classList.remove('hidden');
+    function showLoader(msg = 'ACTUALIZANDO...') {
+        const loader = document.getElementById('floating-loader');
+        const txt = document.getElementById('loader-text');
+        if (txt) txt.textContent = msg;
+        if (loader) {
+            loader.classList.remove('opacity-0', 'pointer-events-none');
+            loader.classList.add('opacity-100');
+        }
     }
 
     function hideLoader() {
-        const loader = document.getElementById('global-loader');
-        if (loader) loader.classList.add('hidden');
+        const loader = document.getElementById('floating-loader');
+        if (loader) {
+            loader.classList.remove('opacity-100');
+            loader.classList.add('opacity-0', 'pointer-events-none');
+        }
     }
 
-    const canalElem = document.getElementById('chart-canal');
-    const treemapElem = document.getElementById('chart-treemap');
-    const geoElem = document.getElementById('chart-geo');
+    const chartCanal = echarts.init(document.getElementById('chart-canal'));
+    const chartTreemap = echarts.init(document.getElementById('chart-treemap'));
+    const chartGeo = echarts.init(document.getElementById('chart-geo'));
 
-    const chartCanal = canalElem ? echarts.init(canalElem) : null;
-    const chartTreemap = treemapElem ? echarts.init(treemapElem) : null;
-    const chartGeo = geoElem ? echarts.init(geoElem) : null;
-
+    // Switch Vendedores
     const btnGrafica = document.getElementById('btn-vista-grafica');
     const btnTabla = document.getElementById('btn-vista-tabla');
     const boxTreemap = document.getElementById('contenedor-treemap');
@@ -33,19 +46,20 @@ document.addEventListener('DOMContentLoaded', function () {
         btnGrafica.addEventListener('click', function () {
             boxTreemap.classList.remove('hidden');
             boxTabla.classList.add('hidden');
-            btnGrafica.className = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-l-lg border border-blue-600";
+            btnGrafica.className = "px-2.5 py-1 text-xs font-medium text-white bg-indigo-600 rounded-l-lg border border-indigo-600";
             btnTabla.className = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 rounded-r-lg border border-gray-700 hover:bg-gray-700";
-            if (chartTreemap) chartTreemap.resize();
+            chartTreemap.resize();
         });
 
         btnTabla.addEventListener('click', function () {
             boxTreemap.classList.add('hidden');
             boxTabla.classList.remove('hidden');
-            btnTabla.className = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-r-lg border border-blue-600";
+            btnTabla.className = "px-2.5 py-1 text-xs font-medium text-white bg-indigo-600 rounded-r-lg border border-indigo-600";
             btnGrafica.className = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 rounded-l-lg border border-gray-700 hover:bg-gray-700";
         });
     }
 
+    // Switch Geo
     const btnGeoGrafica = document.getElementById('btn-geo-grafica');
     const btnGeoTabla = document.getElementById('btn-geo-tabla');
     const boxGeoGrafica = document.getElementById('contenedor-geo-grafica');
@@ -55,15 +69,15 @@ document.addEventListener('DOMContentLoaded', function () {
         btnGeoGrafica.addEventListener('click', function () {
             boxGeoGrafica.classList.remove('hidden');
             boxGeoTabla.classList.add('hidden');
-            btnGeoGrafica.className = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-l-lg border border-blue-600";
+            btnGeoGrafica.className = "px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded-l-lg border border-emerald-600";
             btnGeoTabla.className = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 rounded-r-lg border border-gray-700 hover:bg-gray-700";
-            if (chartGeo) chartGeo.resize();
+            chartGeo.resize();
         });
 
         btnGeoTabla.addEventListener('click', function () {
             boxGeoGrafica.classList.add('hidden');
             boxGeoTabla.classList.remove('hidden');
-            btnGeoTabla.className = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-r-lg border border-blue-600";
+            btnGeoTabla.className = "px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded-r-lg border border-emerald-600";
             btnGeoGrafica.className = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 rounded-l-lg border border-gray-700 hover:bg-gray-700";
         });
     }
@@ -74,7 +88,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function setNivelGeo(nivel) {
         window.nivelGeoActual = nivel;
-        const activeClass = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 border border-blue-600";
+        const activeClass = "px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 border border-emerald-600";
         const inactiveClass = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 border border-gray-700 hover:bg-gray-700";
 
         if (btnDepto && btnMuni && btnBarrio) {
@@ -87,7 +101,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (thHeader) {
             thHeader.textContent = nivel === 'depto' ? 'Departamento' : (nivel === 'muni' ? 'Municipio' : 'Barrio');
         }
-
         renderGeoVisuals();
     }
 
@@ -100,28 +113,23 @@ document.addEventListener('DOMContentLoaded', function () {
         btnResetZona.addEventListener('click', function () {
             window.filtroZonaActivo = null;
             this.classList.add('hidden');
-            const lbl = document.getElementById('lbl-zona-activa');
-            if (lbl) lbl.textContent = "Filtrando: Toda la empresa (Global)";
+            document.getElementById('lbl-zona-activa').textContent = "Filtrando: Toda la empresa (Global)";
             renderTopClientes();
         });
     }
 
     window.addEventListener('resize', function () {
-        if (chartCanal) chartCanal.resize();
-        if (chartTreemap) chartTreemap.resize();
-        if (chartGeo) chartGeo.resize();
+        chartCanal.resize();
+        chartTreemap.resize();
+        chartGeo.resize();
     });
 
     window.seleccionarZona = function (nombre) {
         window.filtroZonaActivo = { tipo: window.nivelGeoActual, valor: nombre };
         const tipoLabel = window.nivelGeoActual === 'depto' ? 'Departamento' : (window.nivelGeoActual === 'muni' ? 'Municipio' : 'Barrio');
-
-        const lbl = document.getElementById('lbl-zona-activa');
-        if (lbl) lbl.textContent = `Filtrando: ${tipoLabel} -> ${nombre}`;
-
+        document.getElementById('lbl-zona-activa').textContent = `Filtrando: ${tipoLabel} -> ${nombre}`;
         const btnReset = document.getElementById('btn-reset-zona');
         if (btnReset) btnReset.classList.remove('hidden');
-
         renderTopClientes();
     };
 
@@ -132,11 +140,7 @@ document.addEventListener('DOMContentLoaded', function () {
     async function renderTopClientes() {
         const tbody = document.getElementById('tabla-top-clientes-body');
         if (!tbody) return;
-
-        tbody.innerHTML = `<tr><td colspan="3" class="py-2 text-center text-gray-500">
-                <svg class="animate-spin inline mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                Cargando Top 20...
-            </td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="3" class="py-2 text-center text-gray-500">Cargando Top 20...</td></tr>`;
 
         const filtros = {
             anio: document.getElementById('filtro-anio')?.value || '',
@@ -148,7 +152,6 @@ document.addEventListener('DOMContentLoaded', function () {
         };
 
         const queryParamsFiltros = new URLSearchParams(filtros).toString();
-
         let tipo = 'GLOBAL';
         let valor = '';
 
@@ -162,7 +165,6 @@ document.addEventListener('DOMContentLoaded', function () {
             const response = await fetch(`/reportes/analisis-ventas/api/top-clientes-zona/?tipo=${tipo}&valor=${encodeURIComponent(valor)}&${queryParamsFiltros}`, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const result = await response.json();
 
             if (result.clientes && result.clientes.length > 0) {
@@ -170,7 +172,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     const ventaFormateada = `$ ${parseInt(item.venta).toLocaleString('es-CO')}`;
                     return `
                         <tr class="hover:bg-gray-700 transition-colors">
-                            <td class="py-1 px-2 font-medium text-gray-200">${item.cliente}</td>
+                            <td class="py-1 px-2 font-medium text-gray-200 truncate max-w-[200px]" title="${item.cliente}">${item.cliente}</td>
                             <td class="py-1 px-2 text-right font-mono font-bold text-gray-100">${ventaFormateada}</td>
                             <td class="py-1 px-2 text-right font-mono font-semibold text-blue-400">${item.participacion} %</td>
                         </tr>
@@ -180,7 +182,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 tbody.innerHTML = `<tr><td colspan="3" class="py-2 text-center text-gray-500">Sin clientes en esta zona.</td></tr>`;
             }
         } catch (error) {
-            console.error("Error al cargar el Top 20 Clientes:", error);
             tbody.innerHTML = `<tr><td colspan="3" class="py-2 text-center text-red-500">Error al cargar clientes.</td></tr>`;
         }
     }
@@ -198,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (chartGeo) {
             chartGeo.clear();
             if (lista.length === 0) {
-                chartGeo.showLoading({ text: 'Sin registros', color: '#3b82f6', textColor: '#9ca3af', maskColor: 'rgba(17, 24, 39, 0.8)' });
+                chartGeo.showLoading({ text: 'Sin registros', color: '#10b981', textColor: '#9ca3af', maskColor: 'rgba(17, 24, 39, 0.8)' });
             } else {
                 chartGeo.hideLoading();
                 const top10 = lista.slice(0, 10);
@@ -206,45 +207,27 @@ document.addEventListener('DOMContentLoaded', function () {
                 const nombresY = top10Asc.map(x => x.nombre);
                 const valoresX = top10Asc.map(x => Number(x.venta) || 0);
 
-                const geoOption = {
+                chartGeo.setOption({
                     tooltip: {
-                        trigger: 'axis',
-                        axisPointer: { type: 'shadow' },
+                        trigger: 'axis', axisPointer: { type: 'shadow' },
                         formatter: function (params) {
                             const item = params[0];
                             const val = item.value || 0;
                             const porc = totalVentaGeo > 0 ? ((val / totalVentaGeo) * 100).toFixed(2) : '0.00';
-                            return `<strong>${item.name}</strong><br/>` +
-                                `Venta: $ ${parseInt(val).toLocaleString('es-CO')}<br/>` +
-                                `Participación: ${porc} %<br/>` +
-                                `<span style="color:#60a5fa;font-size:10px;">(Clic para filtrar)</span>`;
+                            return `<strong>${item.name}</strong><br/>Venta: $ ${parseInt(val).toLocaleString('es-CO')}<br/>Participación: ${porc} %<br/><span style="color:#6ee7b7;font-size:10px;">(Clic para filtrar)</span>`;
                         }
                     },
                     grid: { left: '3%', right: '14%', bottom: '5%', top: '5%', containLabel: true },
                     xAxis: {
-                        type: 'value',
-                        axisLabel: {
-                            formatter: function (val) {
-                                if (val >= 1000000000) return '$' + (val / 1000000000).toFixed(1) + 'B';
-                                if (val >= 1000000) return '$' + Math.round(val / 1000000) + 'M';
-                                return '$' + Math.round(val / 1000) + 'K';
-                            }
-                        },
-                        splitLine: { lineStyle: { color: '#374151', type: 'dashed' } }
+                        type: 'value', splitLine: { lineStyle: { color: '#374151', type: 'dashed' } },
+                        axisLabel: { formatter: (val) => val >= 1000000 ? `$${Math.round(val / 1000000)}M` : `$${Math.round(val / 1000)}K` }
                     },
-                    yAxis: {
-                        type: 'category',
-                        data: nombresY,
-                        axisLabel: { fontSize: 10, formatter: function (v) { return v.length > 18 ? v.substring(0, 16) + '...' : v; } }
-                    },
+                    yAxis: { type: 'category', data: nombresY, axisLabel: { fontSize: 10, align: 'right', formatter: v => v.length > 18 ? v.substring(0, 16) + '...' : v } },
                     series: [{
                         name: 'Venta', type: 'bar', data: valoresX,
-                        itemStyle: {
-                            borderRadius: [0, 4, 4, 0],
-                            color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#10b981' }, { offset: 1, color: '#047857' }])
-                        },
+                        itemStyle: { color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#10b981' }, { offset: 1, color: '#047857' }]), borderRadius: [0, 4, 4, 0] },
                         label: {
-                            show: true, position: 'right', fontSize: 10, color: '#6ee7b7',
+                            show: true, position: 'right', color: '#6ee7b7', fontSize: 10,
                             formatter: function (p) {
                                 const val = p.value || 0;
                                 const porc = totalVentaGeo > 0 ? ((val / totalVentaGeo) * 100).toFixed(1) : '0';
@@ -254,9 +237,8 @@ document.addEventListener('DOMContentLoaded', function () {
                             }
                         }
                     }]
-                };
-                chartGeo.setOption(geoOption, true);
-                chartGeo.resize();
+                }, true);
+
                 chartGeo.off('click');
                 chartGeo.on('click', function (params) {
                     if (params.name) window.seleccionarZona(params.name);
@@ -273,13 +255,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         <td class="py-1 px-2 text-right font-mono font-bold text-gray-100">$ ${parseInt(item.venta).toLocaleString('es-CO')}</td>
                         <td class="py-1 px-2 text-right font-mono text-gray-300">${item.clientes || 0}</td>
                         <td class="py-1 px-2 text-center">
-                            <button onclick="window.filtrarDesdeTabla('${item.nombre.replace(/'/g, "\\'")}')" 
-                                    class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded transition-colors">Ver Top</button>
+                            <button onclick="window.filtrarDesdeTabla('${item.nombre.replace(/'/g, "\\'")}')" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-0.5 rounded transition-colors">Ver Top</button>
                         </td>
                     </tr>
                 `).join('');
             } else {
-                tbodyGeo.innerHTML = `<tr><td colspan="4" class="py-2 text-center text-gray-500">Sin datos registrados para esta vista.</td></tr>`;
+                tbodyGeo.innerHTML = `<tr><td colspan="4" class="py-2 text-center text-gray-500">Sin datos.</td></tr>`;
             }
         }
     }
@@ -288,34 +269,25 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!data) return;
         window.globalData = data;
 
+        // 1. Chart Canal (Cyan + Rose)
         if (chartCanal) {
-            const canalOption = {
+            chartCanal.setOption({
                 tooltip: { trigger: 'axis' },
                 grid: { left: '8%', right: '8%', bottom: '22%', containLabel: true },
                 legend: { data: ['Venta (sin IVA)', '# Clientes'], textStyle: { color: '#9ca3af' } },
                 xAxis: { type: 'category', data: (data.canal || []).map(c => c.CANAL), axisLabel: { interval: 0, rotate: 45, fontSize: 10 } },
                 yAxis: [
-                    {
-                        type: 'value', name: 'Venta',
-                        axisLabel: {
-                            formatter: function (value) {
-                                if (value >= 1000000000) return '$' + Math.round(value / 1000000000).toFixed(1) + 'B';
-                                if (value >= 1000000) return '$' + Math.round(value / 1000000) + 'M';
-                                return '$' + Math.round(value / 1000) + 'K';
-                            }
-                        },
-                        splitLine: { lineStyle: { color: '#374151', type: 'dashed' } }
-                    },
+                    { type: 'value', name: 'Venta', splitLine: { lineStyle: { color: '#374151', type: 'dashed' } }, axisLabel: { formatter: (v) => v >= 1000000 ? `$${Math.round(v / 1000000)}M` : `$${Math.round(v / 1000)}K` } },
                     { type: 'value', name: '# Clientes', splitLine: { show: false } }
                 ],
                 series: [
-                    { name: 'Venta (sin IVA)', type: 'bar', itemStyle: { color: '#3b82f6' }, data: (data.canal || []).map(c => c.VENTA_SIN_IVA) },
-                    { name: '# Clientes', type: 'line', yAxisIndex: 1, itemStyle: { color: '#10b981' }, data: (data.canal || []).map(c => c.QCLIENTES) }
+                    { name: 'Venta (sin IVA)', type: 'bar', data: (data.canal || []).map(c => c.VENTA_SIN_IVA), itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#06b6d4' }, { offset: 1, color: '#0369a1' }]), borderRadius: [4, 4, 0, 0] } },
+                    { name: '# Clientes', type: 'line', yAxisIndex: 1, data: (data.canal || []).map(c => c.QCLIENTES), itemStyle: { color: '#f43f5e' }, symbolSize: 6, lineStyle: { width: 3, type: 'dashed' } }
                 ]
-            };
-            chartCanal.setOption(canalOption);
+            }, true);
         }
 
+        // 2. Chart Vendedores (Indigo)
         const treemapData = data.treemap || [];
         const totalVentaVendedores = treemapData.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
         const vendedoresDesc = [...treemapData].sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
@@ -323,40 +295,24 @@ document.addEventListener('DOMContentLoaded', function () {
         if (chartTreemap) {
             const top10Desc = vendedoresDesc.slice(0, 10);
             const top10Asc = [...top10Desc].reverse();
-            const nombresY = top10Asc.map(v => v.name);
-            const valoresX = top10Asc.map(v => Number(v.value) || 0);
 
-            const barOption = {
+            chartTreemap.setOption({
                 tooltip: {
                     trigger: 'axis', axisPointer: { type: 'shadow' },
                     formatter: function (params) {
-                        const item = params[0];
-                        const val = item.value || 0;
+                        const val = params[0].value || 0;
                         const porc = totalVentaVendedores > 0 ? ((val / totalVentaVendedores) * 100).toFixed(2) : '0.00';
-                        return `<strong>${item.name}</strong><br/>Venta: $ ${parseInt(val).toLocaleString('es-CO')}<br/>Participación: ${porc} %`;
+                        return `<strong>${params[0].name}</strong><br/>Venta: $ ${parseInt(val).toLocaleString('es-CO')}<br/>Participación: ${porc} %`;
                     }
                 },
                 grid: { left: '3%', right: '14%', bottom: '5%', top: '5%', containLabel: true },
-                xAxis: {
-                    type: 'value',
-                    axisLabel: {
-                        formatter: function (val) {
-                            if (val >= 1000000000) return '$' + (val / 1000000000).toFixed(1) + 'B';
-                            if (val >= 1000000) return '$' + Math.round(val / 1000000) + 'M';
-                            return '$' + Math.round(val / 1000) + 'K';
-                        }
-                    },
-                    splitLine: { lineStyle: { color: '#374151', type: 'dashed' } }
-                },
-                yAxis: { type: 'category', data: nombresY, axisLabel: { fontSize: 10, formatter: function (v) { return v.length > 20 ? v.substring(0, 18) + '...' : v; } } },
+                xAxis: { type: 'value', splitLine: { lineStyle: { color: '#374151', type: 'dashed' } }, axisLabel: { formatter: (val) => val >= 1000000 ? `$${Math.round(val / 1000000)}M` : `$${Math.round(val / 1000)}K` } },
+                yAxis: { type: 'category', data: top10Asc.map(v => v.name), axisLabel: { fontSize: 10, align: 'right', formatter: v => v.length > 20 ? v.substring(0, 18) + '...' : v } },
                 series: [{
-                    name: 'Venta', type: 'bar', data: valoresX,
-                    itemStyle: {
-                        borderRadius: [0, 4, 4, 0],
-                        color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#3b82f6' }, { offset: 1, color: '#1d4ed8' }])
-                    },
+                    name: 'Venta', type: 'bar', data: top10Asc.map(v => Number(v.value) || 0),
+                    itemStyle: { color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [{ offset: 0, color: '#8b5cf6' }, { offset: 1, color: '#4f46e5' }]), borderRadius: [0, 4, 4, 0] },
                     label: {
-                        show: true, position: 'right', fontSize: 10, color: '#93c5fd',
+                        show: true, position: 'right', color: '#c4b5fd', fontSize: 10,
                         formatter: function (p) {
                             const val = p.value || 0;
                             const porc = totalVentaVendedores > 0 ? ((val / totalVentaVendedores) * 100).toFixed(1) : '0';
@@ -366,8 +322,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         }
                     }
                 }]
-            };
-            chartTreemap.setOption(barOption, true);
+            }, true);
         }
 
         const tablaVendedoresBody = document.getElementById('tabla-vendedores-body');
@@ -379,7 +334,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     <tr class="hover:bg-gray-700 transition-colors">
                         <td class="py-1 px-2 font-medium text-gray-200">${v.name}</td>
                         <td class="py-1 px-2 text-right font-mono font-bold text-gray-100">$ ${parseInt(val).toLocaleString('es-CO')}</td>
-                        <td class="py-1 px-2 text-right font-mono font-semibold text-blue-400">${porc} %</td>
+                        <td class="py-1 px-2 text-right font-mono font-semibold text-indigo-400">${porc} %</td>
                     </tr>
                 `;
             }).join('');
@@ -388,6 +343,7 @@ document.addEventListener('DOMContentLoaded', function () {
         renderGeoVisuals();
         renderTopClientes();
 
+        // 4. Renderizar Matriz Pivot
         const matrizTbody = document.getElementById('matriz-tbody');
         const btnCargarMas = document.getElementById('btn-cargar-mas-clientes');
         const filasHtml = data.rows_html || data.nuevas_filas_html || '';
@@ -398,14 +354,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 matrizTbody.innerHTML = filasHtml;
                 window.offsetMatriz = 50;
             } else {
-                matrizTbody.innerHTML = `<tr><td colspan="14" class="py-4 text-center text-gray-500 font-sans">No hay datos disponibles para los filtros seleccionados.</td></tr>`;
+                matrizTbody.innerHTML = `<tr><td colspan="14" class="py-4 text-center text-gray-500 font-sans">No hay datos disponibles.</td></tr>`;
             }
         }
 
         if (btnCargarMas) {
             if (data.has_more) {
                 btnCargarMas.classList.remove('hidden');
-                btnCargarMas.innerHTML = '<span>Cargar más clientes...</span>';
             } else {
                 btnCargarMas.classList.add('hidden');
             }
@@ -413,39 +368,31 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     async function fetchData() {
-        showLoader(); // Muestra el overlay de carga general
-        const anio = document.getElementById('filtro-anio')?.value || '';
-        const mes = document.getElementById('filtro-mes')?.value || '';
-        const zona = document.getElementById('filtro-zona')?.value || '';
-        const proveedor = document.getElementById('filtro-proveedor')?.value || '';
-        const linea = document.getElementById('filtro-linea')?.value || '';
-        const canal = document.getElementById('filtro-canal')?.value || '';
-
-        const params = new URLSearchParams({
-            anio: anio, mes: mes, zona: zona, proveedor: proveedor,
-            linea: linea, canal: canal, offset_matriz: 0, limit_matriz: 50
-        });
+        showLoader();
+        const filtros = {
+            anio: document.getElementById('filtro-anio')?.value || '',
+            mes: document.getElementById('filtro-mes')?.value || '',
+            zona: document.getElementById('filtro-zona')?.value || '',
+            proveedor: document.getElementById('filtro-proveedor')?.value || '',
+            linea: document.getElementById('filtro-linea')?.value || '',
+            canal: document.getElementById('filtro-canal')?.value || '',
+        };
 
         try {
-            const response = await fetch(`${url}?${params.toString()}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const response = await fetch(`${url}?${new URLSearchParams(filtros).toString()}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             const data = await response.json();
             renderData(data);
         } catch (error) {
             console.error("Error al obtener datos:", error);
-            alert("Error al cargar los datos. Por favor intente de nuevo.");
         } finally {
-            hideLoader(); // Lo oculta al terminar
+            hideLoader();
         }
     }
 
     async function loadMoreClientes() {
-        showLoader(); // Muestra el overlay al cargar la siguiente página de matriz
+        showLoader("CARGANDO CLIENTES...");
         const btnCargarMas = document.getElementById('btn-cargar-mas-clientes');
-        if (btnCargarMas) {
-            btnCargarMas.disabled = true;
-            btnCargarMas.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-400 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Cargando más clientes...</span>`;
-        }
+        if (btnCargarMas) btnCargarMas.disabled = true;
 
         const filtros = {
             solo_matriz: '1', offset_matriz: window.offsetMatriz, limit_matriz: 50,
@@ -459,7 +406,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
         try {
             const response = await fetch(`${url}?${new URLSearchParams(filtros).toString()}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
 
             const matrizTbody = document.getElementById('matriz-tbody');
@@ -470,70 +416,41 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             if (btnCargarMas) {
-                if (data.has_more) {
-                    btnCargarMas.classList.remove('hidden');
-                    btnCargarMas.innerHTML = '<span>Cargar más clientes...</span>';
-                } else {
-                    btnCargarMas.classList.add('hidden');
-                }
+                if (data.has_more) btnCargarMas.classList.remove('hidden');
+                else btnCargarMas.classList.add('hidden');
             }
         } catch (error) {
             console.error("Error al paginar matriz:", error);
-            if (btnCargarMas) btnCargarMas.innerHTML = '<span>Reintentar cargar clientes</span>';
         } finally {
             if (btnCargarMas) btnCargarMas.disabled = false;
             hideLoader();
         }
     }
 
-    const btnFiltrar = document.getElementById('btn-filtrar');
-    if (btnFiltrar) {
-        btnFiltrar.addEventListener('click', () => { window.offsetMatriz = 0; fetchData(); });
-    }
-
-    const btnLimpiar = document.getElementById('btn-limpiar');
-    if (btnLimpiar) {
-        btnLimpiar.addEventListener('click', () => {
-            if (document.getElementById('filtro-anio')) document.getElementById('filtro-anio').selectedIndex = 0;
-            if (document.getElementById('filtro-mes')) document.getElementById('filtro-mes').value = '';
-            if (document.getElementById('filtro-zona')) document.getElementById('filtro-zona').value = '';
-            if (document.getElementById('filtro-proveedor')) document.getElementById('filtro-proveedor').value = '';
-            if (document.getElementById('filtro-linea')) document.getElementById('filtro-linea').value = '';
-            if (document.getElementById('filtro-canal')) document.getElementById('filtro-canal').value = '';
-
-            window.filtroZonaActivo = null;
-            const btnReset = document.getElementById('btn-reset-zona');
-            if (btnReset) btnReset.classList.add('hidden');
-            const lbl = document.getElementById('lbl-zona-activa');
-            if (lbl) lbl.textContent = "Filtrando: Toda la empresa (Global)";
-
-            window.offsetMatriz = 0;
-            fetchData();
+    document.getElementById('btn-filtrar')?.addEventListener('click', () => { window.offsetMatriz = 0; fetchData(); });
+    document.getElementById('btn-limpiar')?.addEventListener('click', () => {
+        if (document.getElementById('filtro-anio')) document.getElementById('filtro-anio').selectedIndex = 0;
+        ['mes', 'zona', 'proveedor', 'linea', 'canal'].forEach(f => {
+            if (document.getElementById(`filtro-${f}`)) document.getElementById(`filtro-${f}`).value = '';
         });
-    }
+        window.filtroZonaActivo = null;
+        document.getElementById('btn-reset-zona')?.classList.add('hidden');
+        document.getElementById('lbl-zona-activa').textContent = "Filtrando: Toda la empresa (Global)";
+        window.offsetMatriz = 0;
+        fetchData();
+    });
 
-    const btnCargarMasClientes = document.getElementById('btn-cargar-mas-clientes');
-    if (btnCargarMasClientes) {
-        btnCargarMasClientes.addEventListener('click', loadMoreClientes);
-    }
+    document.getElementById('btn-cargar-mas-clientes')?.addEventListener('click', loadMoreClientes);
 
     try {
         const rawJson = document.getElementById('initial-data')?.textContent;
         if (rawJson && rawJson.trim() !== '') {
-            let cleanJson = rawJson.trim();
-            if (cleanJson.includes('\\u0022')) cleanJson = cleanJson.replace(/\\u0022/g, '"');
-            const initialData = JSON.parse(cleanJson);
-
-            if (!initialData.rows_html && !initialData.nuevas_filas_html) {
-                fetchData();
-            } else {
-                renderData(initialData);
-            }
+            let cleanJson = rawJson.trim().replace(/\\u0022/g, '"');
+            renderData(JSON.parse(cleanJson));
         } else {
             fetchData();
         }
     } catch (e) {
-        console.error("Error leyendo datos iniciales:", e);
         fetchData();
     }
 });
