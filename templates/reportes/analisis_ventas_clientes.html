@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% load humanize %}
 
 {% block title %}Análisis de Ventas por Clientes - North Comercial{% endblock %}
@@ -257,511 +258,59 @@
     </div>
 
     <!-- Fila 3: Matriz Pivot Clientes a ANCHO COMPLETO -->
-    <div class="w-full bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden">
+    <div class="w-full bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden mt-6">
         <div class="p-4 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
-            <h4 class="text-sm font-bold text-gray-100">Matriz de Ventas Mensuales por Cliente (Top 50)</h4>
-            <span class="text-xs text-gray-400">Valores sin IVA en pesos colombianos</span>
+            <div>
+                <h4 class="text-sm font-bold text-gray-100">Matriz de Ventas Mensuales por Cliente</h4>
+                <p class="text-xs text-gray-400">Distribución de facturación mensual sin IVA (cifras en COP)</p>
+            </div>
+            <span
+                class="text-xs text-blue-400 font-mono bg-blue-950/60 px-2.5 py-1 rounded border border-blue-900/50">Valores
+                sin IVA</span>
         </div>
-        <div id="contenedor-matriz" class="overflow-x-auto overflow-y-auto h-96"></div>
+
+        <!-- Contenedor alto para ver más clientes -->
+        <div id="contenedor-matriz" class="overflow-x-auto overflow-y-auto max-h-[650px]">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead id="matriz-thead"
+                    class="sticky top-0 bg-gray-800 text-gray-300 font-bold uppercase text-[11px] border-b border-gray-700 z-10 shadow-sm">
+                    <tr>
+                        <th class="p-2.5 sticky left-0 bg-gray-800 z-20 border-r border-gray-700 min-w-[240px]">Cliente
+                        </th>
+                        <th class="p-2 text-right">Ene</th>
+                        <th class="p-2 text-right">Feb</th>
+                        <th class="p-2 text-right">Mar</th>
+                        <th class="p-2 text-right">Abr</th>
+                        <th class="p-2 text-right">May</th>
+                        <th class="p-2 text-right">Jun</th>
+                        <th class="p-2 text-right">Jul</th>
+                        <th class="p-2 text-right">Ago</th>
+                        <th class="p-2 text-right">Sep</th>
+                        <th class="p-2 text-right">Oct</th>
+                        <th class="p-2 text-right">Nov</th>
+                        <th class="p-2 text-right">Dic</th>
+                        <th class="p-2.5 text-right font-extrabold text-white border-l border-gray-700">Total</th>
+                    </tr>
+                </thead>
+                <tbody id="matriz-tbody" class="divide-y divide-gray-800 font-mono text-gray-200">
+                    <tr>
+                        <td colspan="14" class="p-6 text-center text-gray-500 font-sans">Cargando matriz mensual...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Botón Cargar Más con Feedback Visual -->
+        <div class="p-4 bg-gray-900 border-t border-gray-800 flex justify-center items-center">
+            <button id="btn-cargar-mas-clientes" type="button"
+                class="hidden text-xs bg-gray-800 hover:bg-gray-700 text-blue-400 font-semibold py-2 px-6 rounded-lg border border-gray-700 hover:border-blue-500/50 transition-all flex items-center shadow">
+                <span>Cargar siguientes 50 clientes...</span>
+            </button>
+        </div>
     </div>
-</div>
-{% endblock %}
+    {% endblock %}
 
-{% block extra_js %}
-<script>
-    // Variables globales reactivas en window
-    window.globalData = null;
-    window.nivelGeoActual = 'muni';
-    window.filtroZonaActivo = null;
-
-    document.addEventListener('DOMContentLoaded', function () {
-        const url = "{% url 'reportes:analisis_ventas_clientes' %}";
-
-        // Inicializar instancias ECharts
-        const canalElem = document.getElementById('chart-canal');
-        const treemapElem = document.getElementById('chart-treemap');
-        const geoElem = document.getElementById('chart-geo');
-
-        const chartCanal = canalElem ? echarts.init(canalElem) : null;
-        const chartTreemap = treemapElem ? echarts.init(treemapElem) : null;
-        const chartGeo = geoElem ? echarts.init(geoElem) : null;
-
-        // Switch Vendedores (Top 10 vs Tabla)
-        const btnGrafica = document.getElementById('btn-vista-grafica');
-        const btnTabla = document.getElementById('btn-vista-tabla');
-        const boxTreemap = document.getElementById('contenedor-treemap');
-        const boxTabla = document.getElementById('contenedor-tabla-vendedores');
-
-        if (btnGrafica && btnTabla && boxTreemap && boxTabla) {
-            btnGrafica.addEventListener('click', function () {
-                boxTreemap.classList.remove('hidden');
-                boxTabla.classList.add('hidden');
-                btnGrafica.className = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-l-lg border border-blue-600";
-                btnTabla.className = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 rounded-r-lg border border-gray-700 hover:bg-gray-700";
-                if (chartTreemap) chartTreemap.resize();
-            });
-
-            btnTabla.addEventListener('click', function () {
-                boxTreemap.classList.add('hidden');
-                boxTabla.classList.remove('hidden');
-                btnTabla.className = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-r-lg border border-blue-600";
-                btnGrafica.className = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 rounded-l-lg border border-gray-700 hover:bg-gray-700";
-            });
-        }
-
-        // Switch Geo (Gráfica vs Tabla)
-        const btnGeoGrafica = document.getElementById('btn-geo-grafica');
-        const btnGeoTabla = document.getElementById('btn-geo-tabla');
-        const boxGeoGrafica = document.getElementById('contenedor-geo-grafica');
-        const boxGeoTabla = document.getElementById('contenedor-geo-tabla');
-
-        if (btnGeoGrafica && btnGeoTabla && boxGeoGrafica && boxGeoTabla) {
-            btnGeoGrafica.addEventListener('click', function () {
-                boxGeoGrafica.classList.remove('hidden');
-                boxGeoTabla.classList.add('hidden');
-                btnGeoGrafica.className = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-l-lg border border-blue-600";
-                btnGeoTabla.className = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 rounded-r-lg border border-gray-700 hover:bg-gray-700";
-                if (chartGeo) chartGeo.resize();
-            });
-
-            btnGeoTabla.addEventListener('click', function () {
-                boxGeoGrafica.classList.add('hidden');
-                boxGeoTabla.classList.remove('hidden');
-                btnGeoTabla.className = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-r-lg border border-blue-600";
-                btnGeoGrafica.className = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 rounded-l-lg border border-gray-700 hover:bg-gray-700";
-            });
-        }
-
-        // Selector Nivel Geo (Depto / Muni / Barrio)
-        const btnDepto = document.getElementById('btn-geo-depto');
-        const btnMuni = document.getElementById('btn-geo-muni');
-        const btnBarrio = document.getElementById('btn-geo-barrio');
-
-        function setNivelGeo(nivel) {
-            window.nivelGeoActual = nivel;
-            const activeClass = "px-2.5 py-1 text-xs font-medium text-white bg-blue-600 border border-blue-600";
-            const inactiveClass = "px-2.5 py-1 text-xs font-medium text-gray-300 bg-gray-800 border border-gray-700 hover:bg-gray-700";
-
-            if (btnDepto && btnMuni && btnBarrio) {
-                btnDepto.className = (nivel === 'depto' ? activeClass : inactiveClass) + " rounded-l-lg";
-                btnMuni.className = (nivel === 'muni' ? activeClass : inactiveClass);
-                btnBarrio.className = (nivel === 'barrio' ? activeClass : inactiveClass) + " rounded-r-lg";
-            }
-
-            const thHeader = document.getElementById('th-geo-nombre');
-            if (thHeader) {
-                thHeader.textContent = nivel === 'depto' ? 'Departamento' : (nivel === 'muni' ? 'Municipio' : 'Barrio');
-            }
-
-            renderGeoVisuals();
-        }
-
-        if (btnDepto) btnDepto.addEventListener('click', () => setNivelGeo('depto'));
-        if (btnMuni) btnMuni.addEventListener('click', () => setNivelGeo('muni'));
-        if (btnBarrio) btnBarrio.addEventListener('click', () => setNivelGeo('barrio'));
-
-        const btnResetZona = document.getElementById('btn-reset-zona');
-        if (btnResetZona) {
-            btnResetZona.addEventListener('click', function () {
-                window.filtroZonaActivo = null;
-                this.classList.add('hidden');
-                document.getElementById('lbl-zona-activa').textContent = "Filtrando: Toda la empresa (Global)";
-                window.renderTopClientes();
-            });
-        }
-
-        window.addEventListener('resize', function () {
-            if (chartCanal) chartCanal.resize();
-            if (chartTreemap) chartTreemap.resize();
-            if (chartGeo) chartGeo.resize();
-        });
-
-        // Función global de selección de zona
-        window.seleccionarZona = function (nombre) {
-            window.filtroZonaActivo = { tipo: window.nivelGeoActual, valor: nombre };
-            const tipoLabel = window.nivelGeoActual === 'depto' ? 'Depto' : (window.nivelGeoActual === 'muni' ? 'Municipio' : 'Barrio');
-
-            const lbl = document.getElementById('lbl-zona-activa');
-            if (lbl) lbl.textContent = `Filtrando: ${tipoLabel} -> ${nombre}`;
-
-            const btnReset = document.getElementById('btn-reset-zona');
-            if (btnReset) btnReset.classList.remove('hidden');
-
-            window.renderTopClientes();
-        };
-
-        window.filtrarDesdeTabla = function (nombre) {
-            window.seleccionarZona(nombre);
-        };
-
-        // Renderizado del Top 10 Clientes por Zona
-        window.renderTopClientes = function () {
-            if (!window.globalData) return;
-
-            const rawClientes = window.globalData.clientes_raw || [];
-            let clientesFiltrados = rawClientes;
-
-            if (window.filtroZonaActivo && window.filtroZonaActivo.valor) {
-                const valorBuscado = String(window.filtroZonaActivo.valor).trim().toUpperCase();
-
-                if (window.filtroZonaActivo.tipo === 'depto') {
-                    clientesFiltrados = rawClientes.filter(c =>
-                        c.depto && String(c.depto).trim().toUpperCase() === valorBuscado
-                    );
-                } else if (window.filtroZonaActivo.tipo === 'muni') {
-                    clientesFiltrados = rawClientes.filter(c =>
-                        c.muni && String(c.muni).trim().toUpperCase() === valorBuscado
-                    );
-                } else if (window.filtroZonaActivo.tipo === 'barrio') {
-                    clientesFiltrados = rawClientes.filter(c =>
-                        c.barrio && String(c.barrio).trim().toUpperCase() === valorBuscado
-                    );
-                }
-            }
-
-            // Agrupar ventas si el cliente tiene registros dispersos
-            const mapClientes = {};
-            clientesFiltrados.forEach(c => {
-                const nombreCli = c.cliente || c.NOM_CLIENTE || 'SIN NOMBRE';
-                const montoVenta = Number(c.venta || c.VENTA || 0);
-                mapClientes[nombreCli] = (mapClientes[nombreCli] || 0) + montoVenta;
-            });
-
-            const topLista = Object.entries(mapClientes)
-                .map(([cliente, venta]) => ({ cliente, venta }))
-                .sort((a, b) => b.venta - a.venta);
-
-            const totalZona = topLista.reduce((acc, curr) => acc + curr.venta, 0);
-            const top10 = topLista.slice(0, 10);
-
-            const tbody = document.getElementById('tabla-top-clientes-body');
-            if (!tbody) return;
-
-            if (top10.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-gray-500">Sin clientes registrados para esta selección</td></tr>`;
-                return;
-            }
-
-            tbody.innerHTML = top10.map(item => {
-                const porc = totalZona > 0 ? ((item.venta / totalZona) * 100).toFixed(2) : '0.00';
-                return `
-                    <tr class="hover:bg-gray-800/60">
-                        <td class="p-2.5 font-medium text-gray-200">${item.cliente}</td>
-                        <td class="p-2.5 text-right font-mono font-bold text-gray-100">$ ${parseInt(item.venta).toLocaleString('es-CO')}</td>
-                        <td class="p-2.5 text-right font-mono font-semibold text-blue-400">${porc} %</td>
-                    </tr>
-                `;
-            }).join('');
-        };
-
-        // Renderizado del componente geográfico (Gráfica / Tabla)
-        function renderGeoVisuals() {
-            if (!window.globalData) return;
-
-            let lista = [];
-            if (window.nivelGeoActual === 'depto') lista = window.globalData.deptos || [];
-            else if (window.nivelGeoActual === 'muni') lista = window.globalData.municipios || [];
-            else if (window.nivelGeoActual === 'barrio') lista = window.globalData.barrios || [];
-
-            const totalVentaGeo = lista.reduce((acc, curr) => acc + (Number(curr.venta) || 0), 0);
-
-            // 1. Gráfica de Barras Horizontales Top 10 Geo
-            if (chartGeo) {
-                const top10 = lista.slice(0, 10);
-                const top10Asc = [...top10].reverse();
-                const nombresY = top10Asc.map(x => x.nombre);
-                const valoresX = top10Asc.map(x => Number(x.venta) || 0);
-
-                const geoOption = {
-                    tooltip: {
-                        trigger: 'axis',
-                        axisPointer: { type: 'shadow' },
-                        formatter: function (params) {
-                            const item = params[0];
-                            const val = item.value || 0;
-                            const porc = totalVentaGeo > 0 ? ((val / totalVentaGeo) * 100).toFixed(2) : '0.00';
-                            return `<strong>${item.name}</strong><br/>` +
-                                `Venta: $ ${parseInt(val).toLocaleString('es-CO')}<br/>` +
-                                `Participación: ${porc} %<br/>` +
-                                `<span style="color:#60a5fa;font-size:10px;">(Haz clic en la barra para filtrar clientes)</span>`;
-                        }
-                    },
-                    grid: { left: '3%', right: '14%', bottom: '5%', top: '5%', containLabel: true },
-                    xAxis: {
-                        type: 'value',
-                        axisLabel: {
-                            formatter: function (val) {
-                                if (val >= 1000000000) return '$' + (val / 1000000000).toFixed(1) + 'B';
-                                if (val >= 1000000) return '$' + Math.round(val / 1000000) + 'M';
-                                return '$' + Math.round(val / 1000) + 'K';
-                            }
-                        },
-                        splitLine: { lineStyle: { color: '#374151', type: 'dashed' } }
-                    },
-                    yAxis: {
-                        type: 'category',
-                        data: nombresY,
-                        axisLabel: {
-                            fontSize: 10,
-                            formatter: function (v) { return v.length > 18 ? v.substring(0, 16) + '...' : v; }
-                        }
-                    },
-                    series: [{
-                        name: 'Venta',
-                        type: 'bar',
-                        data: valoresX,
-                        itemStyle: {
-                            borderRadius: [0, 4, 4, 0],
-                            color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
-                                { offset: 0, color: '#10b981' },
-                                { offset: 1, color: '#047857' }
-                            ])
-                        },
-                        label: {
-                            show: true,
-                            position: 'right',
-                            formatter: function (p) {
-                                const val = p.value || 0;
-                                const porc = totalVentaGeo > 0 ? ((val / totalVentaGeo) * 100).toFixed(1) : '0';
-                                if (val >= 1000000000) return `$${(val / 1000000000).toFixed(1)}B (${porc}%)`;
-                                if (val >= 1000000) return `$${Math.round(val / 1000000)}M (${porc}%)`;
-                                return `$${Math.round(val / 1000)}K (${porc}%)`;
-                            },
-                            fontSize: 10,
-                            color: '#6ee7b7'
-                        }
-                    }]
-                };
-
-                chartGeo.setOption(geoOption, true);
-
-                chartGeo.off('click');
-                chartGeo.on('click', function (params) {
-                    if (params.name) window.seleccionarZona(params.name);
-                });
-            }
-
-            // 2. Tabla Geo
-            const tbodyGeo = document.getElementById('tabla-geo-body');
-            if (tbodyGeo) {
-                tbodyGeo.innerHTML = lista.map(item => `
-                    <tr class="hover:bg-gray-800/60">
-                        <td class="p-2.5 font-medium text-gray-200">${item.nombre}</td>
-                        <td class="p-2.5 text-right font-mono font-bold text-gray-100">$ ${parseInt(item.venta).toLocaleString('es-CO')}</td>
-                        <td class="p-2.5 text-right font-mono text-gray-300">${item.clientes || 0}</td>
-                        <td class="p-2.5 text-center">
-                            <button onclick="window.filtrarDesdeTabla('${item.nombre.replace(/'/g, "\\'")}')" 
-                                    class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-0.5 rounded transition-colors">
-                                Ver Top
-                            </button>
-                        </td>
-                    </tr>
-                `).join('');
-            }
-        }
-
-        // Renderizado general del tablero
-        function renderData(data) {
-            if (!data) return;
-            window.globalData = data;
-
-            // 1. Gráfico Canales (rotación 45°)
-            if (chartCanal) {
-                const canalOption = {
-                    tooltip: { trigger: 'axis' },
-                    grid: { left: '8%', right: '8%', bottom: '22%', containLabel: true },
-                    legend: { data: ['Venta (sin IVA)', '# Clientes'], textStyle: { color: '#9ca3af' } },
-                    xAxis: {
-                        type: 'category',
-                        data: (data.canal || []).map(c => c.CANAL),
-                        axisLabel: { interval: 0, rotate: 45, fontSize: 10 }
-                    },
-                    yAxis: [
-                        {
-                            type: 'value',
-                            name: 'Venta',
-                            axisLabel: {
-                                formatter: function (value) {
-                                    if (value >= 1000000000) return '$' + Math.round(value / 1000000000) + 'B';
-                                    if (value >= 1000000) return '$' + Math.round(value / 1000000) + 'M';
-                                    return '$' + Math.round(value / 1000) + 'K';
-                                }
-                            },
-                            splitLine: { lineStyle: { color: '#374151', type: 'dashed' } }
-                        },
-                        { type: 'value', name: '# Clientes', splitLine: { show: false } }
-                    ],
-                    series: [
-                        {
-                            name: 'Venta (sin IVA)',
-                            type: 'bar',
-                            itemStyle: { color: '#3b82f6' },
-                            data: (data.canal || []).map(c => c.VENTA_SIN_IVA)
-                        },
-                        {
-                            name: '# Clientes',
-                            type: 'line',
-                            yAxisIndex: 1,
-                            itemStyle: { color: '#10b981' },
-                            data: (data.canal || []).map(c => c.QCLIENTES)
-                        }
-                    ]
-                };
-                chartCanal.setOption(canalOption);
-            }
-
-            // 2. Gráfico Vendedores (Top 10 Barras Horizontales)
-            const treemapData = data.treemap || [];
-            const totalVentaVendedores = treemapData.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
-            const vendedoresDesc = [...treemapData].sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
-
-            if (chartTreemap) {
-                const top10Desc = vendedoresDesc.slice(0, 10);
-                const top10Asc = [...top10Desc].reverse();
-                const nombresY = top10Asc.map(v => v.name);
-                const valoresX = top10Asc.map(v => Number(v.value) || 0);
-
-                const barOption = {
-                    tooltip: {
-                        trigger: 'axis',
-                        axisPointer: { type: 'shadow' },
-                        formatter: function (params) {
-                            const item = params[0];
-                            const val = item.value || 0;
-                            const porc = totalVentaVendedores > 0 ? ((val / totalVentaVendedores) * 100).toFixed(2) : '0.00';
-                            return `<strong>${item.name}</strong><br/>` +
-                                `Venta: $ ${parseInt(val).toLocaleString('es-CO')}<br/>` +
-                                `Participación: ${porc} %`;
-                        }
-                    },
-                    grid: { left: '3%', right: '14%', bottom: '5%', top: '5%', containLabel: true },
-                    xAxis: {
-                        type: 'value',
-                        axisLabel: {
-                            formatter: function (val) {
-                                if (val >= 1000000000) return '$' + (val / 1000000000).toFixed(1) + 'B';
-                                if (val >= 1000000) return '$' + Math.round(val / 1000000) + 'M';
-                                return '$' + Math.round(val / 1000) + 'K';
-                            }
-                        },
-                        splitLine: { lineStyle: { color: '#374151', type: 'dashed' } }
-                    },
-                    yAxis: {
-                        type: 'category',
-                        data: nombresY,
-                        axisLabel: {
-                            fontSize: 10,
-                            formatter: function (v) { return v.length > 20 ? v.substring(0, 18) + '...' : v; }
-                        }
-                    },
-                    series: [{
-                        name: 'Venta',
-                        type: 'bar',
-                        data: valoresX,
-                        itemStyle: {
-                            borderRadius: [0, 4, 4, 0],
-                            color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
-                                { offset: 0, color: '#3b82f6' },
-                                { offset: 1, color: '#1d4ed8' }
-                            ])
-                        },
-                        label: {
-                            show: true,
-                            position: 'right',
-                            formatter: function (p) {
-                                const val = p.value || 0;
-                                const porc = totalVentaVendedores > 0 ? ((val / totalVentaVendedores) * 100).toFixed(1) : '0';
-                                if (val >= 1000000000) return `$${(val / 1000000000).toFixed(1)}B (${porc}%)`;
-                                if (val >= 1000000) return `$${Math.round(val / 1000000)}M (${porc}%)`;
-                                return `$${Math.round(val / 1000)}K (${porc}%)`;
-                            },
-                            fontSize: 10,
-                            color: '#93c5fd'
-                        }
-                    }]
-                };
-                chartTreemap.setOption(barOption, true);
-            }
-
-            const tablaVendedoresBody = document.getElementById('tabla-vendedores-body');
-            if (tablaVendedoresBody) {
-                tablaVendedoresBody.innerHTML = vendedoresDesc.map(v => {
-                    const val = Number(v.value) || 0;
-                    const porc = totalVentaVendedores > 0 ? ((val / totalVentaVendedores) * 100).toFixed(2) : '0.00';
-                    return `
-                        <tr class="hover:bg-gray-800/60">
-                            <td class="p-2.5 font-medium text-gray-200">${v.name}</td>
-                            <td class="p-2.5 text-right font-mono font-bold text-gray-100">$ ${parseInt(val).toLocaleString('es-CO')}</td>
-                            <td class="p-2.5 text-right font-mono font-semibold text-blue-400">${porc} %</td>
-                        </tr>
-                    `;
-                }).join('');
-            }
-
-            // 3. Renderizar componentes geográficos y Top 10 Clientes inicial
-            renderGeoVisuals();
-            window.renderTopClientes();
-
-            // 4. Matriz Pivot
-            const matrizContainer = document.getElementById('contenedor-matriz');
-            if (matrizContainer) {
-                matrizContainer.innerHTML = data.matriz_html || '<div class="p-4 text-center text-gray-500">Sin datos</div>';
-            }
-        }
-
-        function fetchData() {
-            const filtros = {
-                anio: document.getElementById('filtro-anio').value,
-                zona_vendedor: document.getElementById('filtro-zona').value,
-                proveedor: document.getElementById('filtro-proveedor').value,
-                linea: document.getElementById('filtro-linea').value,
-                canal: document.getElementById('filtro-canal').value,
-                mes: document.getElementById('filtro-mes').value,
-            };
-
-            const queryParams = new URLSearchParams(filtros).toString();
-
-            fetch(`${url}?${queryParams}`, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-                .then(response => response.json())
-                .then(data => {
-                    renderData(data);
-                })
-                .catch(err => console.error("Error al filtrar:", err));
-        }
-
-        // Carga inicial segura de datos
-        try {
-            const rawJson = '{{ datos_iniciales_json|escapejs }}';
-            if (rawJson && rawJson.trim() !== '') {
-                const initialData = JSON.parse(rawJson);
-                renderData(initialData);
-            }
-        } catch (e) {
-            console.error("Error leyendo datos iniciales:", e);
-        }
-
-        const btnFiltrar = document.getElementById('btn-filtrar');
-        if (btnFiltrar) btnFiltrar.addEventListener('click', fetchData);
-
-        const btnLimpiar = document.getElementById('btn-limpiar');
-        if (btnLimpiar) {
-            btnLimpiar.addEventListener('click', () => {
-                document.getElementById('filtro-anio').value = '{{ filtros.anios.0 }}';
-                document.getElementById('filtro-mes').value = '';
-                document.getElementById('filtro-zona').value = '';
-                document.getElementById('filtro-proveedor').value = '';
-                document.getElementById('filtro-linea').value = '';
-                document.getElementById('filtro-canal').value = '';
-                window.filtroZonaActivo = null;
-                const btnReset = document.getElementById('btn-reset-zona');
-                if (btnReset) btnReset.classList.add('hidden');
-                const lbl = document.getElementById('lbl-zona-activa');
-                if (lbl) lbl.textContent = "Filtrando: Toda la empresa (Global)";
-                fetchData();
-            });
-        }
-    });
-</script>
-{% endblock %}
+    {% block extra_js %}
+    <textarea id="initial-data" style="display:none;">{{ datos_iniciales_json|safe }}</textarea>
+    <script src="{% static 'js/reportes/analisis_ventas.js' %}"></script>
+    {% endblock %}

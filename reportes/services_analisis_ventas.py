@@ -36,6 +36,20 @@ class VentasClientesAnalyticsService:
                 self.where_clauses.append("VND.CANAL = :canal")
                 self.params['canal'] = str(self.filtros['canal'])
 
+            # Incorporación del ADR-014: Filtros Geográficos Normalizados
+            if self.filtros.get('departamento'):
+                self.where_clauses.append(
+                    "TRIM(UPPER(VND.DEPARTAMENTO)) = TRIM(UPPER(:departamento))")
+                self.params['departamento'] = str(self.filtros['departamento'])
+            if self.filtros.get('municipio'):
+                self.where_clauses.append(
+                    "TRIM(UPPER(VND.MUNICIPIO)) = TRIM(UPPER(:municipio))")
+                self.params['municipio'] = str(self.filtros['municipio'])
+            if self.filtros.get('barrio'):
+                self.where_clauses.append(
+                    "TRIM(UPPER(VND.BARRIO)) = TRIM(UPPER(:barrio))")
+                self.params['barrio'] = str(self.filtros['barrio'])
+
     def _get_where_sql(self):
         if not self.where_clauses:
             return ""
@@ -59,31 +73,26 @@ class VentasClientesAnalyticsService:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT DISTINCT ANIO FROM BI_VENTAS_CLIENTE_MENSUAL WHERE ANIO IS NOT NULL ORDER BY ANIO DESC"
-                )
+                    "SELECT DISTINCT ANIO FROM BI_VENTAS_CLIENTE_MENSUAL WHERE ANIO IS NOT NULL ORDER BY ANIO DESC")
                 filtros['anios'] = [row[0] for row in cursor.fetchall()]
 
                 cursor.execute(
-                    "SELECT DISTINCT ZONA_VENDEDOR FROM BI_VENTAS_CLIENTE_MENSUAL WHERE ZONA_VENDEDOR IS NOT NULL ORDER BY ZONA_VENDEDOR"
-                )
+                    "SELECT DISTINCT ZONA_VENDEDOR FROM BI_VENTAS_CLIENTE_MENSUAL WHERE ZONA_VENDEDOR IS NOT NULL ORDER BY ZONA_VENDEDOR")
                 filtros['vendedores'] = [
                     {'id': row[0], 'nombre': row[0]} for row in cursor.fetchall()]
 
                 cursor.execute(
-                    "SELECT DISTINCT PROVEEDOR FROM BI_VENTAS_CLIENTE_MENSUAL WHERE PROVEEDOR IS NOT NULL ORDER BY PROVEEDOR"
-                )
+                    "SELECT DISTINCT PROVEEDOR FROM BI_VENTAS_CLIENTE_MENSUAL WHERE PROVEEDOR IS NOT NULL ORDER BY PROVEEDOR")
                 filtros['proveedores'] = [
                     {'id': row[0], 'nombre': row[0]} for row in cursor.fetchall()]
 
                 cursor.execute(
-                    "SELECT DISTINCT LINEA FROM BI_VENTAS_CLIENTE_MENSUAL WHERE LINEA IS NOT NULL ORDER BY LINEA"
-                )
+                    "SELECT DISTINCT LINEA FROM BI_VENTAS_CLIENTE_MENSUAL WHERE LINEA IS NOT NULL ORDER BY LINEA")
                 filtros['lineas'] = [{'id': row[0], 'nombre': row[0]}
                                      for row in cursor.fetchall()]
 
                 cursor.execute(
-                    "SELECT DISTINCT CANAL FROM BI_VENTAS_CLIENTE_MENSUAL WHERE CANAL IS NOT NULL ORDER BY CANAL"
-                )
+                    "SELECT DISTINCT CANAL FROM BI_VENTAS_CLIENTE_MENSUAL WHERE CANAL IS NOT NULL ORDER BY CANAL")
                 filtros['canales'] = [
                     {'id': row[0], 'nombre': row[0]} for row in cursor.fetchall()]
         except Exception as e:
@@ -98,7 +107,6 @@ class VentasClientesAnalyticsService:
             'deptos': [],
             'municipios': [],
             'barrios': [],
-            'clientes_raw': []
         }
 
         try:
@@ -156,7 +164,7 @@ class VentasClientesAnalyticsService:
                     for row in cursor.fetchall()
                 ]
 
-                # 4. Municipios (incluye Departamento para filtrado jerárquico)
+                # 4. Municipios
                 query_muni = f"""
                     SELECT NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO') AS DEPTO,
                            NVL(VND.MUNICIPIO, 'SIN MUNICIPIO') AS MUNICIPIO, 
@@ -177,7 +185,7 @@ class VentasClientesAnalyticsService:
                     for row in cursor.fetchall()
                 ]
 
-                # 5. Barrios (incluye Municipio y Departamento)
+                # 5. Barrios
                 query_barrios = f"""
                     SELECT NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO') AS DEPTO,
                            NVL(VND.MUNICIPIO, 'SIN MUNICIPIO') AS MUNICIPIO,
@@ -200,58 +208,82 @@ class VentasClientesAnalyticsService:
                     for row in cursor.fetchall()
                 ]
 
-                # 6. Clientes con dimensión geográfica para reactividad Top 10 cruzado
-                query_clientes = f"""
-                    SELECT NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO') AS DEPTO,
-                           NVL(VND.MUNICIPIO, 'SIN MUNICIPIO') AS MUNICIPIO,
-                           NVL(VND.BARRIO, 'SIN BARRIO') AS BARRIO,
-                           VND.NOM_CLIENTE,
-                           SUM(VND.VENTA_NETA) AS VENTA
-                    FROM BI_VENTAS_CLIENTE_MENSUAL VND {where_sql}
-                    GROUP BY NVL(VND.DEPARTAMENTO, 'SIN DEPARTAMENTO'), NVL(VND.MUNICIPIO, 'SIN MUNICIPIO'), NVL(VND.BARRIO, 'SIN BARRIO'), VND.NOM_CLIENTE
-                    ORDER BY VENTA DESC
-                """
-                self._ejecutar_consulta(cursor, query_clientes)
-                datos['clientes_raw'] = [
-                    {
-                        'depto': row[0],
-                        'muni': row[1],
-                        'barrio': row[2],
-                        'cliente': row[3],
-                        'venta': int(round(Decimal(str(row[4] or 0))))
-                    }
-                    for row in cursor.fetchall()
-                ]
-
         except Exception as e:
             logger.error("Error al obtener datos del tablero: %s", e)
 
         return datos
 
-    def get_matriz_pivot_mensual(self):
+    def get_top_clientes(self, limit=10):
+        """ Retorna exclusivamente el Top N de clientes, delegando el peso a Oracle. """
+        where_sql = self._get_where_sql()
+
+        query_total = f"""
+            SELECT SUM(VND.VENTA_NETA) 
+            FROM BI_VENTAS_CLIENTE_MENSUAL VND {where_sql}
+        """
+
+        query_top = f"""
+            SELECT * FROM (
+                SELECT NVL(VND.NOM_CLIENTE, 'SIN NOMBRE') AS CLIENTE, 
+                       SUM(VND.VENTA_NETA) AS VENTA
+                FROM BI_VENTAS_CLIENTE_MENSUAL VND {where_sql}
+                GROUP BY VND.NOM_CLIENTE
+                ORDER BY VENTA DESC
+            ) WHERE ROWNUM <= {int(limit)}
+        """
+
+        total_venta = Decimal('0')
+        top_clientes = []
+
+        try:
+            with connection.cursor() as cursor:
+                self._ejecutar_consulta(cursor, query_total)
+                row_total = cursor.fetchone()
+                if row_total and row_total[0]:
+                    total_venta = Decimal(str(row_total[0]))
+
+                self._ejecutar_consulta(cursor, query_top)
+                for row in cursor.fetchall():
+                    venta_cliente = Decimal(str(row[1] or 0))
+                    top_clientes.append({
+                        'cliente': row[0],
+                        'venta': float(venta_cliente),
+                    })
+
+        except Exception as e:
+            logger.error("Error al obtener top clientes: %s", e)
+
+        return top_clientes, float(total_venta)
+
+    def get_matriz_pivot_mensual(self, offset=0, limit=50):
         where_matriz = [
             c for c in self.where_clauses if not c.startswith('VND.MES_NUM')]
         where_sql = ("WHERE " + " AND ".join(where_matriz)
                      ) if where_matriz else ""
         params_matriz = {k: v for k, v in self.params.items() if k != 'mes'}
 
+        # Paginación nativa Oracle 11g con subconsultas para evitar colapso de memoria
         query = f"""
-            WITH TOP_CLI AS (
-                SELECT * FROM (
-                    SELECT VND.NOM_CLIENTE, SUM(VND.VENTA_NETA) AS TOTAL_ANUAL
-                    FROM BI_VENTAS_CLIENTE_MENSUAL VND
-                    {where_sql}
-                    GROUP BY VND.NOM_CLIENTE
-                    ORDER BY TOTAL_ANUAL DESC
-                ) WHERE ROWNUM <= 50
+            WITH TOP_CLI_ALL AS (
+                SELECT VND.NOM_CLIENTE, SUM(VND.VENTA_NETA) AS TOTAL_ANUAL
+                FROM BI_VENTAS_CLIENTE_MENSUAL VND
+                {where_sql}
+                GROUP BY VND.NOM_CLIENTE
+                ORDER BY TOTAL_ANUAL DESC
+            ),
+            PAGINATED_CLI AS (
+                SELECT a.*, ROWNUM as rnum FROM (
+                    SELECT * FROM TOP_CLI_ALL
+                ) a WHERE ROWNUM <= {int(offset + limit)}
             )
             SELECT 
                 VND.NOM_CLIENTE AS CLIENTE,
                 TO_NUMBER(VND.MES_NUM) AS MES_NUM,
                 SUM(VND.VENTA_NETA) AS VENTA
             FROM BI_VENTAS_CLIENTE_MENSUAL VND
-            JOIN TOP_CLI tc ON tc.NOM_CLIENTE = VND.NOM_CLIENTE
+            JOIN PAGINATED_CLI pc ON pc.NOM_CLIENTE = VND.NOM_CLIENTE
             {where_sql}
+            AND pc.rnum > {int(offset)}
             GROUP BY VND.NOM_CLIENTE, TO_NUMBER(VND.MES_NUM)
         """
 
@@ -291,7 +323,6 @@ class VentasClientesAnalyticsService:
             pivot_df['Total'] = pivot_df.sum(axis=1)
             pivot_df = pivot_df.sort_values(by='Total', ascending=False)
             pivot_df.rename(columns=meses_nombres, inplace=True)
-            pivot_df.loc['Total General'] = pivot_df.sum()
 
             return pivot_df
 

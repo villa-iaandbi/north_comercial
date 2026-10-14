@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import json
 import logging
+import re
 from decimal import Decimal
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -329,6 +330,7 @@ def analisis_ventas_clientes_view(request):
 
     is_ajax = request.headers.get(
         'x-requested-with') == 'XMLHttpRequest' or request.GET.get('ajax') == '1'
+    solo_matriz = request.GET.get('solo_matriz') == '1'
 
     if is_ajax:
         request_filtros = {
@@ -339,6 +341,11 @@ def analisis_ventas_clientes_view(request):
             'linea': request.GET.get('linea'),
             'canal': request.GET.get('canal'),
         }
+        # Aplicación estricta de ADR-014 en parámetros para cruce de matriz
+        request_filtros['departamento'] = request.GET.get('departamento')
+        request_filtros['municipio'] = request.GET.get('municipio')
+        request_filtros['barrio'] = request.GET.get('barrio')
+
         applied_filtros = {k: v for k,
                            v in request_filtros.items() if v and v != 'todos'}
     else:
@@ -348,34 +355,77 @@ def analisis_ventas_clientes_view(request):
             applied_filtros = {}
 
     service = VentasClientesAnalyticsService(applied_filtros)
+
+    # --- ADR-013: RUTINA AISLADA DE PAGINACIÓN DE MATRIZ ---
+    if solo_matriz:
+        offset = int(request.GET.get('offset_matriz', 0))
+        limit = int(request.GET.get('limit_matriz', 50))
+        matriz_pivot = service.get_matriz_pivot_mensual(
+            offset=offset, limit=limit)
+
+        filas_html = ""
+        total_filas = 0
+
+        if not matriz_pivot.empty:
+            matriz_formateada = matriz_pivot.applymap(
+                lambda x: f"$ {int(x):,}".replace(",", ".") if isinstance(
+                    x, (int, float)) and x > 0 else ("$ 0" if isinstance(x, (int, float)) else x)
+            )
+            html_temp = matriz_formateada.to_html(
+                header=False, border=0, escape=False)
+            match = re.search(r'<tbody>(.*?)</tbody>', html_temp, re.DOTALL)
+            if match:
+                filas_html = match.group(1)
+                filas_html = filas_html.replace(
+                    '<tr>', '<tr class="hover:bg-gray-800/60 transition-colors">')
+                filas_html = filas_html.replace(
+                    '<th>', '<td class="p-2.5 text-left font-bold text-gray-200">')
+                filas_html = filas_html.replace(
+                    '<td>', '<td class="p-2.5 text-right font-mono text-gray-300">')
+            total_filas = len(matriz_pivot)
+
+        return JsonResponse({
+            'nuevas_filas_html': filas_html,
+            'total_filas': total_filas,
+            'has_more': total_filas == limit
+        })
+
+    # --- RUTINA DE CARGA INICIAL Y REDIBUJO COMPLETO DE FILTROS ---
     datos_tablero = service.get_datos_tablero()
-    matriz_pivot = service.get_matriz_pivot_mensual()
+
+    offset = int(request.GET.get('offset_matriz', 0))
+    limit = int(request.GET.get('limit_matriz', 50))
+    matriz_pivot = service.get_matriz_pivot_mensual(offset=offset, limit=limit)
+
+    filas_html = ""
+    has_more = False
 
     if not matriz_pivot.empty:
-        # Formatear numeros enteros con separador de miles
-        matriz_formateada = matriz_pivot.applymap(lambda x: f"$ {int(x):,}".replace(",", ".") if isinstance(
-            x, (int, float)) and x > 0 else ("$ 0" if isinstance(x, (int, float)) else x))
-        matriz_html = matriz_formateada.to_html(
-            classes="w-full text-left text-sm", border=0, escape=False)
-        matriz_html = matriz_html.replace(
-            '<table border="1" class="dataframe">', '<table class="w-full text-left text-sm">')
-        matriz_html = matriz_html.replace(
-            '<thead>', '<thead class="bg-gray-100 uppercase text-xs text-gray-700 font-extrabold border-b sticky top-0">')
-        matriz_html = matriz_html.replace('<th>', '<th class="p-3">')
-        matriz_html = matriz_html.replace(
-            '<tbody>', '<tbody class="divide-y divide-gray-200">')
-        matriz_html = matriz_html.replace(
-            '<tr>', '<tr class="hover:bg-gray-50">')
-        matriz_html = matriz_html.replace(
-            '<td>', '<td class="p-3 text-right font-mono">')
-    else:
-        matriz_html = '<div class="p-4 text-center text-gray-500">No hay datos disponibles para los filtros seleccionados.</div>'
+        matriz_formateada = matriz_pivot.applymap(
+            lambda x: f"$ {int(x):,}".replace(",", ".") if isinstance(
+                x, (int, float)) and x > 0 else ("$ 0" if isinstance(x, (int, float)) else x)
+        )
+        html_temp = matriz_formateada.to_html(
+            header=False, border=0, escape=False)
+        match = re.search(r'<tbody>(.*?)</tbody>', html_temp, re.DOTALL)
+        if match:
+            filas_html = match.group(1)
+            filas_html = filas_html.replace(
+                '<tr>', '<tr class="hover:bg-gray-800/60 transition-colors">')
+            filas_html = filas_html.replace(
+                '<th>', '<td class="p-2.5 text-left font-bold text-gray-200">')
+            filas_html = filas_html.replace(
+                '<td>', '<td class="p-2.5 text-right font-mono text-gray-300">')
+        has_more = len(matriz_pivot) == limit
 
     payload = {
         'canal': datos_tablero['canal'],
-        'municipios': datos_tablero['municipios'],
         'treemap': datos_tablero['treemap'],
-        'matriz_html': matriz_html
+        'deptos': datos_tablero['deptos'],
+        'municipios': datos_tablero['municipios'],
+        'barrios': datos_tablero['barrios'],
+        'rows_html': filas_html,
+        'has_more': has_more
     }
 
     if is_ajax:
@@ -388,3 +438,53 @@ def analisis_ventas_clientes_view(request):
         'datos_iniciales_json': datos_iniciales_json,
     }
     return render(request, 'reportes/analisis_ventas_clientes.html', context)
+
+
+def api_top_clientes_zona(request):
+    """Retorna el Top 10 de clientes filtrado por zona geográfica para SPEC-001."""
+    tipo = request.GET.get('tipo', '').upper()
+    valor = request.GET.get('valor', '').strip()
+
+    filtros = {
+        'anio': request.GET.get('anio'),
+        'mes': request.GET.get('mes'),
+        'zona_vendedor': request.GET.get('zona'),
+        'proveedor': request.GET.get('proveedor'),
+        'linea': request.GET.get('linea'),
+        'canal': request.GET.get('canal'),
+    }
+
+    if tipo == 'DEPARTAMENTO' and valor:
+        filtros['departamento'] = valor
+    elif tipo == 'MUNICIPIO' and valor:
+        filtros['municipio'] = valor
+    elif tipo == 'BARRIO' and valor:
+        filtros['barrio'] = valor
+    elif not tipo:
+        filtros['departamento'] = request.GET.get('departamento')
+        filtros['municipio'] = request.GET.get('municipio')
+        filtros['barrio'] = request.GET.get('barrio')
+
+    filtros = {k: v for k, v in filtros.items() if v and v != 'todos'}
+
+    try:
+        # ADR-012: Delegación absoluta al motor relacional de Oracle (sin loops en Python)
+        service = VentasClientesAnalyticsService(filtros=filtros)
+        top_clientes_raw, total_venta_zona = service.get_top_clientes(limit=10)
+
+        top_clientes = []
+        for c in top_clientes_raw:
+            venta_val = c['venta']
+            part = round((venta_val / total_venta_zona) * 100,
+                         2) if total_venta_zona > 0 else 0
+            top_clientes.append({
+                'cliente': c['cliente'],
+                'venta': venta_val,
+                'participacion': part
+            })
+
+        # CRÍTICO: Se corrigió la llave para sincronizar con la espera del JS (`result.clientes`)
+        return JsonResponse({'status': 'ok', 'clientes': top_clientes})
+    except Exception as e:
+        logger.error(f"Error en api_top_clientes_zona: {e}")
+        return JsonResponse({'status': 'error', 'clientes': [], 'detalle': str(e)})
