@@ -80,6 +80,7 @@
                 tooltip: {
                     trigger: 'axis',
                     axisPointer: { type: 'shadow' },
+                    textStyle: { fontSize: 14 },
                     formatter: function (params) {
                         if (!params || params.length === 0) return '';
                         let header = `<strong>Mes: ${params[0].name}</strong><br/>`;
@@ -92,14 +93,14 @@
                 },
                 legend: {
                     data: [anioActual, anioPrevio],
-                    textStyle: { color: '#9ca3af' },
+                    textStyle: { color: '#9ca3af', fontSize: 14 },
                     top: '2%'
                 },
                 grid: { left: '3%', right: '4%', bottom: '5%', top: '15%', containLabel: true },
                 xAxis: {
                     type: 'category',
                     data: MESES_LABELS,
-                    axisLabel: { color: '#9ca3af', fontSize: 11 },
+                    axisLabel: { color: '#9ca3af', fontSize: 14 },
                     axisLine: { lineStyle: { color: '#374151' } }
                 },
                 yAxis: {
@@ -107,7 +108,7 @@
                     axisLabel: {
                         formatter: formatAbrevMoney,
                         color: '#9ca3af',
-                        fontSize: 10
+                        fontSize: 14
                     },
                     splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } }
                 },
@@ -148,6 +149,7 @@
                 tooltip: {
                     trigger: 'axis',
                     axisPointer: { type: 'shadow' },
+                    textStyle: { fontSize: 14 },
                     formatter: function (params) {
                         if (!params || params.length === 0) return '';
                         let header = `<strong>Mes: ${params[0].name}</strong><br/>`;
@@ -160,14 +162,14 @@
                 },
                 legend: {
                     data: [`${anioActual} (%)`, `${anioPrevio} (%)`],
-                    textStyle: { color: '#9ca3af' },
+                    textStyle: { color: '#9ca3af', fontSize: 14 },
                     top: '2%'
                 },
                 grid: { left: '3%', right: '4%', bottom: '5%', top: '15%', containLabel: true },
                 xAxis: {
                     type: 'category',
                     data: MESES_LABELS,
-                    axisLabel: { color: '#9ca3af', fontSize: 11 },
+                    axisLabel: { color: '#9ca3af', fontSize: 14 },
                     axisLine: { lineStyle: { color: '#374151' } }
                 },
                 yAxis: {
@@ -175,7 +177,7 @@
                     axisLabel: {
                         formatter: '{value} %',
                         color: '#9ca3af',
-                        fontSize: 10
+                        fontSize: 14
                     },
                     splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } }
                 },
@@ -219,6 +221,7 @@
                 tooltip: {
                     trigger: 'axis',
                     axisPointer: { type: 'cross' },
+                    textStyle: { fontSize: 14 },
                     formatter: function (params) {
                         if (!params || params.length === 0) return '';
                         let header = `<strong>Año: ${params[0].name}</strong><br/>`;
@@ -235,36 +238,36 @@
                 },
                 legend: {
                     data: ['Venta Neta', 'Rentabilidad (%)'],
-                    textStyle: { color: '#9ca3af' },
+                    textStyle: { color: '#9ca3af', fontSize: 14 },
                     top: '2%'
                 },
                 grid: { left: '3%', right: '6%', bottom: '5%', top: '15%', containLabel: true },
                 xAxis: {
                     type: 'category',
                     data: aniosLabels,
-                    axisLabel: { color: '#9ca3af', fontSize: 10, rotate: 30 },
+                    axisLabel: { color: '#9ca3af', fontSize: 14, rotate: 30 },
                     axisLine: { lineStyle: { color: '#374151' } }
                 },
                 yAxis: [
                     {
                         type: 'value',
                         name: 'Ventas ($)',
-                        nameTextStyle: { color: '#9ca3af', fontSize: 10 },
+                        nameTextStyle: { color: '#9ca3af', fontSize: 14 },
                         axisLabel: {
                             formatter: formatAbrevMoney,
                             color: '#9ca3af',
-                            fontSize: 10
+                            fontSize: 14
                         },
                         splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } }
                     },
                     {
                         type: 'value',
                         name: 'Rentabilidad (%)',
-                        nameTextStyle: { color: '#f59e0b', fontSize: 10 },
+                        nameTextStyle: { color: '#f59e0b', fontSize: 14 },
                         axisLabel: {
                             formatter: '{value}%',
                             color: '#f59e0b',
-                            fontSize: 10
+                            fontSize: 14
                         },
                         splitLine: { show: false }
                     }

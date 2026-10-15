@@ -119,12 +119,14 @@ class AnalisisEjecutivoService:
         # Cálculos Año Actual
         ub_act = vn_act - cn_act
         rent_act = round((ub_act / vn_act) * Decimal('100.0'), 2) if vn_act != Decimal('0') else Decimal('0.0')
-        part_dev_act = round((dev_act / vb_act) * Decimal('100.0'), 2) if vb_act != Decimal('0') else Decimal('0.0')
+        base_bruta_act = vn_act + dev_act
+        part_dev_act = round((dev_act / base_bruta_act) * Decimal('100.0'), 2) if base_bruta_act != Decimal('0') else Decimal('0.0')
 
         # Cálculos Año Previo
         ub_prev = vn_prev - cn_prev
         rent_prev = round((ub_prev / vn_prev) * Decimal('100.0'), 2) if vn_prev != Decimal('0') else Decimal('0.0')
-        part_dev_prev = round((dev_prev / vb_prev) * Decimal('100.0'), 2) if vb_prev != Decimal('0') else Decimal('0.0')
+        base_bruta_prev = vn_prev + dev_prev
+        part_dev_prev = round((dev_prev / base_bruta_prev) * Decimal('100.0'), 2) if base_bruta_prev != Decimal('0') else Decimal('0.0')
 
         # Cálculo de variaciones porcentuales (Deltas YoY)
         def _calc_delta(act: Decimal, prev: Decimal) -> Decimal:
@@ -132,7 +134,7 @@ class AnalisisEjecutivoService:
                 return Decimal('0.0')
             return round(((act - prev) / abs(prev)) * Decimal('100.0'), 2)
 
-        delta_vb = _calc_delta(vb_act, vb_prev)
+        delta_vb = _calc_delta(base_bruta_act, base_bruta_prev)
         delta_vn = _calc_delta(vn_act, vn_prev)
         delta_cn = _calc_delta(cn_act, cn_prev)
         delta_dev = _calc_delta(dev_act, dev_prev)
@@ -144,7 +146,7 @@ class AnalisisEjecutivoService:
         return {
             'actual': {
                 'anio': anio_actual_int,
-                'venta_bruta': vb_act,
+                'venta_bruta': base_bruta_act,
                 'venta_neta': vn_act,
                 'costo_neto': cn_act,
                 'devoluciones': dev_act,
@@ -156,7 +158,7 @@ class AnalisisEjecutivoService:
             },
             'previo': {
                 'anio': anio_previo_int,
-                'venta_bruta': vb_prev,
+                'venta_bruta': base_bruta_prev,
                 'venta_neta': vn_prev,
                 'costo_neto': cn_prev,
                 'devoluciones': dev_prev,

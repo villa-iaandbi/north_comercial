@@ -131,7 +131,7 @@
                     x-text="formatCop(kpis.actual.venta_neta)"></p>
             </div>
             <div class="flex items-center justify-between text-xs pt-2 border-t border-gray-800">
-                <span class="text-gray-400">Previo: <span class="font-mono text-gray-300 font-medium"
+                <span class="text-sm font-medium text-gray-400">Previo: <span class="font-mono text-gray-200 font-semibold text-sm"
                         x-text="formatCop(kpis.previo.venta_neta)"></span></span>
                 <span :class="badgeClass(kpis.deltas_yoy.venta_neta, false)"
                     class="px-2 py-0.5 rounded-full text-xs font-bold font-mono inline-flex items-center gap-0.5">
@@ -152,7 +152,7 @@
                     x-text="formatCop(kpis.actual.utilidad_bruta)"></p>
             </div>
             <div class="flex items-center justify-between text-xs pt-2 border-t border-gray-800">
-                <span class="text-gray-400">Previo: <span class="font-mono text-gray-300 font-medium"
+                <span class="text-sm font-medium text-gray-400">Previo: <span class="font-mono text-gray-200 font-semibold text-sm"
                         x-text="formatCop(kpis.previo.utilidad_bruta)"></span></span>
                 <span :class="badgeClass(kpis.deltas_yoy.utilidad_bruta, false)"
                     class="px-2 py-0.5 rounded-full text-xs font-bold font-mono inline-flex items-center gap-0.5">
@@ -173,7 +173,7 @@
                     x-text="formatPercent(kpis.actual.rentabilidad)"></p>
             </div>
             <div class="flex items-center justify-between text-xs pt-2 border-t border-gray-800">
-                <span class="text-gray-400">Previo: <span class="font-mono text-gray-300 font-medium"
+                <span class="text-sm font-medium text-gray-400">Previo: <span class="font-mono text-gray-200 font-semibold text-sm"
                         x-text="formatPercent(kpis.previo.rentabilidad)"></span></span>
                 <span :class="badgeClass(kpis.deltas_yoy.rentabilidad, false)"
                     class="px-2 py-0.5 rounded-full text-xs font-bold font-mono inline-flex items-center gap-0.5">
@@ -194,7 +194,7 @@
                     x-text="formatCop(kpis.actual.devoluciones)"></p>
             </div>
             <div class="flex items-center justify-between text-xs pt-2 border-t border-gray-800">
-                <span class="text-gray-400">Previo: <span class="font-mono text-gray-300 font-medium"
+                <span class="text-sm font-medium text-gray-400">Previo: <span class="font-mono text-gray-200 font-semibold text-sm"
                         x-text="formatCop(kpis.previo.devoluciones)"></span></span>
                 <span :class="badgeClass(kpis.deltas_yoy.devoluciones, true)"
                     class="px-2 py-0.5 rounded-full text-xs font-bold font-mono inline-flex items-center gap-0.5">
@@ -215,7 +215,8 @@
                     x-text="formatPercent(kpis.actual.participacion_devoluciones)"></p>
             </div>
             <div class="flex items-center justify-between text-xs pt-2 border-t border-gray-800">
-                <span class="text-gray-400">Sobre Venta Bruta</span>
+                <span class="text-sm font-medium text-gray-400">Previo: <span class="font-mono text-gray-200 font-semibold text-sm"
+                        x-text="formatPercent(kpis.previo.participacion_devoluciones)"></span></span>
                 <span :class="badgeClass(kpis.deltas_yoy.participacion_devoluciones, true)"
                     class="px-2 py-0.5 rounded-full text-xs font-bold font-mono inline-flex items-center gap-0.5">
                     <span x-text="deltaIcon(kpis.deltas_yoy.participacion_devoluciones)"></span>
@@ -250,10 +251,10 @@
         </div>
     </div>
 
-    <!-- FILA 3: HISTÓRICO 12 AÑOS (GRID 40% / 60%) -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <!-- Izquierda (40% - col-span-5): Gráfico Dual-Y Axis -->
-        <div class="lg:col-span-5 bg-gray-900 p-5 rounded-lg shadow-sm border border-gray-800 flex flex-col justify-between">
+    <!-- FILA 3: HISTÓRICO 12 AÑOS (GRID EXACTO 50% / 50%) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Izquierda (50%): Gráfico Dual-Y Axis -->
+        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-gray-800 flex flex-col justify-between">
             <div class="mb-3 border-b border-gray-800 pb-2">
                 <h4 class="text-sm font-bold text-gray-100">Histórico Multianual (12 Años)</h4>
                 <p class="text-xs text-gray-400">Ventas Netas (Eje Izq) y Rentabilidad % (Eje Der)</p>
@@ -261,8 +262,8 @@
             <div id="chart-historico-12a" class="w-full h-96"></div>
         </div>
 
-        <!-- Derecha (60% - col-span-7): Tabla Matriz Expandible "Acordeón" Alpine.js -->
-        <div class="lg:col-span-7 bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden flex flex-col">
+        <!-- Derecha (50%): Tabla Matriz Expandible "Acordeón" Alpine.js -->
+        <div class="bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden flex flex-col">
             <div class="p-4 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
                 <div>
                     <h4 class="text-sm font-bold text-gray-100">Desempeño Anual y Desglose Mensual</h4>
@@ -282,23 +283,23 @@
                     </thead>
                     <template x-for="item in historico" :key="item.anio">
                         <tbody x-data="{ expanded: false }" class="border-t border-gray-800/80">
-                            <!-- Fila Principal: Año (Padre) -->
-                            <tr class="hover:bg-gray-800/80 bg-gray-900 transition-colors font-semibold cursor-pointer"
+                            <!-- Fila Principal: Año (Padre con fuente aumentada y font-semibold) -->
+                            <tr class="hover:bg-gray-800/80 bg-gray-900 transition-colors font-semibold cursor-pointer text-base"
                                 @click="expanded = !expanded">
-                                <td class="text-left py-1 px-2">
+                                <td class="text-left py-2 px-2.5">
                                     <button type="button"
                                         class="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 focus:outline-none">
                                         <span x-text="expanded ? '[-]' : '[+]'"
-                                            class="font-mono text-xs font-bold text-blue-400 w-4 text-center"></span>
+                                            class="font-mono text-sm font-bold text-blue-400 w-4 text-center"></span>
                                         <span x-text="item.anio"
-                                            class="font-mono text-xs font-bold text-gray-100"></span>
+                                            class="font-mono text-base font-semibold text-gray-100"></span>
                                     </button>
                                 </td>
-                                <td class="text-right py-1 px-2 font-mono font-bold text-gray-100"
+                                <td class="text-right py-2 px-2.5 font-mono font-semibold text-gray-100 text-base"
                                     x-text="formatCop(item.venta_neta_anual)"></td>
-                                <td class="text-right py-1 px-2 font-mono font-bold text-emerald-400"
+                                <td class="text-right py-2 px-2.5 font-mono font-semibold text-emerald-400 text-base"
                                     x-text="formatCop(item.utilidad_anual)"></td>
-                                <td class="text-right py-1 px-2 font-mono font-bold"
+                                <td class="text-right py-2 px-2.5 font-mono font-semibold text-base"
                                     :class="Number(item.rentabilidad_anual_porcentaje) >= 0 ? 'text-blue-400' : 'text-rose-400'"
                                     x-text="formatPercent(item.rentabilidad_anual_porcentaje)"></td>
                             </tr>
