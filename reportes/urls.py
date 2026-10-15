@@ -1,5 +1,6 @@
 from django.urls import path
 from reportes import views
+from . import views_inventario
 
 app_name = 'reportes'
 
@@ -23,4 +24,8 @@ urlpatterns = [
     # SPEC-003: Tablero Ejecutivo - Análisis Ventas Global y Rentabilidad
     path('analisis-ventas-global/', views.analisis_ventas_global_view,
          name='analisis_ventas_global'),
+
+    # SPEC-004: Tablero de Control de Inventarios
+    path('control-inventarios/', views_inventario.control_inventarios_view,
+         name='control_inventarios'),
 ]
