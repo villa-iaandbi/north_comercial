@@ -6,15 +6,6 @@
 {% block page_title %}Análisis de Ventas por Clientes{% endblock %}
 
 {% block extra_head %}
-<!-- Ejecución INMEDIATA para colapsar el menú de forma nativa -->
-<script>
-    document.documentElement.classList.add('sidebar-collapse');
-    document.addEventListener("DOMContentLoaded", function () {
-        document.body.classList.add('sidebar-collapse');
-        const sidebar = document.querySelector('.main-sidebar') || document.querySelector('.sidebar');
-        if (sidebar) sidebar.style.display = 'none';
-    });
-</script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
     /* Estructura general de tablas ADR-016 (Alta Densidad y Zebra) */

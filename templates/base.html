@@ -32,7 +32,7 @@
 
 <body class="bg-gray-100 text-gray-800 font-sans antialiased" x-data="{ 
           sidebarOpen: false, 
-          desktopSidebarCollapsed: window.location.pathname.includes('/reportes/analisis-ventas') 
+          desktopSidebarCollapsed: window.location.pathname.includes('/reportes/analisis-ventas') || window.location.pathname.includes('/reportes/analisis-productos')
       }">
 
     <!-- Wrapper principal -->
@@ -67,7 +67,7 @@
 
             <!-- Menú lateral principal -->
             <nav class="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto min-w-[16rem]" x-data="{ 
-                openMenu: {% if 'analisis-ventas' in request.get_full_path %}'analitica'
+                openMenu: {% if 'analisis-ventas' in request.get_full_path or 'analisis-productos' in request.get_full_path %}'analitica'
                           {% elif 'tipo=NC' in request.get_full_path or 'notas' in request.get_full_path %}'notas_credito'
                           {% elif request.resolver_match.app_name == 'facturacion' %}'facturacion'
                           {% elif request.resolver_match.app_name == 'logistica' %}'entregas'
@@ -266,7 +266,7 @@
                     </div>
                 </div>
 
-                <!-- 6. Descuentos y Promociones (Alineación uniforme a la izquierda) -->
+                <!-- 6. Descuentos y Promociones -->
                 <div class="space-y-1">
                     <button @click="openMenu = (openMenu === 'descuentos' ? null : 'descuentos')"
                         class="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors">
@@ -329,13 +329,13 @@
                         </a>
                         <!-- Ventas Clientes -->
                         <a href="{% url 'reportes:analisis_ventas_clientes' %}"
-                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if 'analisis-ventas' in request.get_full_path and not 'productos' in request.get_full_path %}text-cyan-400 bg-gray-800/60 font-semibold{% endif %}">
+                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if 'analisis-ventas' in request.get_full_path %}text-cyan-400 bg-gray-800/60 font-semibold{% endif %}">
                             <span class="w-1.5 h-1.5 rounded-full bg-blue-400 mr-2.5"></span>
                             Ventas Clientes
                         </a>
                         <!-- Ventas Productos -->
-                        <a href="#"
-                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-400 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors">
+                        <a href="{% url 'reportes:analisis_ventas_productos' %}"
+                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if 'analisis-productos' in request.get_full_path %}text-emerald-400 bg-gray-800/60 font-semibold{% endif %}">
                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2.5"></span>
                             Ventas Productos
                         </a>

@@ -2,15 +2,18 @@
 import json
 import logging
 import re
+import datetime
 from decimal import Decimal
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.db import connection
 from django.utils import timezone
+from django.core.serializers.json import DjangoJSONEncoder
 from pos.models import PosTurno, PosTicketHeader
 
 from .services_analisis_ventas import VentasClientesAnalyticsService
 from .services_analisis_productos import VentasProductosAnalyticsService
+from .services_analisis_ejecutivo import AnalisisEjecutivoService
 
 logger = logging.getLogger(__name__)
 
@@ -333,3 +336,77 @@ def api_top_productos_dinamico(request):
         return JsonResponse({'status': 'ok', 'productos': top_productos})
     except Exception as e:
         return JsonResponse({'status': 'error', 'productos': [], 'detalle': str(e)})
+
+
+# --- SPEC-003: Tablero Ejecutivo de Análisis Ventas Global y Rentabilidad ---
+
+
+def analisis_ventas_global_view(request):
+    """
+    Controlador para el Tablero Ejecutivo de Ventas Global y Rentabilidad (SPEC-003).
+    Cumple con ADR-015 inyectando todo el dataset preprocesado en JSON mediante DjangoJSONEncoder.
+    """
+    filtros_disponibles = AnalisisEjecutivoService.get_filtros_disponibles()
+
+    # 1. Extracción de Año
+    anio_actual = request.GET.get('anio')
+    if not anio_actual or not str(anio_actual).strip() or str(anio_actual).strip().upper() == 'TODOS':
+        if filtros_disponibles.get('anios'):
+            anio_actual = str(filtros_disponibles['anios'][0])
+        else:
+            anio_actual = str(datetime.date.today().year)
+    else:
+        anio_actual = str(anio_actual).strip()
+
+    # 2. Extracción de Filtros Dinámicos (zona, proveedor, linea)
+    filtros = {}
+    zona_val = request.GET.get('zona') or request.GET.get('vendedor')
+    if zona_val and str(zona_val).strip() and str(zona_val).strip().upper() != 'TODOS':
+        filtros['zona'] = str(zona_val).strip()
+
+    proveedor_val = request.GET.get('proveedor')
+    if proveedor_val and str(proveedor_val).strip() and str(proveedor_val).strip().upper() != 'TODOS':
+        filtros['proveedor'] = str(proveedor_val).strip()
+
+    linea_val = request.GET.get('linea')
+    if linea_val and str(linea_val).strip() and str(linea_val).strip().upper() != 'TODOS':
+        filtros['linea'] = str(linea_val).strip()
+
+    # 3. Llamadas a la Capa de Servicio
+    kpis = AnalisisEjecutivoService.get_kpis_comparativos(anio_actual, filtros)
+    curvas = AnalisisEjecutivoService.get_curvas_mensuales(anio_actual, filtros)
+    historico = AnalisisEjecutivoService.get_historico_12_anios(anio_actual, filtros)
+
+    # 4. Construcción del Diccionario Maestro (Payload)
+    payload = {
+        'anio_actual': int(anio_actual),
+        'anio_previo': int(anio_actual) - 1,
+        'kpis': kpis,
+        'curvas': curvas,
+        'historico': historico,
+        'filtros_aplicados': {
+            'anio': anio_actual,
+            'zona': filtros.get('zona', ''),
+            'proveedor': filtros.get('proveedor', ''),
+            'linea': filtros.get('linea', ''),
+        }
+    }
+
+    # Soporte para actualización asíncrona vía AJAX
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.GET.get('ajax') == '1'
+    if is_ajax:
+        return JsonResponse(payload, encoder=DjangoJSONEncoder)
+
+    # Serialización JSON para SSR (ADR-015)
+    datos_json = json.dumps(payload, cls=DjangoJSONEncoder)
+
+    context = {
+        'filtros': filtros_disponibles,
+        'filtros_aplicados': payload['filtros_aplicados'],
+        'anio_actual': anio_actual,
+        'contexto_json': datos_json,
+        'datos_json': datos_json,
+        'datos_iniciales_json': datos_json,
+    }
+    return render(request, 'reportes/analisis_ventas_global.html', context)
+

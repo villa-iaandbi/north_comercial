@@ -5,16 +5,6 @@ window.offsetResumen = 0;
 
 document.addEventListener('DOMContentLoaded', function () {
 
-    // --- SOLUCIÓN NATIVA AL MENÚ COLAPSADO ---
-    // Añadimos la clase al body directamente
-    document.body.classList.add('sidebar-collapse');
-    // Buscamos el botón "hamburguesa" de AdminLTE o similares
-    const btnToggle = document.querySelector('[data-widget="pushmenu"]') || document.querySelector('.sidebar-toggle');
-    // Si el menú sigue abierto, forzamos un clic programático
-    if (btnToggle && !document.body.classList.contains('sidebar-collapse')) {
-        btnToggle.click();
-    }
-
     const url = '/reportes/analisis-productos/';
 
     function showLoader(msg = 'ACTUALIZANDO...') {

@@ -5,13 +5,6 @@ window.offsetMatriz = 0;
 
 document.addEventListener('DOMContentLoaded', function () {
 
-    // --- SOLUCIÓN NATIVA AL MENÚ COLAPSADO ---
-    document.body.classList.add('sidebar-collapse');
-    const btnToggle = document.querySelector('[data-widget="pushmenu"]') || document.querySelector('.sidebar-toggle');
-    if (btnToggle && !document.body.classList.contains('sidebar-collapse')) {
-        btnToggle.click();
-    }
-
     const url = '/reportes/analisis-ventas/';
 
     function showLoader(msg = 'ACTUALIZANDO...') {
