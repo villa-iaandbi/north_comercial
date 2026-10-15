@@ -29,7 +29,7 @@ class InventarioService:
 
         # 1. Consulta SQL base y aplicación dinámica de filtros
         sql_base = """
-            SELECT REFERENCIA, NOM_ARTICULO, GRUPO, EXISTENCIA, VALOR_TOTAL, ROTACION_DIARIA, DIAS_SIN_VENTA, ESTADO
+            SELECT REFERENCIA, NOM_ARTICULO, GRUPO, EXISTENCIA, VALOR_TOTAL, ROTACION_DIARIA, DIAS_SIN_VENTA, ESTADO, VLR_PROMEDIO
             FROM V_ANALISIS_INVENTARIO
             WHERE 1=1
         """
@@ -92,6 +92,7 @@ class InventarioService:
             val_tot = Decimal(str(reg.get('VALOR_TOTAL') or '0.0'))
             existencia = Decimal(str(reg.get('EXISTENCIA') or '0'))
             rotacion_diaria = Decimal(str(reg.get('ROTACION_DIARIA') or '0.0'))
+            vlr_promedio = Decimal(str(reg.get('VLR_PROMEDIO') or '0.0'))
 
             # Clasificación por Edad
             if estado == 'I' or dias_sin_venta >= 90:
@@ -107,6 +108,7 @@ class InventarioService:
                         'rotacion_diaria': rotacion_diaria,
                         'dias_sin_venta': dias_sin_venta,
                         'estado': estado,
+                        'vlr_promedio': vlr_promedio,
                         'REFERENCIA': referencia,
                         'NOM_ARTICULO': nom_articulo,
                         'GRUPO': grupo,
@@ -115,6 +117,7 @@ class InventarioService:
                         'ROTACION_DIARIA': rotacion_diaria,
                         'DIAS_SIN_VENTA': dias_sin_venta,
                         'ESTADO': estado,
+                        'VLR_PROMEDIO': vlr_promedio,
                     })
             elif 31 <= dias_sin_venta < 90:
                 valor_lento += val_tot
@@ -123,6 +126,17 @@ class InventarioService:
                 if rotacion_diaria > Decimal('0.0'):
                     dias_restantes = round(existencia / rotacion_diaria, 1)
                     if dias_restantes <= Decimal('10.0'):
+                        # Cálculo de Venta Perdida Estimada (cobertura 7 días)
+                        dias_cobertura = Decimal('7')
+                        if existencia <= Decimal('0'):
+                            venta_perdida_estimada = round(rotacion_diaria * dias_cobertura * vlr_promedio, 2)
+                        else:
+                            brecha = (rotacion_diaria * dias_cobertura) - existencia
+                            if brecha > Decimal('0'):
+                                venta_perdida_estimada = round(brecha * vlr_promedio, 2)
+                            else:
+                                venta_perdida_estimada = Decimal('0.0')
+
                         lista_agotados.append({
                             'referencia': referencia,
                             'nom_articulo': nom_articulo,
@@ -133,6 +147,8 @@ class InventarioService:
                             'dias_sin_venta': dias_sin_venta,
                             'estado': estado,
                             'dias_restantes': dias_restantes,
+                            'vlr_promedio': vlr_promedio,
+                            'venta_perdida_estimada': venta_perdida_estimada,
                             'REFERENCIA': referencia,
                             'NOM_ARTICULO': nom_articulo,
                             'GRUPO': grupo,
@@ -142,6 +158,8 @@ class InventarioService:
                             'DIAS_SIN_VENTA': dias_sin_venta,
                             'ESTADO': estado,
                             'DIAS_RESTANTES': dias_restantes,
+                            'VLR_PROMEDIO': vlr_promedio,
+                            'VENTA_PERDIDA_ESTIMADA': venta_perdida_estimada,
                         })
 
             valor_total += val_tot
@@ -153,13 +171,13 @@ class InventarioService:
         else:
             indice_salud = Decimal('0.0')
 
-        # Ordenar lista_agotados por dias_restantes ascendente y cortar al Top 20
+        # Ordenar lista_agotados por dias_restantes ascendente y cortar al Top 200
         lista_agotados.sort(key=lambda x: x['dias_restantes'])
-        lista_agotados = lista_agotados[:20]
+        lista_agotados = lista_agotados[:200]
 
-        # Ordenar lista_morosos por VALOR_TOTAL descendente y cortar al Top 20
+        # Ordenar lista_morosos por VALOR_TOTAL descendente y cortar al Top 200
         lista_morosos.sort(key=lambda x: x['valor_total'], reverse=True)
-        lista_morosos = lista_morosos[:20]
+        lista_morosos = lista_morosos[:200]
 
         # Ordenar grupos_atrapados por valor descendente y tomar Top 10 para ECharts
         grupos_ordenados = sorted(grupos_atrapados.items(), key=lambda x: x[1], reverse=True)[:10]

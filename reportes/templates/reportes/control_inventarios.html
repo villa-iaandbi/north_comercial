@@ -130,9 +130,9 @@
                     x-text="formatCop(data.kpis.valor_total)">
                 </p>
             </div>
-            <div class="text-xs text-gray-400 pt-2 border-t border-gray-800 flex justify-between">
-                <span>Sano: <strong class="text-emerald-400 font-mono" x-text="formatCop(data.kpis.valor_sano)"></strong></span>
-                <span>Lento: <strong class="text-amber-400 font-mono" x-text="formatCop(data.kpis.valor_lento)"></strong></span>
+            <div class="text-base text-gray-400 pt-2 border-t border-gray-800 flex justify-between">
+                <span>Sano: <strong class="text-emerald-400 font-mono text-base" x-text="formatCop(data.kpis.valor_sano)"></strong></span>
+                <span>Lento: <strong class="text-amber-400 font-mono text-base" x-text="formatCop(data.kpis.valor_lento)"></strong></span>
             </div>
         </div>
 
@@ -147,9 +147,9 @@
                     x-text="formatCop(data.kpis.valor_atrapado)">
                 </p>
             </div>
-            <div class="text-xs text-red-400/80 pt-2 border-t border-gray-800 flex items-center justify-between">
+            <div class="text-base text-red-400/80 pt-2 border-t border-gray-800 flex items-center justify-between">
                 <span>Inactivo o &ge; 90 días</span>
-                <span class="bg-red-900/50 text-red-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-red-800">CRÍTICO</span>
+                <span class="bg-red-900/50 text-red-300 text-xs font-bold px-2.5 py-0.5 rounded-full border border-red-800">CRÍTICO</span>
             </div>
         </div>
 
@@ -164,9 +164,9 @@
                     x-text="formatCop(data.kpis.costo_oportunidad)">
                 </p>
             </div>
-            <div class="text-xs text-gray-400 pt-2 border-t border-gray-800 flex justify-between items-center">
+            <div class="text-base text-gray-400 pt-2 border-t border-gray-800 flex justify-between items-center">
                 <span>Tasa Financiera:</span>
-                <span class="font-mono text-amber-300 font-semibold">1.5% mensual</span>
+                <span class="font-mono text-amber-300 font-semibold text-base">1.5% mensual</span>
             </div>
         </div>
 
@@ -181,10 +181,10 @@
                     x-text="(data.kpis.indice_salud || 0) + ' %'">
                 </p>
             </div>
-            <div class="text-xs text-gray-400 pt-2 border-t border-gray-800 flex justify-between items-center">
+            <div class="text-base text-gray-400 pt-2 border-t border-gray-800 flex justify-between items-center">
                 <span>Inventario Sano / Total</span>
-                <div class="w-24 bg-gray-800 rounded-full h-2 overflow-hidden">
-                    <div class="bg-emerald-500 h-2 rounded-full" :style="'width: ' + Math.min(100, (data.kpis.indice_salud || 0)) + '%'"></div>
+                <div class="w-24 bg-gray-800 rounded-full h-2.5 overflow-hidden">
+                    <div class="bg-emerald-500 h-2.5 rounded-full" :style="'width: ' + Math.min(100, (data.kpis.indice_salud || 0)) + '%'"></div>
                 </div>
             </div>
         </div>
@@ -217,8 +217,8 @@
         </div>
     </div>
 
-    <!-- FILA 3: TABLAS DE ACCIÓN 50/50 (GRID 2 COLUMNAS) -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" x-data="{ data: JSON.parse(document.getElementById('dashboard-data').textContent) }">
+    <!-- FILA 3: TABLAS DE ACCIÓN 50/50 (GRID 2 COLUMNAS CON PAGINACIÓN EN MEMORIA) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" x-data="{ data: JSON.parse(document.getElementById('dashboard-data').textContent), limitAgotados: 50, limitMorosos: 50 }">
         
         <!-- Tabla Izquierda: Alerta Agotados (Riesgo de Quiebre) -->
         <div class="bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden flex flex-col">
@@ -228,10 +228,10 @@
                         <span class="w-2 h-2 rounded-full bg-red-500"></span>
                         Alerta de Agotados (Riesgo de Quiebre)
                     </h4>
-                    <p class="text-xs text-gray-400">Productos sanos con stock menor a 10 días de cobertura (Top 20)</p>
+                    <p class="text-xs text-gray-400">Productos sanos con stock menor a 10 días de cobertura</p>
                 </div>
-                <span class="px-2 py-0.5 rounded text-[11px] font-mono bg-red-900/40 text-red-300 border border-red-800/60"
-                      x-text="(data.tabla_agotados ? data.tabla_agotados.length : 0) + ' items'">
+                <span class="px-2 py-0.5 rounded text-[11px] font-mono bg-red-900/40 text-red-300 border border-red-800/60">
+                    <span x-text="data.tabla_agotados ? data.tabla_agotados.length : 0"></span> ítems en riesgo
                 </span>
             </div>
 
@@ -243,14 +243,15 @@
                             <th class="py-2 px-2 text-right">Existencia</th>
                             <th class="py-2 px-2 text-right">Rot. Diaria</th>
                             <th class="py-2 px-2 text-right">Días Restantes</th>
+                            <th class="py-2 px-2 text-right">VTA. PERDIDA ESTIMADA</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="item in data.tabla_agotados" :key="item.referencia">
+                        <template x-for="item in data.tabla_agotados.slice(0, limitAgotados)" :key="item.referencia">
                             <tr class="even:bg-gray-800/40 hover:bg-gray-700/50 transition-colors">
                                 <td class="py-1 px-2 text-left">
-                                    <div class="font-medium text-gray-200 text-xs truncate max-w-xs" x-text="item.nom_articulo" :title="item.nom_articulo"></div>
-                                    <div class="text-[10px] text-gray-500 font-mono" x-text="item.referencia + (item.grupo ? ' · ' + item.grupo : '')"></div>
+                                    <div class="font-medium text-gray-200 text-sm truncate max-w-xs" x-text="item.nom_articulo" :title="item.nom_articulo"></div>
+                                    <div class="text-xs text-gray-400 font-mono" x-text="item.referencia + (item.grupo ? ' · ' + item.grupo : '')"></div>
                                 </td>
                                 <td class="py-1 px-2 text-right tabular-nums text-sm text-gray-200" x-text="formatNumber(item.existencia)"></td>
                                 <td class="py-1 px-2 text-right tabular-nums text-sm text-gray-300" x-text="item.rotacion_diaria"></td>
@@ -258,10 +259,21 @@
                                     :class="Number(item.dias_restantes) < 5 ? 'text-red-500 font-bold' : 'text-gray-200'"
                                     x-text="item.dias_restantes">
                                 </td>
+                                <td class="py-1 px-2 text-right tabular-nums text-sm font-semibold text-red-500"
+                                    x-text="formatCop(item.venta_perdida_estimada)">
+                                </td>
                             </tr>
                         </template>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Botón Cargar Más Agotados -->
+            <div class="p-2 border-t border-gray-800 text-center bg-gray-900/60" x-show="limitAgotados < (data.tabla_agotados ? data.tabla_agotados.length : 0)">
+                <button @click="limitAgotados += 50" type="button"
+                    class="text-xs text-blue-400 hover:text-blue-300 hover:underline font-semibold transition-colors focus:outline-none py-1 px-3">
+                    Cargar 50 más artículos agotados...
+                </button>
             </div>
         </div>
 
@@ -273,10 +285,10 @@
                         <span class="w-2 h-2 rounded-full bg-amber-500"></span>
                         Plan de Liquidación (Inventario Moroso)
                     </h4>
-                    <p class="text-xs text-gray-400">Productos con mayor capital atrapado (&ge; 90 días o inactivos - Top 20)</p>
+                    <p class="text-xs text-gray-400">Productos con mayor capital atrapado (&ge; 90 días o inactivos)</p>
                 </div>
-                <span class="px-2 py-0.5 rounded text-[11px] font-mono bg-amber-900/40 text-amber-300 border border-amber-800/60"
-                      x-text="(data.tabla_morosos ? data.tabla_morosos.length : 0) + ' items'">
+                <span class="px-2 py-0.5 rounded text-[11px] font-mono bg-amber-900/40 text-amber-300 border border-amber-800/60">
+                    <span x-text="data.tabla_morosos ? data.tabla_morosos.length : 0"></span> ítems morosos
                 </span>
             </div>
 
@@ -291,11 +303,11 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="item in data.tabla_morosos" :key="item.referencia">
+                        <template x-for="item in data.tabla_morosos.slice(0, limitMorosos)" :key="item.referencia">
                             <tr class="even:bg-gray-800/40 hover:bg-gray-700/50 transition-colors">
                                 <td class="py-1 px-2 text-left">
-                                    <div class="font-medium text-gray-200 text-xs truncate max-w-xs" x-text="item.nom_articulo" :title="item.nom_articulo"></div>
-                                    <div class="text-[10px] text-gray-500 font-mono" x-text="item.referencia + (item.grupo ? ' · ' + item.grupo : '')"></div>
+                                    <div class="font-medium text-gray-200 text-sm truncate max-w-xs" x-text="item.nom_articulo" :title="item.nom_articulo"></div>
+                                    <div class="text-xs text-gray-400 font-mono" x-text="item.referencia + (item.grupo ? ' · ' + item.grupo : '')"></div>
                                 </td>
                                 <td class="py-1 px-2 text-right tabular-nums text-sm text-gray-300">
                                     <span class="px-1.5 py-0.5 rounded text-xs font-mono"
@@ -309,6 +321,14 @@
                         </template>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Botón Cargar Más Morosos -->
+            <div class="p-2 border-t border-gray-800 text-center bg-gray-900/60" x-show="limitMorosos < (data.tabla_morosos ? data.tabla_morosos.length : 0)">
+                <button @click="limitMorosos += 50" type="button"
+                    class="text-xs text-blue-400 hover:text-blue-300 hover:underline font-semibold transition-colors focus:outline-none py-1 px-3">
+                    Cargar 50 más artículos inmovilizados...
+                </button>
             </div>
         </div>
 
