@@ -155,18 +155,40 @@ class CarteraService:
         porcentaje_vencida = round((cartera_vencida / cartera_total) * Decimal('100.0'), 2) if cartera_total > Decimal('0.0') else Decimal('0.0')
         dso_promedio = round(mora_ponderada / cartera_vencida, 1) if cartera_vencida > Decimal('0.0') else Decimal('0.0')
 
-        # Top 10 Clientes con Mayor Deuda Vencida
-        clientes_ordenados = sorted(clientes_riesgo.items(), key=lambda x: x[1], reverse=True)[:10]
+        # Clientes con Mayor Deuda Vencida (Top 50)
+        clientes_ordenados = sorted(clientes_riesgo.items(), key=lambda x: x[1], reverse=True)[:50]
         grafico_clientes = {
             'nombres': [x[0] for x in clientes_ordenados],
-            'valores': [x[1] for x in clientes_ordenados]
+            'valores': [x[1] for x in clientes_ordenados],
+            'items': [
+                {
+                    'nombre': x[0],
+                    'cliente': x[0],
+                    'CLIENTE_NOMBRE': x[0],
+                    'valor': x[1],
+                    'SALDO_VENCIDO': x[1],
+                    'valor_formateado': f"$ {int(round(x[1])):,}".replace(",", ".")
+                }
+                for x in clientes_ordenados
+            ]
         }
 
-        # Top 10 Vendedores con Mayor Deuda Vencida
-        vendedores_ordenados = sorted(vendedores_riesgo.items(), key=lambda x: x[1], reverse=True)[:10]
+        # Vendedores con Cartera Vencida (Todos los vendedores con cartera vencida)
+        vendedores_ordenados = sorted(vendedores_riesgo.items(), key=lambda x: x[1], reverse=True)
         grafico_vendedores = {
             'nombres': [x[0] for x in vendedores_ordenados],
-            'valores': [x[1] for x in vendedores_ordenados]
+            'valores': [x[1] for x in vendedores_ordenados],
+            'items': [
+                {
+                    'nombre': x[0],
+                    'vendedor': x[0],
+                    'VENDEDOR_NOMBRE': x[0],
+                    'valor': x[1],
+                    'SALDO_VENCIDO': x[1],
+                    'valor_formateado': f"$ {int(round(x[1])):,}".replace(",", ".")
+                }
+                for x in vendedores_ordenados
+            ]
         }
 
         # Ordenar tabla_comite por DIAS_MORA descendente y truncar a Top 200

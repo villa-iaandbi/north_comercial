@@ -21,6 +21,10 @@
     };
 </script>
 <style>
+    [x-cloak] {
+        display: none !important;
+    }
+
     /* Estructura general de tablas ADR-016 (Alta Densidad, Sin border-b y Zebra) */
     .tabla-densa {
         width: 100%;
@@ -177,28 +181,136 @@
 
     <!-- FILA 2: GRÁFICOS DE RIESGO 50/50 (GRID 2 COLUMNAS) -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Gráfico Izquierda: Top 10 Clientes con Mayor Deuda -->
-        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-gray-800 flex flex-col justify-between">
-            <div class="mb-3 border-b border-gray-800 pb-2">
-                <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-red-500"></span>
-                    Top 10 Clientes con Mayor Deuda Vencida
-                </h4>
-                <p class="text-xs text-gray-400">Concentración de cartera en mora por cliente comercial</p>
+        <!-- Tarjeta Izquierda: Top Clientes con Mayor Deuda (Toggle Gráfica / Tabla) -->
+        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-gray-800 flex flex-col justify-between"
+             x-data="{ 
+                 view: 'chart', 
+                 clientes: (data.grafico_clientes && data.grafico_clientes.items && data.grafico_clientes.items.length) 
+                     ? data.grafico_clientes.items 
+                     : ((data.grafico_clientes && data.grafico_clientes.nombres) 
+                        ? data.grafico_clientes.nombres.map((n, i) => ({ nombre: n, valor: data.grafico_clientes.valores[i] })) 
+                        : [])
+             }">
+            <div class="mb-3 border-b border-gray-800 pb-2 flex items-center justify-between">
+                <div>
+                    <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                        Top Clientes con Mayor Deuda Vencida
+                    </h4>
+                    <p class="text-xs text-gray-400">Concentración de cartera en mora por cliente comercial</p>
+                </div>
+                <!-- BOTÓN TOGGLE GRÁFICA / TABLA -->
+                <button type="button" 
+                    @click="view = view === 'chart' ? 'table' : 'chart'; if (view === 'chart') { $nextTick(() => window.dispatchEvent(new Event('resize'))); }"
+                    class="px-2.5 py-1 text-xs font-semibold text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md transition-colors flex items-center gap-1.5 shadow-sm"
+                    title="Alternar entre gráfica y tabla">
+                    <!-- Icono cuando está en chart (ver tabla) -->
+                    <svg x-show="view === 'chart'" class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                    <!-- Icono cuando está en table (ver gráfica) -->
+                    <svg x-show="view === 'table'" class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" x-cloak>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    <span x-text="view === 'chart' ? 'Ver Tabla' : 'Ver Gráfica'">Ver Tabla</span>
+                </button>
             </div>
-            <div id="chart-clientes" class="h-96 w-full"></div>
+
+            <!-- CONTENEDOR GRÁFICA -->
+            <div x-show="view === 'chart'" class="w-full">
+                <div id="chart-clientes" class="h-96 w-full"></div>
+            </div>
+
+            <!-- CONTENEDOR TABLA (ADR-016 Alta Densidad Visual) -->
+            <div x-show="view === 'table'" x-cloak class="w-full h-96 max-h-[384px] overflow-y-auto">
+                <table class="tabla-densa w-full text-left">
+                    <thead class="sticky top-0 bg-gray-900 z-10 border-b border-gray-800">
+                        <tr>
+                            <th class="w-10 text-center py-1.5 px-2 text-gray-400 font-semibold text-xs uppercase tracking-wider">#</th>
+                            <th class="text-left py-1.5 px-2 text-gray-400 font-semibold text-xs uppercase tracking-wider">Cliente</th>
+                            <th class="text-right py-1.5 px-2 text-gray-400 font-semibold text-xs uppercase tracking-wider">Saldo Vencido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(item, idx) in clientes" :key="idx">
+                            <tr class="odd:bg-gray-800/50 even:bg-transparent hover:bg-gray-700/50 transition-colors">
+                                <td class="text-center font-mono text-xs text-gray-400 py-1.5 px-2" x-text="idx + 1"></td>
+                                <td class="text-left font-medium text-gray-200 text-xs py-1.5 px-2 max-w-xs truncate" x-text="item.nombre || item.CLIENTE_NOMBRE || item.cliente" :title="item.nombre || item.CLIENTE_NOMBRE"></td>
+                                <td class="text-right font-mono text-xs font-bold text-red-400 py-1.5 px-2" x-text="formatCop(item.valor || item.SALDO_VENCIDO)"></td>
+                            </tr>
+                        </template>
+                        <tr x-show="!clientes || clientes.length === 0">
+                            <td colspan="3" class="text-center text-gray-400 py-4 text-xs font-mono">No hay registros de clientes en mora</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
-        <!-- Gráfico Derecha: Top 10 Vendedores con Cartera Vencida -->
-        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-gray-800 flex flex-col justify-between">
-            <div class="mb-3 border-b border-gray-800 pb-2">
-                <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-                    Top 10 Vendedores con Cartera Vencida
-                </h4>
-                <p class="text-xs text-gray-400">Distribución de saldos vencidos por fuerza de ventas</p>
+        <!-- Tarjeta Derecha: Distribución por Vendedor (Toggle Gráfica / Tabla) -->
+        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-gray-800 flex flex-col justify-between"
+             x-data="{ 
+                 view: 'chart', 
+                 vendedores: (data.grafico_vendedores && data.grafico_vendedores.items && data.grafico_vendedores.items.length) 
+                     ? data.grafico_vendedores.items 
+                     : ((data.grafico_vendedores && data.grafico_vendedores.nombres) 
+                        ? data.grafico_vendedores.nombres.map((n, i) => ({ nombre: n, valor: data.grafico_vendedores.valores[i] })) 
+                        : [])
+             }">
+            <div class="mb-3 border-b border-gray-800 pb-2 flex items-center justify-between">
+                <div>
+                    <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                        Distribución por Vendedor (Cartera Vencida)
+                    </h4>
+                    <p class="text-xs text-gray-400">Distribución de saldos vencidos por fuerza de ventas</p>
+                </div>
+                <!-- BOTÓN TOGGLE GRÁFICA / TABLA -->
+                <button type="button" 
+                    @click="view = view === 'chart' ? 'table' : 'chart'; if (view === 'chart') { $nextTick(() => window.dispatchEvent(new Event('resize'))); }"
+                    class="px-2.5 py-1 text-xs font-semibold text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md transition-colors flex items-center gap-1.5 shadow-sm"
+                    title="Alternar entre gráfica y tabla">
+                    <!-- Icono cuando está en chart (ver tabla) -->
+                    <svg x-show="view === 'chart'" class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                    <!-- Icono cuando está en table (ver gráfica) -->
+                    <svg x-show="view === 'table'" class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" x-cloak>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    <span x-text="view === 'chart' ? 'Ver Tabla' : 'Ver Gráfica'">Ver Tabla</span>
+                </button>
             </div>
-            <div id="chart-vendedores" class="h-96 w-full"></div>
+
+            <!-- CONTENEDOR GRÁFICA -->
+            <div x-show="view === 'chart'" class="w-full">
+                <div id="chart-vendedores" class="h-96 w-full"></div>
+            </div>
+
+            <!-- CONTENEDOR TABLA (ADR-016 Alta Densidad Visual) -->
+            <div x-show="view === 'table'" x-cloak class="w-full h-96 max-h-[384px] overflow-y-auto">
+                <table class="tabla-densa w-full text-left">
+                    <thead class="sticky top-0 bg-gray-900 z-10 border-b border-gray-800">
+                        <tr>
+                            <th class="w-10 text-center py-1.5 px-2 text-gray-400 font-semibold text-xs uppercase tracking-wider">#</th>
+                            <th class="text-left py-1.5 px-2 text-gray-400 font-semibold text-xs uppercase tracking-wider">Vendedor</th>
+                            <th class="text-right py-1.5 px-2 text-gray-400 font-semibold text-xs uppercase tracking-wider">Cartera en Mora</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(item, idx) in vendedores" :key="idx">
+                            <tr class="odd:bg-gray-800/50 even:bg-transparent hover:bg-gray-700/50 transition-colors">
+                                <td class="text-center font-mono text-xs text-gray-400 py-1.5 px-2" x-text="idx + 1"></td>
+                                <td class="text-left font-medium text-gray-200 text-xs py-1.5 px-2 max-w-xs truncate" x-text="item.nombre || item.VENDEDOR_NOMBRE || item.vendedor" :title="item.nombre || item.VENDEDOR_NOMBRE"></td>
+                                <td class="text-right font-mono text-xs font-bold text-amber-400 py-1.5 px-2" x-text="formatCop(item.valor || item.SALDO_VENCIDO)"></td>
+                            </tr>
+                        </template>
+                        <tr x-show="!vendedores || vendedores.length === 0">
+                            <td colspan="3" class="text-center text-gray-400 py-4 text-xs font-mono">No hay registros de vendedores en mora</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -226,6 +338,7 @@
                         <tr>
                             <th class="py-2 px-2 text-left">Cliente</th>
                             <th class="py-2 px-2 text-left">Vendedor</th>
+                            <th class="py-2 px-2 text-left">Vencimiento</th>
                             <th class="py-2 px-2 text-left">Factura</th>
                             <th class="py-2 px-2 text-right">Días Mora</th>
                             <th class="py-2 px-2 text-right">Saldo</th>
@@ -235,16 +348,18 @@
                         <template x-for="item in data.tabla_comite.slice(0, limitComite)" :key="item.id_documento">
                             <tr class="even:bg-gray-800/40 hover:bg-gray-700/50 transition-colors">
                                 <td class="py-1 px-2 text-left">
-                                    <div class="font-medium text-gray-200 text-sm truncate max-w-xs" x-text="item.cliente_nombre" :title="item.cliente_nombre"></div>
-                                    <div class="text-xs text-gray-400 font-mono" x-text="'Vence: ' + item.fecha_vencimiento"></div>
+                                    <div class="font-medium text-gray-200 text-sm max-w-xs break-words whitespace-normal line-clamp-2"
+                                         x-text="item.cliente_nombre" :title="item.cliente_nombre"></div>
                                 </td>
-                                <td class="py-1 px-2 text-left text-xs text-gray-300 truncate max-w-[120px]" x-text="item.vendedor_nombre" :title="item.vendedor_nombre"></td>
-                                <td class="py-1 px-2 text-left font-mono text-xs text-gray-200" x-text="item.numero_documento"></td>
-                                <td class="py-1 px-2 text-right tabular-nums text-sm font-semibold">
-                                    <span class="px-1.5 py-0.5 rounded text-xs font-mono"
-                                          :class="Number(item.dias_mora) > 90 ? 'bg-red-950/80 text-red-400 font-bold border border-red-800/60' : 'bg-amber-950/60 text-amber-300 border border-amber-800/60'"
-                                          x-text="item.dias_mora + ' d'">
-                                    </span>
+                                <td class="py-1 px-2 text-left text-xs text-gray-300 truncate max-w-[120px]"
+                                    x-text="item.vendedor_nombre" :title="item.vendedor_nombre"></td>
+                                <td class="py-1 px-2 text-left font-mono text-xs text-gray-300"
+                                    x-text="item.fecha_vencimiento"></td>
+                                <td class="py-1 px-2 text-left font-mono text-xs text-gray-200"
+                                    x-text="item.numero_documento"></td>
+                                <td class="py-1 px-2 text-right tabular-nums text-sm font-semibold font-mono"
+                                    :class="Number(item.dias_mora) > 90 ? 'text-red-500 font-bold' : (Number(item.dias_mora) > 30 ? 'text-amber-400' : 'text-yellow-300')"
+                                    x-text="item.dias_mora">
                                 </td>
                                 <td class="py-1 px-2 text-right tabular-nums text-sm font-bold text-red-400"
                                     x-text="formatCop(item.saldo)">

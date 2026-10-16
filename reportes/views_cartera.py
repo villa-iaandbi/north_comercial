@@ -55,6 +55,10 @@ def control_cartera_view(request):
     context = {
         'dashboard_json': dashboard_json,
         'contexto_json': dashboard_json,  # Alias de compatibilidad SSR
+        'top_clientes': dashboard_data.get('grafico_clientes', {}).get('items', []),
+        'top_clientes_list': dashboard_data.get('grafico_clientes', {}).get('items', []),
+        'top_vendedores': dashboard_data.get('grafico_vendedores', {}).get('items', []),
+        'top_vendedores_list': dashboard_data.get('grafico_vendedores', {}).get('items', []),
         'filtros_disponibles': filtros_disponibles,
         'filtros': filtros_disponibles,    # Alias
         'filtros_actuales': filtros_actuales,

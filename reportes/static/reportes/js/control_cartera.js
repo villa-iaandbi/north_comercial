@@ -71,22 +71,30 @@ window.formatAbrevMoney = function (val) {
     function renderCharts(dbData) {
         if (!dbData) return;
 
+        // Helper para truncar a 30 caracteres
+        function truncateLabel(value) {
+            if (!value) return '';
+            const str = String(value).trim();
+            return str.length > 30 ? str.substring(0, 30) + '...' : str;
+        }
+
         // =========================================================================
-        // Gráfico 1: Top 10 Clientes con Mayor Deuda Vencida (Barras Horizontales)
+        // Gráfico 1: Top Clientes con Mayor Deuda Vencida (Barras Horizontales)
+        // Muestra hasta 15 en la gráfica; la tabla modal muestra los 50.
         // =========================================================================
         if (chartClientes) {
             const clientesData = dbData.grafico_clientes ||
                 (dbData.graficos && dbData.graficos.clientes) ||
                 { nombres: [], valores: [] };
 
-            const nombres = clientesData.nombres || [];
-            const valores = (clientesData.valores || []).map(v => parseFloat(v) || 0);
+            const nombres = (clientesData.nombres || []).slice(0, 15);
+            const valores = (clientesData.valores || []).slice(0, 15).map(v => parseFloat(v) || 0);
 
             const optionClientes = {
                 tooltip: {
                     trigger: 'axis',
                     axisPointer: { type: 'shadow' },
-                    textStyle: { fontSize: 14 },
+                    textStyle: { fontSize: 13 },
                     formatter: function (params) {
                         if (!params || !params[0]) return '';
                         const p = params[0];
@@ -94,17 +102,17 @@ window.formatAbrevMoney = function (val) {
                     }
                 },
                 grid: {
-                    left: '3%',
+                    left: '200px',
                     right: '8%',
                     bottom: '8%',
-                    top: '8%',
+                    top: '6%',
                     containLabel: true
                 },
                 xAxis: {
                     type: 'value',
                     axisLabel: {
                         color: '#9ca3af',
-                        fontSize: 14,
+                        fontSize: 12,
                         formatter: window.formatAbrevMoney
                     },
                     splitLine: {
@@ -117,9 +125,10 @@ window.formatAbrevMoney = function (val) {
                     data: nombres,
                     axisLabel: {
                         color: '#d1d5db',
-                        fontSize: 14,
-                        width: 140,
-                        overflow: 'truncate'
+                        fontSize: 12, // Disminuido en 2 puntos
+                        width: 190,
+                        overflow: 'truncate',
+                        formatter: truncateLabel
                     },
                     axisLine: {
                         lineStyle: { color: '#374151' }
@@ -129,6 +138,7 @@ window.formatAbrevMoney = function (val) {
                     {
                         name: 'Saldo Vencido',
                         type: 'bar',
+                        barWidth: 14, // Afinado a 14px
                         data: valores,
                         itemStyle: {
                             color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
@@ -150,21 +160,22 @@ window.formatAbrevMoney = function (val) {
         }
 
         // =========================================================================
-        // Gráfico 2: Top 10 Vendedores con Cartera Vencida (Barras Horizontales)
+        // Gráfico 2: Distribución por Vendedor (Cartera Vencida)
+        // Muestra hasta 15 en la gráfica; la tabla modal muestra todos los vendedores.
         // =========================================================================
         if (chartVendedores) {
             const vendedoresData = dbData.grafico_vendedores ||
                 (dbData.graficos && dbData.graficos.vendedores) ||
                 { nombres: [], valores: [] };
 
-            const nombres = vendedoresData.nombres || [];
-            const valores = (vendedoresData.valores || []).map(v => parseFloat(v) || 0);
+            const nombres = (vendedoresData.nombres || []).slice(0, 15);
+            const valores = (vendedoresData.valores || []).slice(0, 15).map(v => parseFloat(v) || 0);
 
             const optionVendedores = {
                 tooltip: {
                     trigger: 'axis',
                     axisPointer: { type: 'shadow' },
-                    textStyle: { fontSize: 14 },
+                    textStyle: { fontSize: 13 },
                     formatter: function (params) {
                         if (!params || !params[0]) return '';
                         const p = params[0];
@@ -172,17 +183,17 @@ window.formatAbrevMoney = function (val) {
                     }
                 },
                 grid: {
-                    left: '3%',
+                    left: '200px',
                     right: '8%',
                     bottom: '8%',
-                    top: '8%',
+                    top: '6%',
                     containLabel: true
                 },
                 xAxis: {
                     type: 'value',
                     axisLabel: {
                         color: '#9ca3af',
-                        fontSize: 14,
+                        fontSize: 12,
                         formatter: window.formatAbrevMoney
                     },
                     splitLine: {
@@ -195,9 +206,10 @@ window.formatAbrevMoney = function (val) {
                     data: nombres,
                     axisLabel: {
                         color: '#d1d5db',
-                        fontSize: 14,
-                        width: 140,
-                        overflow: 'truncate'
+                        fontSize: 12, // Disminuido en 2 puntos
+                        width: 190,
+                        overflow: 'truncate',
+                        formatter: truncateLabel
                     },
                     axisLine: {
                         lineStyle: { color: '#374151' }
@@ -207,6 +219,7 @@ window.formatAbrevMoney = function (val) {
                     {
                         name: 'Cartera en Mora',
                         type: 'bar',
+                        barWidth: 14, // Afinado a 14px
                         data: valores,
                         itemStyle: {
                             color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
