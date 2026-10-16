@@ -38,6 +38,85 @@ window.formatAbrevMoney = function (val) {
 
     let chartClientes = null;
     let chartVendedores = null;
+    let chartProyeccion = null;
+
+    window.initChartProyeccion = function (domEl, initialData) {
+        if (!domEl || typeof echarts === 'undefined') return null;
+        if (chartProyeccion) {
+            chartProyeccion.dispose();
+        }
+        chartProyeccion = echarts.init(domEl);
+
+        const optionProyeccion = {
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: { type: 'shadow' },
+                textStyle: { fontSize: 13 },
+                formatter: function (params) {
+                    if (!params || !params[0]) return '';
+                    const p = params[0];
+                    return `<strong>${p.name}</strong><br/>Recaudo Proyectado: <strong>${window.formatCop(p.value)}</strong>`;
+                }
+            },
+            grid: {
+                left: '4%',
+                right: '4%',
+                bottom: '8%',
+                top: '10%',
+                containLabel: true
+            },
+            xAxis: {
+                type: 'category',
+                data: ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'],
+                axisLabel: {
+                    color: '#d1d5db',
+                    fontSize: 12,
+                    fontWeight: 'bold'
+                },
+                axisLine: {
+                    lineStyle: { color: '#374151' }
+                }
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: {
+                    color: '#9ca3af',
+                    fontSize: 12,
+                    formatter: window.formatAbrevMoney
+                },
+                splitLine: {
+                    lineStyle: { color: '#1f2937', type: 'dashed' }
+                }
+            },
+            series: [
+                {
+                    name: 'Proyección de Recaudo',
+                    type: 'bar',
+                    barWidth: '42%',
+                    data: (initialData || [0, 0, 0, 0]).map(v => parseFloat(v) || 0),
+                    itemStyle: {
+                        color: '#06b6d4',
+                        borderRadius: [6, 6, 0, 0]
+                    }
+                }
+            ]
+        };
+
+        chartProyeccion.setOption(optionProyeccion, true);
+
+        return {
+            setOption: function (opt) {
+                if (chartProyeccion) {
+                    chartProyeccion.setOption(opt);
+                }
+            },
+            resize: function () {
+                if (chartProyeccion) {
+                    chartProyeccion.resize();
+                }
+            }
+        };
+    };
 
     function initCarteraDashboard() {
         const dataElement = document.getElementById('dashboard-data');
@@ -245,6 +324,7 @@ window.formatAbrevMoney = function (val) {
     window.addEventListener('resize', function () {
         if (chartClientes) chartClientes.resize();
         if (chartVendedores) chartVendedores.resize();
+        if (chartProyeccion) chartProyeccion.resize();
     });
 
     // Carga tras parseo del DOM

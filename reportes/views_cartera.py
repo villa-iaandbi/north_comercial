@@ -51,10 +51,17 @@ def control_cartera_view(request):
 
     # 4. Serialización JSON segura para inyección SSR (ADR-015)
     dashboard_json = json.dumps(dashboard_data, cls=DjangoJSONEncoder)
+    proyeccion_teorica = dashboard_data.get('proyeccion_teorica', [0, 0, 0, 0])
+    proyeccion_probable = dashboard_data.get('proyeccion_probable', [0, 0, 0, 0])
 
     context = {
         'dashboard_json': dashboard_json,
         'contexto_json': dashboard_json,  # Alias de compatibilidad SSR
+        'promedio_contado_semanal': dashboard_data.get('promedio_contado_semanal', 0),
+        'proyeccion_teorica': json.dumps(proyeccion_teorica, cls=DjangoJSONEncoder),
+        'proyeccion_probable': json.dumps(proyeccion_probable, cls=DjangoJSONEncoder),
+        'proyeccion_teorica_list': proyeccion_teorica,
+        'proyeccion_probable_list': proyeccion_probable,
         'top_clientes': dashboard_data.get('grafico_clientes', {}).get('items', []),
         'top_clientes_list': dashboard_data.get('grafico_clientes', {}).get('items', []),
         'top_vendedores': dashboard_data.get('grafico_vendedores', {}).get('items', []),

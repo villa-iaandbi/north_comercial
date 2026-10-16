@@ -1,9 +1,23 @@
 # -*- coding: utf-8 -*-
+import datetime
 from decimal import Decimal
 import logging
 from django.db import connection
+from django.template.defaultfilters import register
 
 logger = logging.getLogger(__name__)
+
+
+@register.filter(name='formato_moneda')
+def formato_moneda(value):
+    """Formatea un valor numérico o Decimal como moneda local sin decimales (ej. 1.234.567)."""
+    if value is None or value == '':
+        return '0'
+    try:
+        dec_val = value if isinstance(value, Decimal) else Decimal(str(value))
+        return f"{int(round(dec_val)):,}".replace(",", ".")
+    except Exception:
+        return '0'
 
 
 class CarteraService:
@@ -20,6 +34,41 @@ class CarteraService:
       - Precisión decimal estricta mediante el uso de Decimal.
       - Retorno de listas truncadas a [:200] para paginación progresiva en frontend.
     """
+
+    @staticmethod
+    def _parse_fecha(valor_fecha):
+        """Convierte un valor datetime, date o string ISO a datetime.date."""
+        if not valor_fecha:
+            return None
+        if isinstance(valor_fecha, datetime.datetime):
+            return valor_fecha.date()
+        if isinstance(valor_fecha, datetime.date):
+            return valor_fecha
+        try:
+            return datetime.date.fromisoformat(str(valor_fecha)[:10])
+        except Exception:
+            return None
+
+    @staticmethod
+    def _obtener_indice_semana(dias_faltantes: int):
+        """
+        Agrupa los días faltantes en 4 semanas (índices 0 a 3):
+          - Semana 1 (0): 0 a 7 días
+          - Semana 2 (1): 8 a 14 días
+          - Semana 3 (2): 15 a 21 días
+          - Semana 4 (3): 22 a 30 días
+        """
+        if dias_faltantes < 0:
+            return None
+        if dias_faltantes <= 7:
+            return 0
+        if dias_faltantes <= 14:
+            return 1
+        if dias_faltantes <= 21:
+            return 2
+        if dias_faltantes <= 30:
+            return 3
+        return None
 
     @classmethod
     def get_dashboard_data(cls, filtros: dict = None) -> dict:
@@ -62,28 +111,49 @@ class CarteraService:
         if where_parts:
             sql_base += " " + " ".join(where_parts)
 
-        # Ejecución de la consulta
+        # Consulta agrupada única para Promedio Contado Semanal (últimos 90 días, plazo <= 9 días)
+        sql_contado_90d = """
+            SELECT NVL(SUM(VNT.VENTA_CON_IVA), 0) AS TOTAL_CONTADO_90D
+            FROM BI_VENTASNETAS VNT
+            INNER JOIN CT_CLIENTES CLI ON VNT.ID_TERCERO = CLI.ID_TERCERO
+            WHERE VNT.FECHA >= TRUNC(SYSDATE) - 90
+              AND NVL(CLI.PLAZO_PAGO, 0) <= 9
+        """
+
+        # Ejecución de las consultas
         registros = []
+        promedio_contado_semanal = Decimal('0.0')
         try:
             with connection.cursor() as cursor:
                 cursor.execute(sql_base, params)
-                columns = [col[0].upper() for col in cursor.description]
+                columns = [col[0].upper() for col in cursor.description] if cursor.description else []
                 for row in cursor.fetchall():
                     registros.append(dict(zip(columns, row)))
+
+                try:
+                    cursor.execute(sql_contado_90d)
+                    row_contado = cursor.fetchone()
+                    if row_contado and row_contado[0] is not None:
+                        total_contado_90d = Decimal(str(row_contado[0]))
+                        promedio_contado_semanal = round(total_contado_90d / Decimal('12.85'), 2)
+                except Exception as exc_contado:
+                    logger.warning("No se pudo calcular promedio_contado_semanal: %s", exc_contado)
         except Exception as e:
             logger.error("Error al consultar V_ANALISIS_CARTERA: %s", e)
             raise e
 
-        # 2. Procesamiento en Memoria (Iteración Única)
+        # 2. Procesamiento en Memoria (Iteración O(N))
         cartera_total = Decimal('0.0')
         cartera_vencida = Decimal('0.0')
         cartera_toxica = Decimal('0.0')
         mora_ponderada = Decimal('0.0')
 
         clientes_riesgo = {}
+        clientes_mora_ponderada = {}
         vendedores_riesgo = {}
         tabla_comite = []
         tabla_proyeccion = []
+        facturas_corrientes_raw = []
 
         for reg in registros:
             saldo = Decimal(str(reg.get('SALDO') or '0.0'))
@@ -95,6 +165,7 @@ class CarteraService:
             num_doc = str(reg.get('NUMERO_DOCUMENTO') or '').strip()
             fch_venc = reg.get('FECHA_VENCIMIENTO')
             fch_venc_str = fch_venc.strftime('%Y-%m-%d') if hasattr(fch_venc, 'strftime') else str(fch_venc)[:10] if fch_venc else ''
+            fch_venc_date = cls._parse_fecha(fch_venc)
 
             # Acumulador general de cartera
             cartera_total += saldo
@@ -102,9 +173,11 @@ class CarteraService:
             # Cartera vencida (días de mora > 0)
             if dias_mora > 0:
                 cartera_vencida += saldo
-                mora_ponderada += (saldo * Decimal(str(dias_mora)))
+                mora_doc = saldo * Decimal(str(dias_mora))
+                mora_ponderada += mora_doc
 
                 clientes_riesgo[cliente_nombre] = clientes_riesgo.get(cliente_nombre, Decimal('0.0')) + saldo
+                clientes_mora_ponderada[cliente_nombre] = clientes_mora_ponderada.get(cliente_nombre, Decimal('0.0')) + mora_doc
                 vendedores_riesgo[vendedor_nombre] = vendedores_riesgo.get(vendedor_nombre, Decimal('0.0')) + saldo
 
                 tabla_comite.append({
@@ -131,29 +204,57 @@ class CarteraService:
                 cartera_toxica += saldo
 
             # Cartera corriente (No vencida para proyección de recaudos)
-            if estado_mora == 'CORRIENTE':
-                tabla_proyeccion.append({
-                    'id_documento': id_doc,
-                    'cliente_nombre': cliente_nombre,
-                    'vendedor_nombre': vendedor_nombre,
-                    'numero_documento': num_doc,
-                    'fecha_vencimiento': fch_venc_str,
-                    'saldo': saldo,
-                    'dias_mora': dias_mora,
-                    'estado_mora': estado_mora,
-                    'ID_DOCUMENTO': id_doc,
-                    'CLIENTE_NOMBRE': cliente_nombre,
-                    'VENDEDOR_NOMBRE': vendedor_nombre,
-                    'NUMERO_DOCUMENTO': num_doc,
-                    'FECHA_VENCIMIENTO': fch_venc_str,
-                    'SALDO': saldo,
-                    'DIAS_MORA': dias_mora,
-                    'ESTADO_MORA': estado_mora,
-                })
+            if estado_mora == 'CORRIENTE' or dias_mora <= 0:
+                if estado_mora == 'CORRIENTE':
+                    tabla_proyeccion.append({
+                        'id_documento': id_doc,
+                        'cliente_nombre': cliente_nombre,
+                        'vendedor_nombre': vendedor_nombre,
+                        'numero_documento': num_doc,
+                        'fecha_vencimiento': fch_venc_str,
+                        'saldo': saldo,
+                        'dias_mora': dias_mora,
+                        'estado_mora': estado_mora,
+                        'ID_DOCUMENTO': id_doc,
+                        'CLIENTE_NOMBRE': cliente_nombre,
+                        'VENDEDOR_NOMBRE': vendedor_nombre,
+                        'NUMERO_DOCUMENTO': num_doc,
+                        'FECHA_VENCIMIENTO': fch_venc_str,
+                        'SALDO': saldo,
+                        'DIAS_MORA': dias_mora,
+                        'ESTADO_MORA': estado_mora,
+                    })
+                if fch_venc_date is not None and saldo > Decimal('0.0'):
+                    facturas_corrientes_raw.append((fch_venc_date, saldo, cliente_nombre))
 
-        # 3. Cálculos Finales y Ordenamiento
+        # 3. Cálculos Finales, DSO Histórico por Cliente y Buckets de Proyección (4 semanas)
         porcentaje_vencida = round((cartera_vencida / cartera_total) * Decimal('100.0'), 2) if cartera_total > Decimal('0.0') else Decimal('0.0')
         dso_promedio = round(mora_ponderada / cartera_vencida, 1) if cartera_vencida > Decimal('0.0') else Decimal('0.0')
+
+        dso_por_cliente = {}
+        for cli_nom, saldo_cli in clientes_riesgo.items():
+            if saldo_cli > Decimal('0.0'):
+                dso_por_cliente[cli_nom] = int(round(clientes_mora_ponderada.get(cli_nom, Decimal('0.0')) / saldo_cli))
+
+        hoy = datetime.date.today()
+        buckets_teorico = [Decimal('0.0'), Decimal('0.0'), Decimal('0.0'), Decimal('0.0')]
+        buckets_probable = [Decimal('0.0'), Decimal('0.0'), Decimal('0.0'), Decimal('0.0')]
+
+        for fch_venc_date, saldo_corr, cli_nom in facturas_corrientes_raw:
+            dias_faltantes = (fch_venc_date - hoy).days
+            semana_teorica = cls._obtener_indice_semana(dias_faltantes)
+            if semana_teorica is not None:
+                buckets_teorico[semana_teorica] += saldo_corr
+
+            dias_mora_hist = dso_por_cliente.get(cli_nom, 0)
+            fch_probable = fch_venc_date + datetime.timedelta(days=dias_mora_hist)
+            dias_probables = (fch_probable - hoy).days
+            semana_probable = cls._obtener_indice_semana(dias_probables)
+            if semana_probable is not None:
+                buckets_probable[semana_probable] += saldo_corr
+
+        proyeccion_teorica = [int(round(val)) for val in buckets_teorico]
+        proyeccion_probable = [int(round(val)) for val in buckets_probable]
 
         # Clientes con Mayor Deuda Vencida (Top 50)
         clientes_ordenados = sorted(clientes_riesgo.items(), key=lambda x: x[1], reverse=True)[:50]
@@ -207,7 +308,11 @@ class CarteraService:
                 'porcentaje_vencida': porcentaje_vencida,
                 'dso_promedio': dso_promedio,
                 'cartera_toxica': cartera_toxica,
+                'promedio_contado_semanal': promedio_contado_semanal,
             },
+            'promedio_contado_semanal': promedio_contado_semanal,
+            'proyeccion_teorica': proyeccion_teorica,
+            'proyeccion_probable': proyeccion_probable,
             'grafico_clientes': grafico_clientes,
             'grafico_vendedores': grafico_vendedores,
             'tabla_comite': tabla_comite,
@@ -216,6 +321,11 @@ class CarteraService:
             'graficos': {
                 'clientes': grafico_clientes,
                 'vendedores': grafico_vendedores,
+                'proyeccion': {
+                    'teorica': proyeccion_teorica,
+                    'probable': proyeccion_probable,
+                    'promedio_contado_semanal': promedio_contado_semanal,
+                },
             },
             'tablas': {
                 'comite': tabla_comite,

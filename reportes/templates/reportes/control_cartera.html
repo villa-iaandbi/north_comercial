@@ -379,55 +379,64 @@
             </div>
         </div>
 
-        <!-- Tabla Derecha: Proyección de Recaudo Semanal (Cartera Corriente) -->
-        <div class="bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden flex flex-col">
-            <div class="p-4 border-b border-gray-800 bg-gray-900/80 flex items-center justify-between">
-                <div>
-                    <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                        Proyección de Recaudo (Cartera Corriente)
-                    </h4>
-                    <p class="text-xs text-gray-400">Facturas al día ordenadas por fecha de vencimiento próxima</p>
+        <!-- Tarjeta Derecha: Proyección de Recaudo (Gráfica ECharts Interactiva 4 Semanas) -->
+        <div class="bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden flex flex-col justify-between"
+             x-data="{ tab_proyeccion: 'teorico', chart: null }"
+             x-init="
+                 const arrayTeorico = {{ proyeccion_teorica|safe }};
+                 const arrayProbable = {{ proyeccion_probable|safe }};
+                 $nextTick(() => {
+                     const domEl = $refs.chartProyeccion || document.getElementById('chart-proyeccion');
+                     if (domEl && typeof echarts !== 'undefined') {
+                         chart = window.initChartProyeccion ? window.initChartProyeccion(domEl, arrayTeorico) : echarts.init(domEl);
+                         chart.setOption({
+                             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: params => params && params[0] ? `<strong>${params[0].name}</strong><br/>Recaudo: <strong>${window.formatCop(params[0].value)}</strong>` : '' },
+                             grid: { left: '4%', right: '4%', bottom: '8%', top: '10%', containLabel: true },
+                             xAxis: { type: 'category', data: ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'], axisLabel: { color: '#d1d5db', fontSize: 12, fontWeight: 'bold' }, axisLine: { lineStyle: { color: '#374151' } } },
+                             yAxis: { type: 'value', axisLabel: { color: '#9ca3af', fontSize: 12, formatter: window.formatAbrevMoney }, splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } } },
+                             series: [{ name: 'Proyección de Recaudo', type: 'bar', barWidth: '42%', data: arrayTeorico, itemStyle: { color: '#06b6d4', borderRadius: [6, 6, 0, 0] } }]
+                         });
+                         $watch('tab_proyeccion', value => { chart.setOption({ series: [{ data: value === 'teorico' ? arrayTeorico : arrayProbable, itemStyle: { color: value === 'teorico' ? '#06b6d4' : '#f59e0b', borderRadius: [6, 6, 0, 0] } }] }) });
+                     }
+                 });
+             ">
+            <div class="p-4 border-b border-gray-800 bg-gray-900/80 flex flex-col gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400" :class="tab_proyeccion === 'teorico' ? 'bg-cyan-400' : 'bg-amber-400'"></span>
+                            Proyección de Recaudo (4 Semanas)
+                        </h4>
+                        <p class="text-xs text-gray-400">Flujo estimado de cartera corriente por vencimiento vs hábito de pago (DSO)</p>
+                    </div>
+                    <!-- Badge Contado Promedio Semanal -->
+                    <span class="px-3 py-1 rounded-full text-base font-mono font-bold bg-gray-950 text-emerald-400 border border-emerald-800/60 shadow-sm">
+                        💰 Contado (Prom. Semanal): $ {{ promedio_contado_semanal | formato_moneda }}
+                    </span>
                 </div>
-                <span class="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-900/40 text-emerald-300 border border-emerald-800/60">
-                    <span x-text="data.tabla_proyeccion ? data.tabla_proyeccion.length : 0"></span> facturas al día
-                </span>
+
+                <!-- Control de Tabs estilo Pill -->
+                <div class="flex items-center justify-between">
+                    <div class="inline-flex rounded-full bg-gray-800 p-1 border border-gray-700">
+                        <button type="button"
+                            @click="tab_proyeccion = 'teorico'"
+                            :class="tab_proyeccion === 'teorico' ? 'bg-cyan-600 text-white font-semibold shadow-sm' : 'text-gray-400 hover:text-gray-200'"
+                            class="px-3 py-1 text-xs rounded-full transition-colors focus:outline-none">
+                            Recaudo Teórico
+                        </button>
+                        <button type="button"
+                            @click="tab_proyeccion = 'probable'"
+                            :class="tab_proyeccion === 'probable' ? 'bg-amber-500 text-gray-950 font-bold shadow-sm' : 'text-gray-400 hover:text-gray-200'"
+                            class="px-3 py-1 text-xs rounded-full transition-colors focus:outline-none">
+                            Recaudo Probable
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div class="w-full max-h-96 overflow-x-auto overflow-y-auto">
-                <table class="tabla-densa w-full text-left">
-                    <thead>
-                        <tr>
-                            <th class="py-2 px-2 text-left">Cliente</th>
-                            <th class="py-2 px-2 text-left">Vendedor</th>
-                            <th class="py-2 px-2 text-left">Factura</th>
-                            <th class="py-2 px-2 text-right">Vencimiento</th>
-                            <th class="py-2 px-2 text-right">Saldo</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <template x-for="item in data.tabla_proyeccion.slice(0, limitProyeccion)" :key="item.id_documento">
-                            <tr class="even:bg-gray-800/40 hover:bg-gray-700/50 transition-colors">
-                                <td class="py-1 px-2 text-left">
-                                    <div class="font-medium text-gray-200 text-sm truncate max-w-xs" x-text="item.cliente_nombre" :title="item.cliente_nombre"></div>
-                                    <div class="text-xs text-gray-400 font-mono" x-text="item.estado_mora"></div>
-                                </td>
-                                <td class="py-1 px-2 text-left text-xs text-gray-300 truncate max-w-[120px]" x-text="item.vendedor_nombre" :title="item.vendedor_nombre"></td>
-                                <td class="py-1 px-2 text-left font-mono text-xs text-gray-200" x-text="item.numero_documento"></td>
-                                <td class="py-1 px-2 text-right tabular-nums text-sm font-mono text-gray-300" x-text="item.fecha_vencimiento"></td>
-                                <td class="py-1 px-2 text-right tabular-nums text-sm font-semibold text-emerald-400" x-text="formatCop(item.saldo)"></td>
-                            </tr>
-                        </template>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Botón Cargar Más Proyección -->
-            <div class="p-2 border-t border-gray-800 text-center bg-gray-900/60" x-show="limitProyeccion < (data.tabla_proyeccion ? data.tabla_proyeccion.length : 0)">
-                <button @click="limitProyeccion += 50" type="button"
-                    class="text-xs text-blue-400 hover:text-blue-300 hover:underline font-semibold transition-colors focus:outline-none py-1 px-3">
-                    Cargar 50 más facturas corrientes...
-                </button>
+            <!-- Contenedor ECharts Proyección -->
+            <div class="p-4 flex-1 flex items-center justify-center">
+                <div id="chart-proyeccion" x-ref="chartProyeccion" class="h-80 w-full"></div>
             </div>
         </div>
 
