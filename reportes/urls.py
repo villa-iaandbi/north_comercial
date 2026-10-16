@@ -1,6 +1,7 @@
 from django.urls import path
 from reportes import views
 from . import views_inventario
+from . import views_cartera
 
 app_name = 'reportes'
 
@@ -28,4 +29,8 @@ urlpatterns = [
     # SPEC-004: Tablero de Control de Inventarios
     path('control-inventarios/', views_inventario.control_inventarios_view,
          name='control_inventarios'),
+
+    # SPEC-005: Tablero de Control de Cartera y Recaudos
+    path('control-cartera/', views_cartera.control_cartera_view,
+         name='control_cartera'),
 ]
