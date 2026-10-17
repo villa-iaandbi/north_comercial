@@ -27,11 +27,11 @@ class CxpService:
     de Cuentas por Pagar - CxP (SPEC-006).
 
     Estrategia de procesamiento:
-      - Consulta agrupada única a BI_VENTASNETAS + CT_CLIENTES para promedio semanal de ingresos de contado.
+      - Consulta agrupada única a BI_VENTASNETAS + CT_CLIENTES para recaudo_promedio_semanal (90 días / 12.85).
       - Consulta única a BI_CUENTAS_POR_PAGAR (SALDO > 0).
       - Iteración O(N) en memoria para KPIs (deuda_total, cxp_vencida, porcentaje_vencida,
         ahorro_potencial, DPO), Top Proveedores, Radar de Descuentos, Cronograma Regular
-        y proyección a 4 semanas (pago_legal vs pago_inteligente).
+        y proyección a 4 semanas (pago_inteligente vs pago_estrategico / pago_legal con DPO).
     """
 
     @staticmethod
@@ -60,22 +60,23 @@ class CxpService:
     @staticmethod
     def _obtener_indice_semana(dias_faltantes: int):
         """
-        Agrupa los días faltantes en 4 semanas (índices 0 a 3):
-          - Semana 1 (0): 0 a 7 días
-          - Semana 2 (1): 8 a 14 días
-          - Semana 3 (2): 15 a 21 días
-          - Semana 4 (3): 22 a 30 días
+        Agrupa los días faltantes en 4 semanas (índices 1 a 4 del arreglo de 5 posiciones):
+          - Índice 0: Cartera vencida (Inmediato, DIAS_MORA <= 90)
+          - Semana 1 (1): 0 a 7 días
+          - Semana 2 (2): 8 a 14 días
+          - Semana 3 (3): 15 a 21 días
+          - Semana 4 (4): 22 a 30 días
         """
         if dias_faltantes is None or dias_faltantes < 0:
             return None
         if dias_faltantes <= 7:
-            return 0
-        if dias_faltantes <= 14:
             return 1
-        if dias_faltantes <= 21:
+        if dias_faltantes <= 14:
             return 2
-        if dias_faltantes <= 30:
+        if dias_faltantes <= 21:
             return 3
+        if dias_faltantes <= 30:
+            return 4
         return None
 
     @classmethod
@@ -85,13 +86,13 @@ class CxpService:
         """
         filtros = filtros or {}
 
-        # 1. Consulta Ingresos: Ventas de contado (plazo <= 9 días) últimos 90 días
-        sql_ingresos_90d = """
-            SELECT NVL(SUM(VNT.VENTA_CON_IVA), 0) AS TOTAL_CONTADO_90D
-            FROM BI_VENTASNETAS VNT
-            INNER JOIN CT_CLIENTES CLI ON VNT.ID_TERCERO = CLI.ID_TERCERO
-            WHERE VNT.FECHA >= TRUNC(SYSDATE) - 90
-              AND NVL(CLI.PLAZO_PAGO, 0) <= 9
+        # 1. Consulta de Recaudo Real: Recibos de Caja (CO_DOCUMENTOS + TS_INGRESOS) últimos 90 días
+        sql_recaudo_90d = """
+            SELECT NVL(SUM(D.TOT_DOCUMENTO), 0) AS TOTAL_RECAUDO
+            FROM CO_DOCUMENTOS D
+            JOIN TS_INGRESOS I ON D.ID_DOCUMENTO = I.ID_DOCUMENTO
+            WHERE D.ESTADO_DOC = 'GRABADO'
+              AND D.FCH_DOCUMENTO >= TRUNC(SYSDATE) - 90
         """
 
         # 2. Consulta CxP: Facturas con saldo vivo en BI_CUENTAS_POR_PAGAR
@@ -120,19 +121,19 @@ class CxpService:
         if where_parts:
             sql_cxp += " " + " ".join(where_parts)
 
-        promedio_ingreso_semanal = Decimal('0.0')
+        recaudo_promedio_semanal = Decimal('0.0')
         registros = []
 
         try:
             with connection.cursor() as cursor:
                 try:
-                    cursor.execute(sql_ingresos_90d)
-                    row_ing = cursor.fetchone()
-                    if row_ing and row_ing[0] is not None:
-                        total_contado_90d = Decimal(str(row_ing[0]))
-                        promedio_ingreso_semanal = round(total_contado_90d / Decimal('12.85'), 2)
-                except Exception as exc_ing:
-                    logger.warning("No se pudo calcular promedio_ingreso_semanal en CxpService: %s", exc_ing)
+                    cursor.execute(sql_recaudo_90d)
+                    row_rec = cursor.fetchone()
+                    if row_rec and row_rec[0] is not None:
+                        total_recaudo = Decimal(str(row_rec[0]))
+                        recaudo_promedio_semanal = round(total_recaudo / Decimal('12.85'), 2)
+                except Exception as exc_rec:
+                    logger.warning("No se pudo calcular recaudo_promedio_semanal en CxpService: %s", exc_rec)
 
                 cursor.execute(sql_cxp, params)
                 columns = [col[0].upper() for col in cursor.description] if cursor.description else []
@@ -142,18 +143,19 @@ class CxpService:
             logger.error("Error al consultar BI_CUENTAS_POR_PAGAR: %s", e)
             raise e
 
-        # 3. Iteración O(N) en memoria
+        # 3. Iteración O(N) en memoria (5 posiciones: [Inmediato, Semana 1, Semana 2, Semana 3, Semana 4])
         deuda_total = Decimal('0.0')
         cxp_vencida = Decimal('0.0')
         ahorro_potencial = Decimal('0.0')
         top_proveedores = {}
         radar_descuentos = []
         cronograma_regular = []
-        buckets_legal = [Decimal('0.0'), Decimal('0.0'), Decimal('0.0'), Decimal('0.0')]
-        buckets_inteligente = [Decimal('0.0'), Decimal('0.0'), Decimal('0.0'), Decimal('0.0')]
+        buckets_legal = [Decimal('0.0'), Decimal('0.0'), Decimal('0.0'), Decimal('0.0'), Decimal('0.0')]
+        buckets_inteligente = [Decimal('0.0'), Decimal('0.0'), Decimal('0.0'), Decimal('0.0'), Decimal('0.0')]
 
         dpo_ponderado = Decimal('0.0')
         mora_ponderada = Decimal('0.0')
+
         hoy = datetime.date.today()
 
         for reg in registros:
@@ -184,13 +186,14 @@ class CxpService:
             porc_descuento = Decimal(str(reg.get('PORC_DESCUENTO') or '0.0'))
             vlr_descuento = Decimal(str(reg.get('VALOR_DESCUENTO_PROYECTADO') or '0.0'))
 
-            # 4.1 Acumulador general y cartera vencida
+            # 4.1 Acumulador general, DPO y cartera vencida
             deuda_total += saldo
 
             if fch_doc_date and fch_venc_date and fch_venc_date >= fch_doc_date:
                 plazo_dias = (fch_venc_date - fch_doc_date).days
             else:
                 plazo_dias = abs(dias_mora)
+
             dpo_ponderado += saldo * Decimal(str(plazo_dias))
 
             if estado_mora == 'VENCIDO':
@@ -234,25 +237,51 @@ class CxpService:
                 'VALOR_DESCUENTO_PROYECTADO': vlr_descuento,
             }
 
-            # 4.2 Clasificación por descuento financiero y acumulación pago_inteligente
+            # 4.2 Clasificación en tablas (Radar de Descuentos vs Cronograma Regular)
             if vlr_descuento > Decimal('0.0'):
                 ahorro_potencial += vlr_descuento
                 radar_descuentos.append(item_factura)
-                idx_sem_desc = cls._obtener_indice_semana(dias_faltantes_desc)
-                if idx_sem_desc is not None:
-                    buckets_inteligente[idx_sem_desc] += saldo
             else:
                 cronograma_regular.append(item_factura)
-                idx_sem_reg = cls._obtener_indice_semana(dias_faltantes_venc)
-                if idx_sem_reg is not None:
-                    buckets_inteligente[idx_sem_reg] += saldo
 
-            # 4.3 Acumulación pago_legal (siempre según FECHA_VENCIMIENTO)
-            idx_sem_legal = cls._obtener_indice_semana(dias_faltantes_venc)
-            if idx_sem_legal is not None:
-                buckets_legal[idx_sem_legal] += saldo
+            # 4.3 Asignación a Buckets de Proyección (Índice 0: Vencido <= 90d, Índices 1-4: Semanas 1-4)
+            if estado_mora == 'VENCIDO':
+                if dias_mora <= 90:
+                    buckets_inteligente[0] += saldo
+                    buckets_legal[0] += saldo
+            else:
+                idx_sem_venc = cls._obtener_indice_semana(dias_faltantes_venc)
 
-        # 5. Post-Proceso: Ordenamientos, Top 50 y KPIs Derivados
+                # Pago Inteligente: FECHA_LIMITE_DESCUENTO si hay descuento, FECHA_VENCIMIENTO si no lo hay
+                if vlr_descuento > Decimal('0.0'):
+                    idx_sem_desc = cls._obtener_indice_semana(dias_faltantes_desc)
+                    if idx_sem_desc is not None and 1 <= idx_sem_desc <= 4:
+                        buckets_inteligente[idx_sem_desc] += saldo
+                else:
+                    if idx_sem_venc is not None and 1 <= idx_sem_venc <= 4:
+                        buckets_inteligente[idx_sem_venc] += saldo
+
+                # Pago Estratégico: estrictamente por FECHA_VENCIMIENTO de la factura
+                if idx_sem_venc is not None and 1 <= idx_sem_venc <= 4:
+                    buckets_legal[idx_sem_venc] += saldo
+
+        # 5. Post-Proceso: KPIs y ordenamientos
+        porcentaje_vencida = (
+            round((cxp_vencida / deuda_total) * Decimal('100.0'), 2)
+            if deuda_total > Decimal('0.0')
+            else Decimal('0.0')
+        )
+        dpo = (
+            round(dpo_ponderado / deuda_total, 1)
+            if deuda_total > Decimal('0.0')
+            else Decimal('0.0')
+        )
+        dpo_mora = (
+            round(mora_ponderada / cxp_vencida, 1)
+            if cxp_vencida > Decimal('0.0')
+            else Decimal('0.0')
+        )
+
         radar_descuentos.sort(key=lambda x: str(x.get('fecha_limite_descuento') or '9999-12-31'))
         cronograma_regular.sort(key=lambda x: str(x.get('fecha_vencimiento') or '9999-12-31'))
 
@@ -280,22 +309,6 @@ class CxpService:
         pago_legal = [int(round(val)) for val in buckets_legal]
         pago_inteligente = [int(round(val)) for val in buckets_inteligente]
 
-        porcentaje_vencida = (
-            round((cxp_vencida / deuda_total) * Decimal('100.0'), 2)
-            if deuda_total > Decimal('0.0')
-            else Decimal('0.0')
-        )
-        dpo = (
-            round(dpo_ponderado / deuda_total, 1)
-            if deuda_total > Decimal('0.0')
-            else Decimal('0.0')
-        )
-        dpo_mora = (
-            round(mora_ponderada / cxp_vencida, 1)
-            if cxp_vencida > Decimal('0.0')
-            else Decimal('0.0')
-        )
-
         return {
             'kpis': {
                 'deuda_total': deuda_total,
@@ -305,7 +318,8 @@ class CxpService:
                 'dpo': dpo,
                 'dpo_promedio': dpo,
                 'dpo_mora': dpo_mora,
-                'promedio_ingreso_semanal': promedio_ingreso_semanal,
+                'recaudo_promedio_semanal': recaudo_promedio_semanal,
+                'promedio_ingreso_semanal': recaudo_promedio_semanal,
             },
             'deuda_total': deuda_total,
             'cxp_vencida': cxp_vencida,
@@ -313,7 +327,9 @@ class CxpService:
             'ahorro_potencial': ahorro_potencial,
             'dpo': dpo,
             'dpo_promedio': dpo,
-            'promedio_ingreso_semanal': promedio_ingreso_semanal,
+            'recaudo_promedio_semanal': recaudo_promedio_semanal,
+            'promedio_ingreso_semanal': recaudo_promedio_semanal,
+            'pago_estrategico': pago_legal,
             'pago_legal': pago_legal,
             'pago_inteligente': pago_inteligente,
             'top_proveedores': top_proveedores_list,

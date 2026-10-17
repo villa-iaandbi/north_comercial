@@ -4,7 +4,7 @@
  * Cumple con ADR-015 (Inyección SSR JSON) y ADR-016 (Alta Densidad Visual).
  * Gráficos ECharts:
  *   1. Top 15 Proveedores en Mora (Barras Horizontales).
- *   2. Proyección de Flujo de Pago 4 Semanas (Pago Legal vs Pago Inteligente) con markLine de Ingreso Prom. Semanal.
+ *   2. Proyección de Flujo de Pago 4 Semanas (Pago Inteligente vs Pago Estratégico) con markLine de Recaudo Prom. Semanal.
  */
 
 window.formatCop = function (val) {
@@ -46,16 +46,15 @@ window.formatAbrevMoney = function (val) {
         return str.length > 30 ? str.substring(0, 30) + '...' : str;
     }
 
-    window.initChartProyeccionCxp = function (domEl, initialData, ingresoSemanal) {
+    window.initChartProyeccionCxp = function (domEl, initialData, recaudoSemanal) {
         if (!domEl || typeof echarts === 'undefined') return null;
         if (chartProyeccionCxp) {
             chartProyeccionCxp.dispose();
         }
         chartProyeccionCxp = echarts.init(domEl);
 
-        const ingresoMeta = Math.round(Number(ingresoSemanal) || 0);
-        const seriesData = (initialData || [0, 0, 0, 0]).map(v => parseFloat(v) || 0);
-        const maxBar = Math.max(...seriesData, ingresoMeta, 1);
+        const recaudoMeta = Math.round(Number(recaudoSemanal) || 0);
+        const seriesData = (initialData || [0, 0, 0, 0, 0]).map(v => parseFloat(v) || 0);
 
         const optionProyeccion = {
             tooltip: {
@@ -65,7 +64,7 @@ window.formatAbrevMoney = function (val) {
                 formatter: function (params) {
                     if (!params || !params[0]) return '';
                     const p = params[0];
-                    return `<strong>${p.name}</strong><br/>Flujo de Pago: <strong>${window.formatCop(p.value)}</strong><br/>Ingreso Prom. Semanal: <strong style="color: #10b981">${window.formatCop(ingresoMeta)}</strong>`;
+                    return `<strong>${p.name}</strong><br/>Flujo de Pago: <strong>${window.formatCop(p.value)}</strong><br/>Recaudo Prom. Semanal: <strong style="color: #10b981">${window.formatCop(recaudoMeta)}</strong>`;
                 }
             },
             grid: {
@@ -77,7 +76,7 @@ window.formatAbrevMoney = function (val) {
             },
             xAxis: {
                 type: 'category',
-                data: ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'],
+                data: ['Inmediato', 'Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'],
                 axisLabel: {
                     color: '#d1d5db',
                     fontSize: 12,
@@ -90,7 +89,7 @@ window.formatAbrevMoney = function (val) {
             yAxis: {
                 type: 'value',
                 max: function (value) {
-                    return Math.ceil(Math.max(value.max, ingresoMeta) * 1.12);
+                    return Math.ceil(Math.max(value.max, recaudoMeta) * 1.12);
                 },
                 axisLabel: {
                     color: '#9ca3af',
@@ -108,7 +107,7 @@ window.formatAbrevMoney = function (val) {
                     barWidth: '42%',
                     data: seriesData,
                     itemStyle: {
-                        color: '#3b82f6',
+                        color: '#10b981',
                         borderRadius: [6, 6, 0, 0]
                     },
                     markLine: {
@@ -128,12 +127,12 @@ window.formatAbrevMoney = function (val) {
                             backgroundColor: 'rgba(6, 78, 59, 0.85)',
                             padding: [3, 6],
                             borderRadius: 4,
-                            formatter: 'Ingreso Prom. Semanal: ' + window.formatAbrevMoney(ingresoMeta)
+                            formatter: 'Recaudo Prom. Semanal: ' + window.formatAbrevMoney(recaudoMeta)
                         },
                         data: [
                             {
-                                yAxis: ingresoMeta,
-                                name: 'Ingreso Prom. Semanal'
+                                yAxis: recaudoMeta,
+                                name: 'Recaudo Prom. Semanal'
                             }
                         ]
                     }

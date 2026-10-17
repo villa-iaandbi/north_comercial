@@ -43,11 +43,12 @@ def control_cxp_view(request):
         return JsonResponse(dashboard_data, encoder=DjangoJSONEncoder)
 
     dashboard_json = json.dumps(dashboard_data, cls=DjangoJSONEncoder)
-    pago_legal_raw = dashboard_data.get('pago_legal', [0, 0, 0, 0])
-    pago_inteligente_raw = dashboard_data.get('pago_inteligente', [0, 0, 0, 0])
+    pago_legal_raw = dashboard_data.get('pago_legal', [0, 0, 0, 0, 0])
+    pago_inteligente_raw = dashboard_data.get('pago_inteligente', [0, 0, 0, 0, 0])
     top_proveedores_raw = dashboard_data.get('top_proveedores', [])
     radar_descuentos_raw = dashboard_data.get('radar_descuentos', [])
     cronograma_regular_raw = dashboard_data.get('cronograma_regular', [])
+    recaudo_prom_semanal = dashboard_data.get('recaudo_promedio_semanal', Decimal('0.0'))
 
     context = {
         'dashboard_json': dashboard_json,
@@ -59,15 +60,18 @@ def control_cxp_view(request):
         'ahorro_potencial': dashboard_data.get('ahorro_potencial', Decimal('0.0')),
         'dpo': dashboard_data.get('dpo', Decimal('0.0')),
         'dpo_promedio': dashboard_data.get('dpo_promedio', Decimal('0.0')),
-        'promedio_ingreso_semanal': dashboard_data.get('promedio_ingreso_semanal', Decimal('0.0')),
+        'recaudo_promedio_semanal': recaudo_prom_semanal,
+        'promedio_ingreso_semanal': recaudo_prom_semanal,
         'kpis': dashboard_data.get('kpis', {}),
         # Arreglos serializados con DjangoJSONEncoder (ADR-015)
+        'pago_estrategico': json.dumps(pago_legal_raw, cls=DjangoJSONEncoder),
         'pago_legal': json.dumps(pago_legal_raw, cls=DjangoJSONEncoder),
         'pago_inteligente': json.dumps(pago_inteligente_raw, cls=DjangoJSONEncoder),
         'top_proveedores': json.dumps(top_proveedores_raw, cls=DjangoJSONEncoder),
         'radar_descuentos': json.dumps(radar_descuentos_raw, cls=DjangoJSONEncoder),
         'cronograma_regular': json.dumps(cronograma_regular_raw, cls=DjangoJSONEncoder),
         # Listas nativas auxiliares de respaldo
+        'pago_estrategico_list': pago_legal_raw,
         'pago_legal_list': pago_legal_raw,
         'pago_inteligente_list': pago_inteligente_raw,
         'top_proveedores_list': top_proveedores_raw,
