@@ -1,0 +1,444 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Tablero de Cuentas por Pagar (CxP) - North Comercial{% endblock %}
+{% block page_title %}Control de Cuentas por Pagar y Flujo de Caja{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>
+    window.formatCop = function (val) {
+        if (val === null || val === undefined) return '$ 0';
+        const num = Math.round(Number(val));
+        if (isNaN(num)) return '$ 0';
+        return '$ ' + num.toLocaleString('es-CO');
+    };
+    window.formatNumber = function (val) {
+        if (val === null || val === undefined) return '0';
+        const num = Number(val);
+        if (isNaN(num)) return '0';
+        return num.toLocaleString('es-CO');
+    };
+</script>
+<style>
+    [x-cloak] {
+        display: none !important;
+    }
+
+    /* Estructura general de tablas ADR-016 (Alta Densidad, Sin border-b y Zebra) */
+    .tabla-densa {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .tabla-densa th {
+        background-color: #1f2937;
+        color: #9ca3af;
+        font-weight: 700;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.375rem 0.5rem;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        border-bottom: 2px solid #374151;
+    }
+
+    .tabla-densa td {
+        padding: 0.375rem 0.5rem; /* py-1.5 px-2 */
+        white-space: nowrap;
+        border-bottom: none !important;
+    }
+
+    .tabla-densa tr:hover td {
+        background-color: #374151 !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- INYECCIÓN SSR DE DATOS (ADR-015) -->
+<script id="cxp-data" type="application/json">{{ contexto_json|safe }}</script>
+
+<div class="space-y-6" x-data="{
+    data: JSON.parse(document.getElementById('cxp-data').textContent),
+    proveedores: JSON.parse('{{ top_proveedores|escapejs }}'),
+    radarDescuentos: JSON.parse('{{ radar_descuentos|escapejs }}'),
+    cronogramaRegular: JSON.parse('{{ cronograma_regular|escapejs }}'),
+    pagoLegal: JSON.parse('{{ pago_legal|escapejs }}'),
+    pagoInteligente: JSON.parse('{{ pago_inteligente|escapejs }}')
+}">
+
+    <!-- BARRA DE FILTROS SUPERIORES (Formulario GET) -->
+    <form method="GET" action="{% url 'reportes:control_cxp' %}"
+        class="bg-gray-900 p-4 rounded-lg shadow-sm border border-gray-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+
+        <!-- Filtro Proveedor -->
+        <div>
+            <label for="filtro-proveedor" class="block mb-1 text-xs font-semibold text-gray-300">Proveedor</label>
+            <select id="filtro-proveedor" name="proveedor"
+                class="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded-lg focus:ring-blue-500 block w-full p-2">
+                <option value="">Todos los Proveedores</option>
+                {% for p in filtros_disponibles.proveedores %}
+                <option value="{{ p.id }}" {% if p.id == filtros_actuales.proveedor %}selected{% endif %}>{{ p.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Filtro Estado de Mora -->
+        <div>
+            <label for="filtro-estado-mora" class="block mb-1 text-xs font-semibold text-gray-300">Estado de Obligación</label>
+            <select id="filtro-estado-mora" name="estado_mora"
+                class="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded-lg focus:ring-blue-500 block w-full p-2">
+                <option value="">Todos los Estados</option>
+                {% for em in filtros_disponibles.estados_mora %}
+                <option value="{{ em.id }}" {% if em.id == filtros_actuales.estado_mora %}selected{% endif %}>{{ em.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Acciones -->
+        <div class="flex space-x-2">
+            <button type="submit" id="btn-filtrar"
+                class="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-3 rounded-lg shadow-sm w-full text-xs transition-colors flex items-center justify-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+                </svg>
+                <span>Filtrar</span>
+            </button>
+            <a href="{% url 'reportes:control_cxp' %}" id="btn-limpiar"
+                class="bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold py-2 px-3 rounded-lg border border-gray-700 w-full text-xs transition-colors flex items-center justify-center">
+                Limpiar
+            </a>
+        </div>
+    </form>
+
+    <!-- FILA 1: KPIs DE CUENTAS POR PAGAR (4 TARJETAS) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- KPI 1: Deuda Total CxP -->
+        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-gray-800 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Deuda Total CxP</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+            </div>
+            <div class="my-2">
+                <p class="text-2xl lg:text-3xl font-black font-mono text-gray-100 tracking-tight">
+                    $ {{ deuda_total | formato_moneda }}
+                </p>
+            </div>
+            <div class="text-xs text-gray-400 pt-2 border-t border-gray-800 flex justify-between">
+                <span>Vencida: <strong class="text-red-400 font-mono" x-text="formatCop(data.cxp_vencida)"></strong></span>
+                <span>Proveedores: <strong class="text-blue-400 font-mono" x-text="proveedores.length"></strong></span>
+            </div>
+        </div>
+
+        <!-- KPI 2: % CxP Vencida (Riesgo) -->
+        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-red-900/40 bg-gradient-to-br from-gray-900 to-red-950/20 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-semibold uppercase tracking-wider text-red-400">% CxP Vencida (Riesgo)</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+            </div>
+            <div class="my-2">
+                <p class="text-2xl lg:text-3xl font-black font-mono tracking-tight"
+                    :class="parseFloat(data.porcentaje_vencida || 0) > 0 ? 'text-red-500' : 'text-emerald-400'">
+                    {{ porcentaje_vencida }} %
+                </p>
+            </div>
+            <div class="text-xs text-red-400/80 pt-2 border-t border-gray-800 flex items-center justify-between">
+                <span>Saldo en Mora:</span>
+                <strong class="font-mono text-red-400">$ {{ cxp_vencida | formato_moneda }}</strong>
+            </div>
+        </div>
+
+        <!-- KPI 3: DPO Promedio -->
+        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-gray-800 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">DPO Promedio</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+            </div>
+            <div class="my-2">
+                <p class="text-2xl lg:text-3xl font-black font-mono text-amber-400 tracking-tight">
+                    {{ dpo }} días
+                </p>
+            </div>
+            <div class="text-xs text-gray-400 pt-2 border-t border-gray-800 flex justify-between items-center">
+                <span>Plazo Ponderado Proveedores:</span>
+                <span class="font-mono text-amber-300 font-semibold">{{ dpo }} d</span>
+            </div>
+        </div>
+
+        <!-- KPI 4: Ahorro Potencial por Descuentos -->
+        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-green-900/40 bg-gradient-to-br from-gray-900 to-green-950/20 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-semibold uppercase tracking-wider text-green-400">🔥 Ahorro Potencial por Descuentos</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+            </div>
+            <div class="my-2">
+                <p class="text-2xl lg:text-3xl font-black font-mono text-green-500 tracking-tight">
+                    💵 $ {{ ahorro_potencial | formato_moneda }}
+                </p>
+            </div>
+            <div class="text-xs text-green-400/80 pt-2 border-t border-gray-800 flex items-center justify-between">
+                <span>Facturas con Pronto Pago:</span>
+                <span class="bg-green-900/50 text-green-300 text-xs font-bold px-2.5 py-0.5 rounded-full border border-green-800"
+                    x-text="radarDescuentos.length + ' oportunidades'"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- FILA 2: RIESGO Y DESCUENTOS (2 COLUMNAS) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Izquierda: Top 50 Proveedores en Mora (Toggle Gráfica / Tabla) -->
+        <div class="bg-gray-900 p-5 rounded-lg shadow-sm border border-gray-800 flex flex-col justify-between"
+             x-data="{ view: 'chart' }">
+            <div class="mb-3 border-b border-gray-800 pb-2 flex items-center justify-between">
+                <div>
+                    <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                        Top 50 Proveedores en Mora
+                    </h4>
+                    <p class="text-xs text-gray-400">Concentración de cuentas por pagar vencidas por proveedor</p>
+                </div>
+                <button type="button"
+                    @click="view = view === 'chart' ? 'table' : 'chart'; if (view === 'chart') { $nextTick(() => window.dispatchEvent(new Event('resize'))); }"
+                    class="px-2.5 py-1 text-xs font-semibold text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md transition-colors flex items-center gap-1.5 shadow-sm">
+                    <span x-text="view === 'chart' ? 'Ver Tabla' : 'Ver Gráfica'">Ver Tabla</span>
+                </button>
+            </div>
+
+            <!-- Contenedor Gráfica (Top 15 estético) -->
+            <div x-show="view === 'chart'" class="w-full">
+                <div id="chart-proveedores" class="h-96 w-full"></div>
+            </div>
+
+            <!-- Contenedor Tabla (Top 50 completo - ADR-016) -->
+            <div x-show="view === 'table'" x-cloak class="w-full h-96 max-h-[384px] overflow-y-auto">
+                <table class="tabla-densa w-full text-left">
+                    <thead class="sticky top-0 bg-gray-900 z-10 border-b border-gray-800">
+                        <tr>
+                            <th class="w-10 text-center py-1.5 px-2 text-xs">#</th>
+                            <th class="text-left py-1.5 px-2 text-xs">Proveedor</th>
+                            <th class="text-right py-1.5 px-2 text-xs">Saldo en Mora</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(item, idx) in proveedores" :key="idx">
+                            <tr class="odd:bg-gray-800/50 even:bg-transparent hover:bg-gray-700/50 transition-colors">
+                                <td class="text-center font-mono text-xs text-gray-400 py-1.5 px-2" x-text="idx + 1"></td>
+                                <td class="text-left font-medium text-gray-200 text-xs py-1.5 px-2 max-w-xs truncate"
+                                    x-text="item.nombre || item.proveedor_nombre || item.PROVEEDOR_NOMBRE"
+                                    :title="item.nombre || item.proveedor_nombre"></td>
+                                <td class="text-right font-mono text-xs font-bold text-red-400 py-1.5 px-2"
+                                    x-text="formatCop(item.saldo || item.valor || item.SALDO_VENCIDO)"></td>
+                            </tr>
+                        </template>
+                        <tr x-show="!proveedores || proveedores.length === 0">
+                            <td colspan="3" class="text-center text-gray-400 py-4 text-xs font-mono">No hay proveedores con obligaciones vencidas</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Derecha: Radar de Descuentos (Tabla Alpine estática) -->
+        <div class="bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden flex flex-col justify-between"
+             x-data="{ limit: 50 }">
+            <div class="p-4 border-b border-gray-800 bg-gray-900/80 flex items-center justify-between">
+                <div>
+                    <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                        Radar de Descuentos Financieros (Pronto Pago)
+                    </h4>
+                    <p class="text-xs text-gray-400">Facturas con descuento vigente ordenadas por fecha límite de descuento</p>
+                </div>
+                <span class="px-2 py-0.5 rounded text-xs font-mono bg-green-900/40 text-green-300 border border-green-800/60"
+                    x-text="radarDescuentos.length + ' facturas'"></span>
+            </div>
+
+            <div class="w-full h-96 max-h-[384px] overflow-x-auto overflow-y-auto">
+                <table class="tabla-densa w-full text-left">
+                    <thead class="sticky top-0 bg-gray-900 z-10">
+                        <tr>
+                            <th class="py-1.5 px-2 text-left text-xs">Proveedor</th>
+                            <th class="py-1.5 px-2 text-left text-xs">Factura</th>
+                            <th class="py-1.5 px-2 text-left text-xs">Fecha Dcto</th>
+                            <th class="py-1.5 px-2 text-right text-xs">Condición</th>
+                            <th class="py-1.5 px-2 text-right text-xs">Pagar</th>
+                            <th class="py-1.5 px-2 text-right text-xs">Ahorro ($)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="item in radarDescuentos.slice(0, limit)" :key="item.id_documento">
+                            <tr class="odd:bg-gray-800/50 even:bg-transparent hover:bg-gray-700/50 transition-colors">
+                                <td class="py-1.5 px-2 text-left">
+                                    <div class="font-medium text-gray-200 text-xs max-w-[180px] break-words whitespace-normal line-clamp-2"
+                                         x-text="item.proveedor_nombre" :title="item.proveedor_nombre"></div>
+                                </td>
+                                <td class="py-1.5 px-2 text-left font-mono text-xs text-gray-200" x-text="item.numero_documento"></td>
+                                <td class="py-1.5 px-2 text-left font-mono text-xs font-bold text-amber-300" x-text="item.fecha_limite_descuento"></td>
+                                <td class="py-1.5 px-2 text-right font-mono text-xs text-cyan-400 font-semibold" x-text="Number(item.porc_descuento || 0) + ' %'"></td>
+                                <td class="py-1.5 px-2 text-right font-mono text-xs text-gray-200" x-text="formatCop(item.saldo_con_descuento || item.saldo)"></td>
+                                <td class="py-1.5 px-2 text-right font-mono text-xs font-bold text-green-400" x-text="formatCop(item.valor_descuento_proyectado)"></td>
+                            </tr>
+                        </template>
+                        <tr x-show="!radarDescuentos || radarDescuentos.length === 0">
+                            <td colspan="6" class="text-center text-gray-400 py-4 text-xs font-mono">No hay facturas con descuento financiero disponible</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="p-2 border-t border-gray-800 text-center bg-gray-900/60" x-show="limit < radarDescuentos.length">
+                <button @click="limit += 50" type="button"
+                    class="text-xs text-blue-400 hover:text-blue-300 hover:underline font-semibold transition-colors focus:outline-none py-1 px-3">
+                    Cargar 50 más
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FILA 3: FLUJO DE CAJA (2 COLUMNAS) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Izquierda: Proyección 4 Semanas (Pago Legal vs Pago Inteligente) -->
+        <div class="bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden flex flex-col justify-between"
+             x-data="{ tab_proyeccion: 'legal', chart: null }"
+             x-init="
+                 const arrayLegal = {{ pago_legal|safe }};
+                 const arrayInteligente = {{ pago_inteligente|safe }};
+                 const ingresoPromSemanal = Math.round(Number('{{ promedio_ingreso_semanal|floatformat:0 }}') || 0);
+                 $nextTick(() => {
+                     const domEl = $refs.chartProyeccionCxp || document.getElementById('chart-proyeccion-cxp');
+                     if (domEl && typeof echarts !== 'undefined') {
+                         chart = window.initChartProyeccionCxp
+                             ? window.initChartProyeccionCxp(domEl, arrayLegal, ingresoPromSemanal)
+                             : echarts.init(domEl);
+                         chart.setOption({
+                             xAxis: { type: 'category', data: ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'] },
+                             series: [{
+                                 type: 'bar',
+                                 data: arrayLegal,
+                                 itemStyle: { color: '#3b82f6', borderRadius: [6, 6, 0, 0] },
+                                 markLine: {
+                                     symbol: ['none', 'none'],
+                                     lineStyle: { color: '#10b981', type: 'dashed', width: 2 },
+                                     label: { show: true, formatter: 'Ingreso Prom. Semanal' },
+                                     data: [{ yAxis: {{ promedio_ingreso_semanal|floatformat:0 }}, name: 'Ingreso Prom. Semanal' }]
+                                 }
+                             }]
+                         });
+                         $watch('tab_proyeccion', value => {
+                             chart.setOption({
+                                 series: [{
+                                     data: value === 'legal' ? arrayLegal : arrayInteligente,
+                                     itemStyle: { color: value === 'legal' ? '#3b82f6' : '#10b981', borderRadius: [6, 6, 0, 0] },
+                                     markLine: {
+                                         data: [{ yAxis: {{ promedio_ingreso_semanal|floatformat:0 }}, name: 'Ingreso Prom. Semanal' }]
+                                     }
+                                 }]
+                             });
+                         });
+                     }
+                 });
+             ">
+            <div class="p-4 border-b border-gray-800 bg-gray-900/80 flex flex-col gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full" :class="tab_proyeccion === 'legal' ? 'bg-blue-500' : 'bg-emerald-400'"></span>
+                            Proyección de Flujo de Pago (4 Semanas)
+                        </h4>
+                        <p class="text-xs text-gray-400">Vencimiento contractual (Pago Legal) vs captura de pronto pago (Pago Inteligente)</p>
+                    </div>
+                    <!-- Badge verde Ingreso Promedio Semanal -->
+                    <span class="px-3 py-1 rounded-full text-base font-mono font-bold bg-gray-950 text-emerald-400 border border-emerald-800/60 shadow-sm">
+                        💰 Ingreso Prom. Semanal: $ {{ promedio_ingreso_semanal | formato_moneda }}
+                    </span>
+                </div>
+
+                <!-- Control de Tabs (Pago Legal / Pago Inteligente) -->
+                <div class="flex items-center justify-between">
+                    <div class="inline-flex rounded-full bg-gray-800 p-1 border border-gray-700">
+                        <button type="button"
+                            @click="tab_proyeccion = 'legal'"
+                            :class="tab_proyeccion === 'legal' ? 'bg-blue-600 text-white font-semibold shadow-sm' : 'text-gray-400 hover:text-gray-200'"
+                            class="px-3 py-1 text-xs rounded-full transition-colors focus:outline-none">
+                            Pago Legal
+                        </button>
+                        <button type="button"
+                            @click="tab_proyeccion = 'inteligente'"
+                            :class="tab_proyeccion === 'inteligente' ? 'bg-emerald-500 text-gray-950 font-bold shadow-sm' : 'text-gray-400 hover:text-gray-200'"
+                            class="px-3 py-1 text-xs rounded-full transition-colors focus:outline-none">
+                            Pago Inteligente
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 flex-1 flex items-center justify-center">
+                <div id="chart-proyeccion-cxp" x-ref="chartProyeccionCxp" class="h-80 w-full"></div>
+            </div>
+        </div>
+
+        <!-- Derecha: Cronograma Regular (Facturas SIN descuento) -->
+        <div class="bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden flex flex-col justify-between"
+             x-data="{ limit: 50 }">
+            <div class="p-4 border-b border-gray-800 bg-gray-900/80 flex items-center justify-between">
+                <div>
+                    <h4 class="text-sm font-bold text-gray-100 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                        Cronograma Regular de Pagos (Sin Descuento)
+                    </h4>
+                    <p class="text-xs text-gray-400">Facturas regulares ordenadas por fecha de vencimiento próxima</p>
+                </div>
+                <span class="px-2 py-0.5 rounded text-xs font-mono bg-blue-900/40 text-blue-300 border border-blue-800/60"
+                    x-text="cronogramaRegular.length + ' facturas'"></span>
+            </div>
+
+            <div class="w-full h-80 max-h-80 overflow-x-auto overflow-y-auto">
+                <table class="tabla-densa w-full text-left">
+                    <thead class="sticky top-0 bg-gray-900 z-10">
+                        <tr>
+                            <th class="py-1.5 px-2 text-left text-xs">Proveedor</th>
+                            <th class="py-1.5 px-2 text-left text-xs">Factura</th>
+                            <th class="py-1.5 px-2 text-right text-xs">Vencimiento</th>
+                            <th class="py-1.5 px-2 text-right text-xs">Saldo ($)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="item in cronogramaRegular.slice(0, limit)" :key="item.id_documento">
+                            <tr class="odd:bg-gray-800/50 even:bg-transparent hover:bg-gray-700/50 transition-colors">
+                                <td class="py-1.5 px-2 text-left">
+                                    <div class="font-medium text-gray-200 text-xs max-w-xs truncate"
+                                         x-text="item.proveedor_nombre" :title="item.proveedor_nombre"></div>
+                                </td>
+                                <td class="py-1.5 px-2 text-left font-mono text-xs text-gray-200" x-text="item.numero_documento"></td>
+                                <td class="py-1.5 px-2 text-right font-mono text-xs"
+                                    :class="item.estado_mora === 'VENCIDO' ? 'text-red-400 font-bold' : 'text-gray-300'"
+                                    x-text="item.fecha_vencimiento"></td>
+                                <td class="py-1.5 px-2 text-right font-mono text-xs font-semibold text-blue-400"
+                                    x-text="formatCop(item.saldo)"></td>
+                            </tr>
+                        </template>
+                        <tr x-show="!cronogramaRegular || cronogramaRegular.length === 0">
+                            <td colspan="4" class="text-center text-gray-400 py-4 text-xs font-mono">No hay facturas regulares pendientes</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="p-2 border-t border-gray-800 text-center bg-gray-900/60" x-show="limit < cronogramaRegular.length">
+                <button @click="limit += 50" type="button"
+                    class="text-xs text-blue-400 hover:text-blue-300 hover:underline font-semibold transition-colors focus:outline-none py-1 px-3">
+                    Cargar 50 más
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'reportes/js/control_cxp.js' %}"></script>
+{% endblock %}
