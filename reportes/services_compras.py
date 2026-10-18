@@ -190,13 +190,17 @@ class ServicioComprasSugeridas:
             rotacion_diaria = self._to_decimal(reg.get('ROTACION_DIARIA'), Decimal('0.0'))
             pedidos_por_llegar = self._to_decimal(reg.get('PEDIDOS_POR_LLEGAR'), Decimal('0.0'))
 
-            vta_30 = self._to_decimal(reg.get('VTA_30'), Decimal('0.0'))
-            vta_60 = self._to_decimal(reg.get('VTA_60'), Decimal('0.0'))
-            vta_90 = self._to_decimal(reg.get('VTA_90'), Decimal('0.0'))
+            vta_30_unidades = self._to_decimal(reg.get('VTA_30'), Decimal('0.0'))
+            vta_60_unidades = self._to_decimal(reg.get('VTA_60'), Decimal('0.0'))
+            vta_90_unidades = self._to_decimal(reg.get('VTA_90'), Decimal('0.0'))
 
             embalaje = self._to_decimal(reg.get('EMBALAJE'), Decimal('1.0'))
             if embalaje <= Decimal('0.0'):
                 embalaje = Decimal('1.0')
+
+            vta_30_cajas = round(vta_30_unidades / embalaje, 1)
+            vta_60_cajas = round(vta_60_unidades / embalaje, 1)
+            vta_90_cajas = round(vta_90_unidades / embalaje, 1)
 
             dias_sin_venta = int(self._to_decimal(reg.get('DIAS_SIN_VENTA'), Decimal('0')))
             fecha_foto = self._format_fecha(reg.get('FECHA_FOTO'))
@@ -249,9 +253,9 @@ class ServicioComprasSugeridas:
                 'rotacion_diaria': round(rotacion_diaria, 4),
                 'pedidos_por_llegar': round(pedidos_por_llegar, 2),
                 'embalaje': embalaje_out,
-                'vta_30': round(vta_30, 2),
-                'vta_60': round(vta_60, 2),
-                'vta_90': round(vta_90, 2),
+                'vta_30': vta_30_cajas,
+                'vta_60': vta_60_cajas,
+                'vta_90': vta_90_cajas,
                 'dias_sin_venta': dias_sin_venta,
                 'fecha_foto': fecha_foto,
                 'fch_ult_venta': fch_ult_venta,
@@ -279,9 +283,9 @@ class ServicioComprasSugeridas:
                 'PEDIDOS_POR_LLEGAR': round(pedidos_por_llegar, 2),
                 'EMBALAJE': embalaje_out,
                 'FCH_ULT_COMPRA': fch_ult_compra,
-                'VTA_30': round(vta_30, 2),
-                'VTA_60': round(vta_60, 2),
-                'VTA_90': round(vta_90, 2),
+                'VTA_30': vta_30_cajas,
+                'VTA_60': vta_60_cajas,
+                'VTA_90': vta_90_cajas,
                 'DIAS_SIN_VENTA': dias_sin_venta,
                 'SUGERIDO_CAJAS': sugerido_cajas,
                 'VALOR_SUGERIDO': valor_compra_sugerida,

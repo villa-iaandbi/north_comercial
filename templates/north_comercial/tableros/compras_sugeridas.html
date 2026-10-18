@@ -161,7 +161,8 @@
                         <th class="py-0.5 px-1 text-center">ÚLT. COMPRA</th>
                         <th class="py-0.5 px-1 text-right">ROT/DÍA (UND)</th>
                         <th class="py-0.5 px-1 text-right">DÍAS SIN VENTA</th>
-                        <th class="py-0.5 px-1 text-center">VTA 90-60-30 (UND)</th>
+                        <th class="px-1 py-0.5 text-center">VTA 90-60-30 (CJS)</th>
+                        <th class="px-1 py-0.5 text-center">TEND.</th>
                         <th class="py-0.5 px-1 text-right">SUGERIDO (CJS)</th>
                         <th class="py-0.5 px-1 text-right">CANT. A COMP. (CJS)</th>
                         <th class="py-0.5 px-1 text-right">COSTO UNIT.</th>
@@ -213,14 +214,13 @@
                                 :class="Number(item.DIAS_SIN_VENTA ?? item.dias_sin_venta) >= 30 ? 'text-amber-600 font-bold' : 'text-gray-600'"
                                 x-text="item.DIAS_SIN_VENTA ?? item.dias_sin_venta"></td>
 
-                            <!-- VTA 90-60-30 (UND) + Sparkline ECharts centrado -->
-                            <td class="py-0.5 px-1 text-center whitespace-nowrap">
-                                <div class="flex items-center justify-center space-x-2">
-                                    <span class="font-mono font-semibold text-[11px] text-gray-700 whitespace-nowrap"
-                                        x-text="formatNum(item.VTA_90 ?? item.vta_90) + ' / ' + formatNum(item.VTA_60 ?? item.vta_60) + ' / ' + formatNum(item.VTA_30 ?? item.vta_30)"></span>
-                                    <div class="h-5 w-16 shrink-0"
-                                         x-init="$nextTick(() => renderSparkline($el, item))"></div>
-                                </div>
+                            <!-- VTA 90-60-30 (CJS) -->
+                            <td class="px-1 py-0.5 text-center font-mono font-semibold text-gray-700 whitespace-nowrap"
+                                x-text="`${item.VTA_90 ?? item.vta_90} / ${item.VTA_60 ?? item.vta_60} / ${item.VTA_30 ?? item.vta_30}`"></td>
+
+                            <!-- TEND. (Sparkline ECharts) -->
+                            <td class="px-1 py-0.5 text-center">
+                                <div x-init="$nextTick(() => renderSparkline($el, item))" class="h-6 w-16 mx-auto"></div>
                             </td>
 
                             <!-- SUGERIDO (CJS) -->
@@ -248,7 +248,7 @@
                     </template>
 
                     <tr x-show="itemsFiltrados.length === 0" x-cloak>
-                        <td colspan="13" class="py-6 text-center text-gray-500 font-mono text-xs">
+                        <td colspan="14" class="py-6 text-center text-gray-500 font-mono text-xs">
                             No se encontraron artículos para los criterios seleccionados.
                         </td>
                     </tr>
@@ -367,8 +367,8 @@
             },
 
             formatNum(val) {
-                const num = Math.round(Number(val) || 0);
-                return num.toLocaleString('es-CO');
+                const num = Number(val) || 0;
+                return num.toLocaleString('es-CO', { maximumFractionDigits: 1 });
             },
 
             formatDecimal(val, decimals = 2) {
@@ -405,23 +405,9 @@
 
                 instance.setOption({
                     animation: false,
-                    grid: {
-                        left: 2,
-                        right: 2,
-                        top: 3,
-                        bottom: 3,
-                        containLabel: false
-                    },
-                    xAxis: {
-                        type: 'category',
-                        show: false,
-                        boundaryGap: false,
-                        data: ['90d', '60d', '30d']
-                    },
-                    yAxis: {
-                        type: 'value',
-                        show: false
-                    },
+                    grid: { left: 0, right: 0, top: 0, bottom: 0, containLabel: false },
+                    xAxis: { type: 'category', show: false, boundaryGap: false },
+                    yAxis: { type: 'value', show: false, min: 'dataMin', max: 'dataMax' },
                     series: [
                         {
                             type: 'line',
