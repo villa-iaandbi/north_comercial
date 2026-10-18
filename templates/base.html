@@ -358,8 +358,8 @@
                             Cuentas por Pagar (CxP)
                         </a>
                         <!-- Sugerido Compras -->
-                        <a href="#"
-                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-400 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors">
+                        <a href="{% url 'reportes:compras_sugeridas' %}"
+                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if 'compras-sugeridas' in request.get_full_path %}text-rose-400 bg-gray-800/60 font-semibold{% endif %}">
                             <span class="w-1.5 h-1.5 rounded-full bg-rose-400 mr-2.5"></span>
                             Sugerido Compras
                         </a>

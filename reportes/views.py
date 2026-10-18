@@ -410,3 +410,9 @@ def analisis_ventas_global_view(request):
     }
     return render(request, 'reportes/analisis_ventas_global.html', context)
 
+
+# --- SPEC-007: Tablero de Compras Inteligentes / Compras Sugeridas ---
+from .services_compras import ServicioComprasSugeridas
+from .views_compras import tablero_compras_sugeridas
+
+

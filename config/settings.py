@@ -121,6 +121,8 @@ USE_TZ = False
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+SILENCED_SYSTEM_CHECKS = ['fields.W342']
+
 
 # ----------------------------------------------------------------------
 # FIX PARA ORACLE 11G: BYPASS DE VERSIÓN SOPORTADA EN DJANGO

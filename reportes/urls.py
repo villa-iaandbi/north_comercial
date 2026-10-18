@@ -38,4 +38,9 @@ urlpatterns = [
     # SPEC-006: Tablero de Cuentas por Pagar (CxP)
     path('control-cxp/', views_cxp.control_cxp_view,
          name='control_cxp'),
+
+    # SPEC-007: Tablero de Compras Sugeridas (Smart Replenishment)
+    path('compras-sugeridas/', views.tablero_compras_sugeridas,
+         name='compras_sugeridas'),
 ]
+

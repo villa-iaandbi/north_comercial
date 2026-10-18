@@ -2,7 +2,10 @@
 from decimal import Decimal
 import logging
 from django.db import connection
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 logger = logging.getLogger(__name__)
 

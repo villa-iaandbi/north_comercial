@@ -1,0 +1,449 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Compras Sugeridas (Smart Replenishment) - North Comercial{% endblock %}
+{% block page_title %}Tablero de Compras Inteligentes y Reabastecimiento (SPEC-007){% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+    [x-cloak] {
+        display: none !important;
+    }
+
+    /* Eliminar flechas nativas en inputs numéricos de alta densidad */
+    input[type="number"].input-denso::-webkit-inner-spin-button,
+    input[type="number"].input-denso::-webkit-outer-spin-button {
+        opacity: 1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- INYECCIÓN SSR SEGURA (ADR-015) -->
+<script id="dashboard-data" type="application/json">{{ datos_iniciales_json|escapejs }}</script>
+
+<div class="space-y-4" x-data="comprasDashboard()" x-init="initDashboard()">
+
+    <!-- 1. BARRA DE FILTROS SUPERIOR -->
+    <form method="GET" action="{% url 'reportes:compras_sugeridas' %}"
+        class="bg-white p-3.5 rounded-lg shadow-sm border border-gray-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+
+        <!-- Select Proveedor / Grupo -->
+        <div class="lg:col-span-2">
+            <label for="select-grupo" class="block mb-1 text-xs font-bold uppercase tracking-wider text-gray-600">
+                Proveedor / Grupo
+            </label>
+            <select id="select-grupo" name="grupo"
+                class="bg-gray-50 border border-gray-300 text-gray-800 text-xs rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-2 font-medium">
+                <option value="">-- Todos los Proveedores Activos --</option>
+                {% for g in filtros_disponibles %}
+                <option value="{{ g.id }}" {% if g.id == grupo or g.codigo == grupo %}selected{% endif %}>
+                    {{ g.nombre }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Input Días Sugeridos -->
+        <div>
+            <label for="input-dias-sugeridos" class="block mb-1 text-xs font-bold uppercase tracking-wider text-gray-600">
+                Días Sugeridos (Cobertura)
+            </label>
+            <input id="input-dias-sugeridos" type="number" name="dias_sugeridos" min="1" max="365"
+                value="{{ dias_sugeridos|default:30 }}"
+                class="bg-gray-50 border border-gray-300 text-gray-800 text-xs font-mono rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-2 text-right" />
+        </div>
+
+        <!-- Input Stock Mínimo -->
+        <div>
+            <label for="input-stock-minimo" class="block mb-1 text-xs font-bold uppercase tracking-wider text-gray-600">
+                Stock Mínimo (Días Seg.)
+            </label>
+            <input id="input-stock-minimo" type="number" name="stock_minimo" min="0" max="365"
+                value="{{ stock_minimo|default:15 }}"
+                class="bg-gray-50 border border-gray-300 text-gray-800 text-xs font-mono rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-2 text-right" />
+        </div>
+
+        <!-- Botón Filtrar -->
+        <div class="flex space-x-2">
+            <button type="submit" id="btn-filtrar"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm w-full text-xs transition-colors flex items-center justify-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z">
+                    </path>
+                </svg>
+                <span>Filtrar</span>
+            </button>
+            <a href="{% url 'reportes:compras_sugeridas' %}"
+                class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-md border border-gray-300 text-xs transition-colors flex items-center justify-center">
+                Limpiar
+            </a>
+        </div>
+    </form>
+
+    <!-- 2. BARRA DE ACCIÓN Y TOTALES REACTIVOS -->
+    <div class="bg-gray-900 text-white px-4 py-3 rounded-lg shadow-sm border border-gray-800 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex flex-wrap items-center gap-6">
+            <div>
+                <span class="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Impacto Financiero en Vivo</span>
+                <p class="text-xl sm:text-2xl font-black font-mono text-emerald-400 tracking-tight"
+                   x-text="'Total Orden: ' + formatCop(totalOrden)">
+                    Total Orden: $ 0
+                </p>
+            </div>
+            <div class="hidden md:flex items-center gap-4 border-l border-gray-700 pl-6 text-xs">
+                <div>
+                    <span class="text-gray-400 block">Referencias a pedir:</span>
+                    <span class="font-mono font-bold text-blue-400 text-sm" x-text="itemsConPedido">0</span>
+                    <span class="text-gray-500 font-mono text-xs" x-text="'/ ' + items.length"></span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block">Total Cajas:</span>
+                    <span class="font-mono font-bold text-amber-400 text-sm" x-text="formatNum(totalCajas)">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtros rápidos locales y Botones de Acción -->
+        <div class="flex flex-wrap items-center gap-2.5">
+            <div class="relative">
+                <input type="text" x-model="busqueda" placeholder="Buscar ref o artículo..."
+                    class="bg-gray-800 border border-gray-700 text-gray-100 text-xs rounded-md px-2.5 py-1.5 w-44 focus:outline-none focus:border-blue-500" />
+            </div>
+
+            <label class="inline-flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer select-none bg-gray-800 px-2.5 py-1.5 rounded-md border border-gray-700">
+                <input type="checkbox" x-model="soloConSugerido" class="rounded text-blue-600 focus:ring-0" />
+                <span>Solo sugeridos (&gt; 0)</span>
+            </label>
+
+            <button type="button" @click=" NotificarAccion('Generación de PDF de Auditoría disponible en Fase 4')"
+                class="bg-gray-800 hover:bg-gray-700 text-gray-100 font-semibold py-1.5 px-3 rounded-md border border-gray-600 text-xs transition-colors flex items-center gap-1.5 shadow-sm">
+                <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z">
+                    </path>
+                </svg>
+                <span>Generar PDF</span>
+            </button>
+
+            <button type="button" @click="NotificarAccion('Commit de Orden en ERP disponible en Fase 4')"
+                class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-3.5 rounded-md shadow-sm text-xs transition-colors flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M5 13l4 4L19 7">
+                    </path>
+                </svg>
+                <span>Guardar Orden en ERP</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Aviso informativo temporal cuando se pulsan los botones visuales -->
+    <div x-show="mensajeAviso" x-cloak x-transition
+        class="bg-blue-50 border border-blue-200 text-blue-800 px-3 py-2 rounded-md text-xs flex items-center justify-between">
+        <span x-text="mensajeAviso"></span>
+        <button type="button" @click="mensajeAviso = ''" class="text-blue-600 font-bold hover:underline">Cerrar</button>
+    </div>
+
+    <!-- 3. MATRIZ DE ALTA DENSIDAD VISUAL EXTREMA (ADR-016) -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto max-h-[calc(100vh-250px)] overflow-y-auto">
+            <table class="w-full text-[12px] leading-tight text-left border-collapse">
+                <thead class="bg-gray-800 text-gray-200 uppercase text-[11px] font-bold sticky top-0 z-10 border-b-2 border-gray-700">
+                    <tr>
+                        <th class="py-0.5 px-1 text-left">REFERENCIA</th>
+                        <th class="py-0.5 px-1 text-left min-w-[200px]">NOMBRE</th>
+                        <th class="py-0.5 px-1 text-center">ABC</th>
+                        <th class="py-0.5 px-1 text-right">EMB.</th>
+                        <th class="py-0.5 px-1 text-right">EXIS. (UND/CJS)</th>
+                        <th class="py-0.5 px-1 text-center">ÚLT. COMPRA</th>
+                        <th class="py-0.5 px-1 text-right">ROT/DÍA (UND)</th>
+                        <th class="py-0.5 px-1 text-right">DÍAS SIN VENTA</th>
+                        <th class="py-0.5 px-1 text-center">VTA 90-60-30 (UND)</th>
+                        <th class="py-0.5 px-1 text-right">SUGERIDO (CJS)</th>
+                        <th class="py-0.5 px-1 text-right">CANT. A COMP. (CJS)</th>
+                        <th class="py-0.5 px-1 text-right">COSTO UNIT.</th>
+                        <th class="py-0.5 px-1 text-right">TOTAL FILA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="item in itemsFiltrados.slice(0, limiteFilas)" :key="item.ID_ARTICULO || item.id_articulo || item.REFERENCIA">
+                        <tr class="odd:bg-white even:bg-gray-50 hover:bg-blue-50/70 transition-colors">
+                            <!-- REFERENCIA -->
+                            <td class="py-0.5 px-1 font-mono font-semibold text-gray-700 whitespace-nowrap"
+                                x-text="item.REFERENCIA || item.referencia"></td>
+
+                            <!-- NOMBRE -->
+                            <td class="py-0.5 px-1 text-gray-800 font-medium max-w-[250px] truncate"
+                                :title="(item.NOM_ARTICULO || item.nom_articulo) + ' | Grupo: ' + (item.GRUPO || item.grupo)"
+                                x-text="item.NOM_ARTICULO || item.nom_articulo"></td>
+
+                            <!-- ABC -->
+                            <td class="py-0.5 px-1 text-center whitespace-nowrap">
+                                <span class="px-1 py-0.5 rounded font-mono font-bold text-[11px]"
+                                    :class="{
+                                        'bg-emerald-100 text-emerald-800 border border-emerald-300': (item.CLASIFICACION_ABC || item.clasificacion_abc) === 'A',
+                                        'bg-amber-100 text-amber-800 border border-amber-300': (item.CLASIFICACION_ABC || item.clasificacion_abc) === 'B',
+                                        'bg-gray-100 text-gray-600 border border-gray-300': (item.CLASIFICACION_ABC || item.clasificacion_abc) === 'C'
+                                    }"
+                                    x-text="item.CLASIFICACION_ABC || item.clasificacion_abc || 'C'"></span>
+                            </td>
+
+                            <!-- EMB. -->
+                            <td class="py-0.5 px-1 text-right font-mono font-medium text-gray-700 whitespace-nowrap"
+                                x-text="item.embalaje"></td>
+
+                            <!-- EXIS. (UND/CJS) -->
+                            <td class="py-0.5 px-1 text-right font-mono font-semibold whitespace-nowrap"
+                                :class="Number(item.existencia) <= 0 ? 'text-red-600 font-bold' : 'text-gray-800'"
+                                x-text="item.existencia + ' / ' + (item.existencia / (item.embalaje || 1)).toFixed(1)"></td>
+
+                            <!-- ÚLT. COMPRA -->
+                            <td class="py-0.5 px-1 text-center font-mono text-gray-600 whitespace-nowrap"
+                                x-text="item.fch_ult_compra || '-'"></td>
+
+                            <!-- ROT/DÍA (UND) -->
+                            <td class="py-0.5 px-1 text-right font-mono font-medium text-gray-700 whitespace-nowrap"
+                                x-text="formatDecimal(item.ROTACION_DIARIA ?? item.rotacion_diaria, 2)"></td>
+
+                            <!-- DÍAS SIN VENTA -->
+                            <td class="py-0.5 px-1 text-right font-mono font-medium whitespace-nowrap"
+                                :class="Number(item.DIAS_SIN_VENTA ?? item.dias_sin_venta) >= 30 ? 'text-amber-600 font-bold' : 'text-gray-600'"
+                                x-text="item.DIAS_SIN_VENTA ?? item.dias_sin_venta"></td>
+
+                            <!-- VTA 90-60-30 (UND) + Sparkline ECharts centrado -->
+                            <td class="py-0.5 px-1 text-center whitespace-nowrap">
+                                <div class="flex items-center justify-center space-x-2">
+                                    <span class="font-mono font-semibold text-[11px] text-gray-700 whitespace-nowrap"
+                                        x-text="formatNum(item.VTA_90 ?? item.vta_90) + ' / ' + formatNum(item.VTA_60 ?? item.vta_60) + ' / ' + formatNum(item.VTA_30 ?? item.vta_30)"></span>
+                                    <div class="h-5 w-16 shrink-0"
+                                         x-init="$nextTick(() => renderSparkline($el, item))"></div>
+                                </div>
+                            </td>
+
+                            <!-- SUGERIDO (CJS) -->
+                            <td class="py-0.5 px-1 text-right font-mono font-semibold whitespace-nowrap"
+                                :class="Number(item.SUGERIDO_CAJAS ?? item.sugerido_cajas) > 0 ? 'text-blue-700 font-bold' : 'text-gray-400'"
+                                x-text="formatNum(item.SUGERIDO_CAJAS ?? item.sugerido_cajas)"></td>
+
+                            <!-- CANT. A COMP. (CJS) -->
+                            <td class="py-0.5 px-1 text-right whitespace-nowrap">
+                                <input type="number" min="0" step="1"
+                                    x-model.number="item.cant_a_comprar"
+                                    @input="if (item.cant_a_comprar < 0 || isNaN(item.cant_a_comprar)) item.cant_a_comprar = 0"
+                                    class="input-denso w-16 h-6 px-1 py-0 border border-gray-300 rounded text-right text-xs font-mono font-bold text-gray-900 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+                            </td>
+
+                            <!-- COSTO UNIT. -->
+                            <td class="py-0.5 px-1 text-right font-mono font-medium text-gray-700 whitespace-nowrap"
+                                x-text="formatCop(item.costo_unitario)"></td>
+
+                            <!-- TOTAL FILA (cant_a_comprar * embalaje * costo_unitario) -->
+                            <td class="py-0.5 px-1 text-right font-mono font-bold whitespace-nowrap"
+                                :class="calcularTotalFila(item) > 0 ? 'text-emerald-700' : 'text-gray-400'"
+                                x-text="formatCop(calcularTotalFila(item))"></td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="itemsFiltrados.length === 0" x-cloak>
+                        <td colspan="13" class="py-6 text-center text-gray-500 font-mono text-xs">
+                            No se encontraron artículos para los criterios seleccionados.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginación progresiva para mantener fluidez de DOM y Sparklines -->
+        <div class="px-4 py-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-xs text-gray-600"
+             x-show="itemsFiltrados.length > 0">
+            <div>
+                Mostrando <span class="font-mono font-bold" x-text="Math.min(limiteFilas, itemsFiltrados.length)"></span>
+                de <span class="font-mono font-bold" x-text="itemsFiltrados.length"></span> artículos
+            </div>
+            <button type="button"
+                x-show="limiteFilas < itemsFiltrados.length"
+                @click="limiteFilas += 100"
+                class="bg-white hover:bg-gray-100 text-blue-600 font-semibold py-1 px-3 rounded border border-gray-300 shadow-sm transition-colors">
+                Cargar 100 filas más
+            </button>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function parseSsrJson(rawText) {
+        if (!rawText) return [];
+        const trimmed = rawText.trim();
+        if (!trimmed) return [];
+        try {
+            return JSON.parse(trimmed);
+        } catch (errFirst) {
+            try {
+                // Decodificar secuencias generadas por el filtro |escapejs de Django
+                const decoded = JSON.parse('"' + trimmed.replace(/"/g, '\\"') + '"');
+                return JSON.parse(decoded);
+            } catch (errSecond) {
+                console.error('[comprasDashboard] Error al parsear JSON SSR:', errSecond);
+                return [];
+            }
+        }
+    }
+
+    function comprasDashboard() {
+        return {
+            items: [],
+            busqueda: '',
+            soloConSugerido: false,
+            limiteFilas: 100,
+            mensajeAviso: '',
+
+            initDashboard() {
+                const scriptEl = document.getElementById('dashboard-data');
+                const rawData = scriptEl ? parseSsrJson(scriptEl.textContent) : [];
+                const lista = Array.isArray(rawData) ? rawData : (rawData.items || []);
+
+                this.items = lista.map(art => {
+                    const sugerido = Number(art.SUGERIDO_CAJAS ?? art.sugerido_cajas ?? 0) || 0;
+                    const embalajeVal = Number(art.embalaje ?? art.EMBALAJE ?? 1) || 1;
+                    const existenciaVal = Number(art.existencia ?? art.EXISTENCIA ?? 0) || 0;
+                    const costoUnitVal = Number(art.costo_unitario ?? art.vlr_promedio ?? art.VLR_PROMEDIO ?? 0) || 0;
+                    const fchUltCompraVal = art.fch_ult_compra || art.FCH_ULT_COMPRA || '';
+
+                    return {
+                        ...art,
+                        embalaje: embalajeVal > 0 ? embalajeVal : 1,
+                        existencia: existenciaVal,
+                        costo_unitario: costoUnitVal,
+                        fch_ult_compra: fchUltCompraVal,
+                        cant_a_comprar: sugerido
+                    };
+                });
+            },
+
+            get itemsFiltrados() {
+                const term = (this.busqueda || '').trim().toUpperCase();
+                return this.items.filter(item => {
+                    if (this.soloConSugerido) {
+                        const sug = Number(item.SUGERIDO_CAJAS ?? item.sugerido_cajas ?? 0) || 0;
+                        const cant = Number(item.cant_a_comprar ?? 0) || 0;
+                        if (sug <= 0 && cant <= 0) return false;
+                    }
+                    if (!term) return true;
+                    const ref = String(item.REFERENCIA || item.referencia || '').toUpperCase();
+                    const nom = String(item.NOM_ARTICULO || item.nom_articulo || '').toUpperCase();
+                    const grp = String(item.GRUPO || item.grupo || '').toUpperCase();
+                    return ref.includes(term) || nom.includes(term) || grp.includes(term);
+                });
+            },
+
+            calcularTotalFila(item) {
+                const cant = Math.max(0, Number(item.cant_a_comprar) || 0);
+                const emb = Math.max(1, Number(item.embalaje) || 1);
+                const costoUnit = Number(item.costo_unitario ?? item.VLR_PROMEDIO ?? item.vlr_promedio ?? 0) || 0;
+                return cant * emb * costoUnit;
+            },
+
+            get totalOrden() {
+                return this.items.reduce((acc, item) => acc + this.calcularTotalFila(item), 0);
+            },
+
+            get totalCajas() {
+                return this.items.reduce((acc, item) => acc + (Math.max(0, Number(item.cant_a_comprar) || 0)), 0);
+            },
+
+            get itemsConPedido() {
+                return this.items.filter(item => (Number(item.cant_a_comprar) || 0) > 0).length;
+            },
+
+            formatCop(val) {
+                const num = Math.round(Number(val) || 0);
+                return '$ ' + num.toLocaleString('es-CO');
+            },
+
+            formatNum(val) {
+                const num = Math.round(Number(val) || 0);
+                return num.toLocaleString('es-CO');
+            },
+
+            formatDecimal(val, decimals = 2) {
+                const num = Number(val) || 0;
+                return num.toLocaleString('es-CO', {
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals
+                });
+            },
+
+            NotificarAccion(msg) {
+                this.mensajeAviso = msg;
+                setTimeout(() => {
+                    if (this.mensajeAviso === msg) {
+                        this.mensajeAviso = '';
+                    }
+                }, 4000);
+            },
+
+            renderSparkline(domEl, item) {
+                if (!domEl || typeof echarts === 'undefined') return;
+                const v90 = Number(item.VTA_90 ?? item.vta_90 ?? 0) || 0;
+                const v60 = Number(item.VTA_60 ?? item.vta_60 ?? 0) || 0;
+                const v30 = Number(item.VTA_30 ?? item.vta_30 ?? 0) || 0;
+
+                const subiendo = v30 > v90;
+                const lineColor = subiendo ? '#10b981' : '#ef4444';
+                const areaColor = subiendo ? 'rgba(16, 185, 129, 0.18)' : 'rgba(239, 68, 68, 0.18)';
+
+                let instance = echarts.getInstanceByDom(domEl);
+                if (!instance) {
+                    instance = echarts.init(domEl);
+                }
+
+                instance.setOption({
+                    animation: false,
+                    grid: {
+                        left: 2,
+                        right: 2,
+                        top: 3,
+                        bottom: 3,
+                        containLabel: false
+                    },
+                    xAxis: {
+                        type: 'category',
+                        show: false,
+                        boundaryGap: false,
+                        data: ['90d', '60d', '30d']
+                    },
+                    yAxis: {
+                        type: 'value',
+                        show: false
+                    },
+                    series: [
+                        {
+                            type: 'line',
+                            data: [v90, v60, v30],
+                            smooth: true,
+                            symbol: 'circle',
+                            symbolSize: 3,
+                            lineStyle: {
+                                color: lineColor,
+                                width: 1.8
+                            },
+                            itemStyle: {
+                                color: lineColor
+                            },
+                            areaStyle: {
+                                color: areaColor
+                            }
+                        }
+                    ]
+                });
+            }
+        };
+    }
+</script>
+{% endblock %}
