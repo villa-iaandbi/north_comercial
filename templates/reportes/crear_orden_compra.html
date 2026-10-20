@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Confirmar Orden de Compra (Draft) - North Comercial{% endblock %}
+{% block page_title %}Confirmación de Orden de Compra (SPEC-007){% endblock %}
+
+{% block extra_head %}
+<style>
+    [x-cloak] {
+        display: none !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div x-data="ordenCompraDraft()" x-init="initData()" x-effect="actualizarFechaLimiteDescuento()" class="p-4 bg-gray-900 text-white min-h-screen rounded-lg space-y-4">
+    <div class="hidden">{% csrf_token %}</div>
+
+    <!-- Encabezado de pantalla y botón de retorno -->
+    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800 pb-3">
+        <div>
+            <h1 class="text-sm font-bold uppercase tracking-wider text-gray-100">
+                Cabecera y Confirmación de Orden de Compra (Tipo Doc. 135)
+            </h1>
+            <p class="text-[11px] text-gray-400">
+                Verifique los parámetros transaccionales y las cantidades en unidades físicas antes de grabar en el ERP.
+            </p>
+        </div>
+        <a href="{% url 'reportes:compras_sugeridas' %}"
+            class="py-1 px-3 text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600 rounded transition-colors">
+            &larr; Volver al Tablero Analítico
+        </a>
+    </div>
+
+    <!-- 1. PANEL SUPERIOR DE PARÁMETROS TRANSACCIONALES (GRID 4 COLUMNAS ULTRA-DENSO) -->
+    <div class="bg-gray-800/80 border border-gray-700 rounded p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+        <!-- Proveedor (Select) -->
+        <div>
+            <label for="select-proveedor" class="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Proveedor <span class="text-red-400">*</span>
+            </label>
+            <select id="select-proveedor" x-model="form.id_tercero" @change="onProveedorChange($event)"
+                class="w-full text-xs py-1 px-2 bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-500">
+                <option value="">-- Seleccione Proveedor --</option>
+                {% for p in proveedores_activos|default:proveedores %}
+                <option value="{{ p.id_tercero }}"
+                    data-plazo="{{ p.plazo_pago|default:30 }}"
+                    data-siono-iva="{{ p.siono_iva|default:'N' }}">
+                    {{ p.cod_tercero }} - {{ p.nom_tercero }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Bodega (Select) -->
+        <div>
+            <label for="select-bodega" class="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Bodega <span class="text-red-400">*</span>
+            </label>
+            <select id="select-bodega" x-model="form.id_bodega"
+                class="w-full text-xs py-1 px-2 bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-500">
+                <option value="">-- Seleccione Bodega --</option>
+                {% for b in bodegas %}
+                <option value="{{ b.id_bodega }}">{{ b.id_bodega }} - {{ b.nom_bodega }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Centro de Costo (Select) -->
+        <div>
+            <label for="select-cc" class="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Centro de Costo <span class="text-red-400">*</span>
+            </label>
+            <select id="select-cc" x-model="form.id_centro_costo"
+                class="w-full text-xs py-1 px-2 bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-500">
+                <option value="">-- Seleccione Centro de Costo --</option>
+                {% for c in centros_costo %}
+                <option value="{{ c.id_centro_costo }}">{{ c.cod_centro_costo }} - {{ c.nom_centro_costo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Plazo Pago (Input number) -->
+        <div>
+            <label for="input-plazo" class="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Plazo Pago (Días)
+            </label>
+            <input id="input-plazo" type="number" min="0" x-model.number="form.plazo_pago"
+                class="w-full text-xs py-1 px-2 bg-gray-800 text-white border border-gray-600 rounded font-mono text-right focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <!-- Fecha Entrega (Input date) -->
+        <div>
+            <label for="input-fch-entrega" class="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Fecha Entrega
+            </label>
+            <input id="input-fch-entrega" type="date" x-model="form.fch_entrega_mcia"
+                class="w-full text-xs py-1 px-2 bg-gray-800 text-white border border-gray-600 rounded font-mono focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <!-- % Desc Financiero (Input number) -->
+        <div>
+            <label for="input-porc-desc" class="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                % Desc Financiero
+            </label>
+            <input id="input-porc-desc" type="number" min="0" max="100" step="0.01" x-model.number="form.porc_descuento_financiero"
+                class="w-full text-xs py-1 px-2 bg-gray-800 text-white border border-gray-600 rounded font-mono text-right focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <!-- Fecha Lím. Desc (Input date) -->
+        <div x-show="form.porc_descuento_financiero > 0" x-cloak>
+            <label for="input-fch-limite" class="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Fecha Lím. Desc
+            </label>
+            <input id="input-fch-limite" type="date" x-model="form.fch_limite_descuento"
+                class="w-full text-xs py-1 px-2 bg-gray-800 text-white border border-gray-600 rounded font-mono focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <!-- Condiciones (Input text) -->
+        <div>
+            <label for="input-condiciones" class="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Condiciones
+            </label>
+            <input id="input-condiciones" type="text" maxlength="30" x-model="form.condiciones_pago"
+                placeholder="Ej. 30 DIAS FECHA FACTURA"
+                class="w-full text-xs py-1 px-2 bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-500" />
+        </div>
+    </div>
+
+    <!-- 2. TABLA DE ARTÍCULOS (SIN BORDES HORIZONTALES INTERNOS) -->
+    <div class="bg-gray-800/60 border border-gray-700 rounded overflow-hidden">
+        <div class="overflow-x-auto max-h-[calc(100vh-340px)] overflow-y-auto">
+            <table class="w-full text-sm text-left border-collapse">
+                <thead class="bg-gray-800 text-gray-300 uppercase text-[11px] font-bold sticky top-0 z-10 border-b border-gray-700">
+                    <tr>
+                        <th class="py-2 px-3 text-left">Referencia</th>
+                        <th class="py-2 px-3 text-left">Nombre</th>
+                        <th class="py-2 px-3 text-right">Cantidad (Unidades Físicas)</th>
+                        <th class="py-2 px-3 text-right">Vlr Unitario</th>
+                        <th class="py-2 px-3 text-right">Subtotal</th>
+                        <th class="py-2 px-3 text-right">IVA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(item, index) in articulos" :key="index">
+                        <tr class="odd:bg-gray-900/60 even:bg-gray-800/50 hover:bg-gray-700/60 transition-colors">
+                            <!-- Referencia -->
+                            <td class="py-0.5 px-1 text-sm font-mono font-semibold text-gray-200 whitespace-nowrap"
+                                x-text="item.referencia"></td>
+
+                            <!-- Nombre -->
+                            <td class="py-0.5 px-1 text-sm text-gray-100 truncate max-w-[320px]"
+                                x-text="item.nombre"></td>
+
+                            <!-- Cantidad (Unidades Físicas) -->
+                            <td class="py-0.5 px-1 text-sm text-right font-mono font-bold text-amber-400 whitespace-nowrap"
+                                x-text="formatNum(item.cantidad_unidades)"></td>
+
+                            <!-- Vlr Unitario (Editable) -->
+                            <td class="py-0.5 px-1 text-sm text-right font-mono text-gray-200 whitespace-nowrap">
+                                <input type="number" step="0.01" x-model.number="item.vlr_unitario"
+                                    class="w-24 bg-gray-800 text-right border border-gray-600 rounded px-1" />
+                            </td>
+
+                            <!-- Subtotal -->
+                            <td class="py-0.5 px-1 text-sm text-right font-mono font-semibold text-gray-100 whitespace-nowrap">
+                                <span x-text="new Intl.NumberFormat('es-CO', {style: 'currency', currency: 'COP'}).format(calcularSubtotalLinea(item))"></span>
+                            </td>
+
+                            <!-- IVA -->
+                            <td class="py-0.5 px-1 text-sm text-right font-mono text-blue-300 whitespace-nowrap">
+                                <span x-text="new Intl.NumberFormat('es-CO', {style: 'currency', currency: 'COP'}).format(calcularIVALinea(item))"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+                <tfoot class="bg-gray-800 border-t border-gray-700 font-mono text-sm font-bold">
+                    <tr>
+                        <td colspan="4" class="py-1.5 px-3 text-right text-gray-400 uppercase">Total Mercancía:</td>
+                        <td colspan="2" class="py-1.5 px-3 text-right text-gray-100" x-text="new Intl.NumberFormat('es-CO', {style: 'currency', currency: 'COP'}).format(totMercancia())"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" class="py-1.5 px-3 text-right text-gray-400 uppercase">Total IVA:</td>
+                        <td colspan="2" class="py-1.5 px-3 text-right text-blue-300" x-text="new Intl.NumberFormat('es-CO', {style: 'currency', currency: 'COP'}).format(totIVA())"></td>
+                    </tr>
+                    <tr class="text-base">
+                        <td colspan="4" class="py-2 px-3 text-right text-emerald-400 uppercase">Gran Total:</td>
+                        <td colspan="2" class="py-2 px-3 text-right text-emerald-400" x-text="new Intl.NumberFormat('es-CO', {style: 'currency', currency: 'COP'}).format(granTotal())"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- 3. BOTÓN INFERIOR DE CONFIRMACIÓN Y GUARDADO EN ERP -->
+    <div class="flex items-center justify-end gap-3 pt-2">
+        <button type="button"
+            @click="guardarOrden()"
+            :disabled="isSaving"
+            :class="isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-emerald-500'"
+            class="bg-emerald-600 text-white font-bold py-2 px-5 rounded shadow-sm text-xs transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M5 13l4 4L19 7">
+                </path>
+            </svg>
+            <span x-text="isSaving ? 'Guardando en ERP...' : 'Confirmar y Guardar en ERP'">Confirmar y Guardar en ERP</span>
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function obtenerCsrfToken() {
+        const inputEl = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (inputEl && inputEl.value) return inputEl.value;
+        const name = 'csrftoken=';
+        const decodedCookie = decodeURIComponent(document.cookie || '');
+        const parts = decodedCookie.split(';');
+        for (let i = 0; i < parts.length; i++) {
+            const c = parts[i].trim();
+            if (c.indexOf(name) === 0) {
+                return c.substring(name.length, c.length);
+            }
+        }
+        return '';
+    }
+
+    function ordenCompraDraft() {
+        const hoyIso = new Date().toISOString().split('T')[0];
+
+        return {
+            isSaving: false,
+            articulos: [],
+            form: {
+                id_tercero: '{{ proveedor_sugerido_id|default:""|escapejs }}',
+                id_bodega: '',
+                id_centro_costo: '',
+                plazo_pago: 30,
+                fch_entrega_mcia: hoyIso,
+                fch_limite_descuento: '',
+                porc_descuento_financiero: 0,
+                condiciones_pago: '',
+                siono_iva_proveedor: 'N'
+            },
+
+            actualizarFechaLimiteDescuento() {
+                const porc = Number(this.form.porc_descuento_financiero) || 0;
+                const fchEntrega = this.form.fch_entrega_mcia;
+
+                if (porc > 0 && fchEntrega) {
+                    const partes = String(fchEntrega).split('-');
+                    if (partes.length === 3) {
+                        const fechaBase = new Date(
+                            Number(partes[0]),
+                            Number(partes[1]) - 1,
+                            Number(partes[2])
+                        );
+                        if (!isNaN(fechaBase.getTime())) {
+                            const diasPlazo = Number(this.form.plazo_pago) || 0;
+                            fechaBase.setDate(fechaBase.getDate() + diasPlazo);
+                            const yyyy = fechaBase.getFullYear();
+                            const mm = String(fechaBase.getMonth() + 1).padStart(2, '0');
+                            const dd = String(fechaBase.getDate()).padStart(2, '0');
+                            this.form.fch_limite_descuento = `${yyyy}-${mm}-${dd}`;
+                            return;
+                        }
+                    }
+                }
+                this.form.fch_limite_descuento = '';
+            },
+
+            initData() {
+                const rawDraft = sessionStorage.getItem('draft_orden_compra');
+                if (!rawDraft) {
+                    window.location.href = "{% url 'reportes:compras_sugeridas' %}";
+                    return;
+                }
+
+                try {
+                    const parsed = JSON.parse(rawDraft);
+                    if (!Array.isArray(parsed) || parsed.length === 0) {
+                        window.location.href = "{% url 'reportes:compras_sugeridas' %}";
+                        return;
+                    }
+                    this.articulos = parsed.map(art => ({
+                        ...art,
+                        referencia: art.referencia || art.REFERENCIA || art.id_articulo || art.ID_ARTICULO || '',
+                        cantidad_unidades: Number(art.cantidad_unidades) || 0,
+                        vlr_unitario: Number(art.vlr_unitario ?? art.costo_unitario) || 0,
+                        porc_iva: Number(art.porc_iva ?? art.PRODUCTO_IMPUESTO ?? (String(art.id_gravamen) === '2' ? 19 : 0)) || 0,
+                        siono_iva_proveedor: String(art.siono_iva_proveedor || 'N').toUpperCase()
+                    }));
+                } catch (e) {
+                    console.error('[ordenCompraDraft] Error al leer draft_orden_compra:', e);
+                    window.location.href = "{% url 'reportes:compras_sugeridas' %}";
+                    return;
+                }
+
+                const hoy = new Date().toISOString().split('T')[0];
+                this.form.fch_entrega_mcia = hoy;
+                this.actualizarFechaLimiteDescuento();
+
+                if (typeof this.$watch === 'function') {
+                    this.$watch('form.porc_descuento_financiero', () => this.actualizarFechaLimiteDescuento());
+                    this.$watch('form.fch_entrega_mcia', () => this.actualizarFechaLimiteDescuento());
+                    this.$watch('form.plazo_pago', () => this.actualizarFechaLimiteDescuento());
+                }
+
+                // Si no vino proveedor_sugerido_id desde servidor, intentar preseleccionar desde draft_grupo_proveedor
+                if (!this.form.id_tercero) {
+                    const grupoGuardado = (sessionStorage.getItem('draft_grupo_proveedor') || '').trim().toUpperCase();
+                    if (grupoGuardado) {
+                        const selectEl = document.getElementById('select-proveedor');
+                        if (selectEl && selectEl.options) {
+                            for (let i = 0; i < selectEl.options.length; i++) {
+                                const opt = selectEl.options[i];
+                                const valUpper = (opt.value || '').trim().toUpperCase();
+                                const txtUpper = (opt.text || '').trim().toUpperCase();
+                                if (valUpper && (valUpper === grupoGuardado || txtUpper.includes(grupoGuardado))) {
+                                    this.form.id_tercero = opt.value;
+                                    const plazoAttr = Number(opt.getAttribute('data-plazo'));
+                                    if (!isNaN(plazoAttr) && plazoAttr >= 0) {
+                                        this.form.plazo_pago = plazoAttr;
+                                    }
+                                    const sionoIva = opt.getAttribute('data-siono-iva') || 'N';
+                                    this.form.siono_iva_proveedor = sionoIva;
+                                    this.articulos = this.articulos.map(art => ({
+                                        ...art,
+                                        siono_iva_proveedor: sionoIva
+                                    }));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+
+            onProveedorChange(event) {
+                const selectEl = event.target;
+                if (!selectEl || selectEl.selectedIndex < 0) return;
+                const opt = selectEl.options[selectEl.selectedIndex];
+                if (!opt) return;
+                const plazoAttr = Number(opt.getAttribute('data-plazo'));
+                if (!isNaN(plazoAttr) && plazoAttr >= 0) {
+                    this.form.plazo_pago = plazoAttr;
+                }
+                const sionoIva = opt.getAttribute('data-siono-iva') || 'N';
+                this.form.siono_iva_proveedor = sionoIva;
+                this.articulos = this.articulos.map(art => ({
+                    ...art,
+                    siono_iva_proveedor: sionoIva
+                }));
+                this.actualizarFechaLimiteDescuento();
+            },
+
+            calcularSubtotalLinea(item) {
+                return Number(item.cantidad_unidades) * Number(item.vlr_unitario);
+            },
+
+            calcularIVALinea(item) {
+                return this.form.siono_iva_proveedor === "S" ? 0 : this.calcularSubtotalLinea(item) * (Number(item.porc_iva) / 100);
+            },
+
+            totMercancia() {
+                return this.articulos.reduce((acc, item) => acc + this.calcularSubtotalLinea(item), 0);
+            },
+
+            totIVA() {
+                return this.articulos.reduce((acc, item) => acc + this.calcularIVALinea(item), 0);
+            },
+
+            granTotal() {
+                return this.totMercancia() + this.totIVA();
+            },
+
+            formatCop(val) {
+                const num = Math.round(Number(val) || 0);
+                return '$ ' + num.toLocaleString('es-CO');
+            },
+
+            formatNum(val) {
+                const num = Number(val) || 0;
+                return num.toLocaleString('es-CO', { maximumFractionDigits: 2 });
+            },
+
+            guardarOrden() {
+                if (!this.form.id_tercero || !this.form.id_bodega || !this.form.id_centro_costo) {
+                    alert('Por favor complete los campos obligatorios: Proveedor, Bodega y Centro de Costo.');
+                    return;
+                }
+
+                this.isSaving = true;
+
+                const payload = {
+                    ...this.form,
+                    id_proveedor: this.form.id_tercero,
+                    articulos: this.articulos
+                };
+
+                fetch("{% url 'reportes:api_guardar_orden_compra' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': obtenerCsrfToken()
+                    },
+                    body: JSON.stringify(payload)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.success) {
+                        alert('Orden de Compra grabada exitosamente en el ERP. Documento Nro: ' + data.num_documento);
+                        sessionStorage.removeItem('draft_orden_compra');
+                        sessionStorage.removeItem('draft_grupo_proveedor');
+                        this.isSaving = false;
+                        window.location.href = "{% url 'reportes:compras_sugeridas' %}";
+                    } else {
+                        const msg = (data && data.error) ? data.error : 'No fue posible guardar la Orden de Compra.';
+                        alert('Error al guardar la Orden de Compra: ' + msg);
+                        this.isSaving = false;
+                    }
+                })
+                .catch(err => {
+                    console.error('[guardarOrden] Error:', err);
+                    alert('Error de red o del servidor: ' + err.message);
+                    this.isSaving = false;
+                });
+            }
+        };
+    }
+</script>
+{% endblock %}

@@ -2,10 +2,22 @@
 import datetime
 import logging
 import math
-from decimal import Decimal, InvalidOperation
-from django.db import connection
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from django.db import connection, transaction
+from django.utils import timezone
+from core.models import (
+    CoDocumento,
+    CoTipoDocumento,
+    InArticulo,
+    InBodega,
+    InGravamen,
+    InMovInventario,
+    PvOrdCompra,
+    PvProveedor,
+)
 
 logger = logging.getLogger(__name__)
+
 
 
 class ServicioComprasSugeridas:
@@ -303,4 +315,233 @@ class ServicioComprasSugeridas:
         )
 
         return resultado
+
+
+def _parse_decimal(valor, default: Decimal = Decimal('0.00')) -> Decimal:
+    if valor is None or valor == '':
+        return default
+    if isinstance(valor, Decimal):
+        return valor
+    try:
+        return Decimal(str(valor).strip())
+    except (InvalidOperation, ValueError, TypeError):
+        return default
+
+
+def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
+    """
+    Genera una Orden de Compra transaccional en Oracle 11g (SPEC-007):
+      - Cabecera general en CO_DOCUMENTOS (estado_doc='GRABADO', id_vendedor=None,
+        id_responsable=id_usuario, terminal='COMPRAS INTELIGENTES').
+      - Bypass del Mutating Trigger (INS_DOCUMENTO_CONSEC) actualizando id_doc_consecutivo con .filter().update().
+      - Cabecera de orden de compra en PV_ORD_COMPRAS.
+      - Detalle físico en IN_MOV_INVENTARIOS vía bulk_create con entra_sale='N' y SIN asientos contables.
+    """
+    try:
+        if not isinstance(payload, dict):
+            raise ValueError("El payload debe ser un diccionario válido.")
+
+        id_proveedor = str(payload.get('id_proveedor') or '').strip()
+        id_bodega = str(payload.get('id_bodega') or '1').strip()
+        plazo_pago = int(payload.get('plazo_pago') or 0)
+        articulos = payload.get('articulos') or []
+        siono_iva_proveedor_global = str(payload.get('siono_iva_proveedor') or 'N').strip().upper()
+
+        if not id_proveedor:
+            raise ValueError("El campo 'id_proveedor' es obligatorio.")
+        if not articulos or not isinstance(articulos, list):
+            raise ValueError("La lista de 'articulos' no puede estar vacía.")
+
+        # Caché de gravámenes para resolver el porcentaje de IVA en el backend
+        cache_gravamenes = {
+            str(g.id_gravamen).strip(): _parse_decimal(g.porc_gravamen)
+            for g in InGravamen.objects.all()
+        }
+
+        tot_mercancia = Decimal('0.00')
+        tot_iva = Decimal('0.00')
+        items_procesados = []
+
+        for idx, item in enumerate(articulos, start=1):
+            id_articulo = str(item.get('id_articulo') or '').strip()
+            cantidad_unidades = _parse_decimal(item.get('cantidad_unidades'))
+            vlr_unitario = _parse_decimal(item.get('vlr_unitario'))
+            id_gravamen = str(item.get('id_gravamen') or '1').strip()
+            siono_iva_prov = str(
+                item.get('siono_iva_proveedor', siono_iva_proveedor_global) or 'N'
+            ).strip().upper()
+
+            if not id_articulo or cantidad_unidades <= Decimal('0'):
+                continue
+
+            subtotal_item = (cantidad_unidades * vlr_unitario).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+
+            # Si siono_iva_proveedor == 'S', el proveedor es excluido de IVA y el IVA es 0
+            if siono_iva_prov == 'S':
+                porc_iva = Decimal('0.00')
+                vlr_iva_item = Decimal('0.00')
+            else:
+                if id_gravamen in cache_gravamenes:
+                    porc_iva = cache_gravamenes[id_gravamen]
+                else:
+                    porc_iva = _parse_decimal(item.get('porc_iva'), default=Decimal('0.00'))
+                vlr_iva_item = (subtotal_item * (porc_iva / Decimal('100.00'))).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP
+                )
+
+            tot_mercancia += subtotal_item
+            tot_iva += vlr_iva_item
+
+            items_procesados.append({
+                'idx': idx,
+                'id_articulo': id_articulo,
+                'cantidad_unidades': cantidad_unidades,
+                'vlr_unitario': vlr_unitario,
+                'vlr_iva': vlr_iva_item,
+                'id_gravamen': id_gravamen,
+            })
+
+        if not items_procesados:
+            raise ValueError("No hay artículos válidos con cantidad mayor a cero para procesar.")
+
+        tot_mercancia = tot_mercancia.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        tot_iva = tot_iva.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        tot_servicios = Decimal('0.00')
+        tot_descuento = Decimal('0.00')
+        vlr_ord_compra = (tot_mercancia + tot_servicios + tot_iva - tot_descuento).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
+
+        with transaction.atomic():
+            fch_actual = timezone.now()
+            current_year = str(fch_actual.year)
+
+            # A. Consecutivo vía raw_cursor llamando 'CONSECUTIVO_TIPO_DOC' con tipo '135' y SEC_DOCUMENTO.NEXTVAL
+            if connection.connection is None:
+                connection.ensure_connection()
+            raw_cursor = connection.connection.cursor()
+
+            out_consecutivo = raw_cursor.var(str)
+            out_id_consec = raw_cursor.var(str)
+            raw_cursor.callproc('CONSECUTIVO_TIPO_DOC', ['135', out_consecutivo, out_id_consec])
+
+            num_documento = out_consecutivo.getvalue()
+            id_doc_consecutivo = out_id_consec.getvalue()
+
+            id_tipo_doc_135 = '135'
+            tipo_doc_obj = CoTipoDocumento.objects.filter(
+                cod_tipo_documento='135',
+                id_sistema='1',
+                id_ano=current_year,
+            ).first()
+            if tipo_doc_obj:
+                id_tipo_doc_135 = str(tipo_doc_obj.id_tipo_documento).strip()
+
+            # Si el procedimiento en Oracle requiere el ID interno del año en curso (ej. '14467' para cod '135')
+            if not num_documento and id_tipo_doc_135 != '135':
+                out_consecutivo = raw_cursor.var(str)
+                out_id_consec = raw_cursor.var(str)
+                raw_cursor.callproc('CONSECUTIVO_TIPO_DOC', [id_tipo_doc_135, out_consecutivo, out_id_consec])
+                num_documento = out_consecutivo.getvalue()
+                id_doc_consecutivo = out_id_consec.getvalue()
+
+            if not num_documento:
+                raise RuntimeError(
+                    "Fallo al generar consecutivo en CONSECUTIVO_TIPO_DOC para el tipo de documento '135'."
+                )
+
+            raw_cursor.execute("SELECT SEC_DOCUMENTO.NEXTVAL FROM DUAL")
+            row_sec = raw_cursor.fetchone()
+            id_documento = str(row_sec[0]).strip()
+            num_documento_str = str(num_documento).strip()
+            id_doc_consecutivo_str = str(id_doc_consecutivo).strip() if id_doc_consecutivo is not None else None
+
+            # B. Crear cabecera en CoDocumento
+            doc = CoDocumento.objects.create(
+                id_documento=id_documento,
+                id_tipo_documento=id_tipo_doc_135,
+                num_documento=num_documento_str,
+                fch_documento=fch_actual,
+                id_tercero_id=id_proveedor,
+                id_vendedor=None,
+                id_responsable=str(id_usuario)[:15],
+                tot_documento=vlr_ord_compra,
+                obser=payload.get('obser') or f"Orden de Compra Generada Nro. {num_documento_str}",
+                estado_doc="GRABADO",
+                fch_registro=fch_actual,
+                terminal="COMPRAS INTELIGENTES",
+                id_sistema="1",
+                id_ano=current_year,
+                id_moneda="1",
+                vlr_moneda=Decimal('1.00'),
+                vlr_comision_vend=Decimal('0.00'),
+                cambios=1,
+            )
+
+            # C. Bypass del Mutating Trigger (ORA-04091 INS_DOCUMENTO_CONSEC) actualizando id_doc_consecutivo
+            CoDocumento.objects.filter(pk=id_documento).update(
+                id_doc_consecutivo=id_doc_consecutivo_str
+            )
+
+            # D. Crear registro en PvOrdCompra usando el plazo_pago del payload y totales calculados
+            fch_entrega = fch_actual.date() if hasattr(fch_actual, 'date') else datetime.date.today()
+            PvOrdCompra.objects.create(
+                id_documento=doc,
+                fch_entrega_mcia=fch_entrega,
+                porc_descuento_financiero=0,
+                fch_limite_descuento=fch_entrega,
+                condiciones_pago=str(payload.get('condiciones_pago') or f"{plazo_pago} DIAS")[:30],
+                plazo_pago=plazo_pago,
+                tot_mercancia=tot_mercancia,
+                tot_servicios=tot_servicios,
+                tot_iva=tot_iva,
+                tot_descuento=tot_descuento,
+                vlr_ord_compra=vlr_ord_compra,
+                vlr_saldo=vlr_ord_compra,
+            )
+
+            # E. Preparar lista de InMovInventario e insertar con bulk_create (entra_sale="N", SIN asientos contables)
+            movimientos = []
+            for item_data in items_procesados:
+                movimientos.append(
+                    InMovInventario(
+                        id_item=str(item_data['idx']),
+                        id_documento=doc,
+                        id_articulo=item_data['id_articulo'],
+                        fch_documento=fch_actual,
+                        entra_sale="N",
+                        cantidad=item_data['cantidad_unidades'],
+                        vlr_unitario=item_data['vlr_unitario'],
+                        porc_descuento_1=Decimal('0.00'),
+                        vlr_iva=item_data['vlr_iva'],
+                        impoconsumo=Decimal('0.00'),
+                        vlr_promedio_ini=Decimal('0.00'),
+                        vlr_reposicion=Decimal('0.00'),
+                        vlr_comision_vend=Decimal('0.00'),
+                        existencia=Decimal('0.00'),
+                        saldo=item_data['cantidad_unidades'],
+                        id_centro_costo="1",
+                        id_bodega=id_bodega,
+                        id_sistema="1",
+                        id_gravamen=item_data['id_gravamen'],
+                    )
+                )
+
+            InMovInventario.objects.bulk_create(movimientos)
+
+        return {
+            'success': True,
+            'num_documento': num_documento_str,
+            'id_documento': id_documento,
+        }
+
+    except Exception as e:
+        logger.exception("Error al generar orden de compra: %s", e)
+        return {
+            'success': False,
+            'error': str(e),
+        }
+
 

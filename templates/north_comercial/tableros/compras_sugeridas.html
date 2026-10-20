@@ -24,6 +24,8 @@
 <script id="dashboard-data" type="application/json">{{ datos_iniciales_json|escapejs }}</script>
 
 <div class="space-y-4" x-data="comprasDashboard()" x-init="initDashboard()">
+    <div class="hidden">{% csrf_token %}</div>
+
 
     <!-- 1. BARRA DE FILTROS SUPERIOR -->
     <form method="GET" action="{% url 'reportes:compras_sugeridas' %}"
@@ -118,7 +120,7 @@
                 <span>Solo sugeridos (&gt; 0)</span>
             </label>
 
-            <button type="button" @click=" NotificarAccion('Generación de PDF de Auditoría disponible en Fase 4')"
+            <button type="button" @click="NotificarAccion('Generación de PDF de Auditoría disponible en Fase 4')"
                 class="bg-gray-800 hover:bg-gray-700 text-gray-100 font-semibold py-1.5 px-3 rounded-md border border-gray-600 text-xs transition-colors flex items-center gap-1.5 shadow-sm">
                 <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -128,14 +130,15 @@
                 <span>Generar PDF</span>
             </button>
 
-            <button type="button" @click="NotificarAccion('Commit de Orden en ERP disponible en Fase 4')"
+            <button type="button"
+                @click="prepararOrdenCompra()"
                 class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-3.5 rounded-md shadow-sm text-xs transition-colors flex items-center gap-1.5">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M5 13l4 4L19 7">
                     </path>
                 </svg>
-                <span>Guardar Orden en ERP</span>
+                <span>Proceder a Comprar</span>
             </button>
         </div>
     </div>
@@ -232,7 +235,7 @@
                             <td class="py-0.5 px-1 text-right whitespace-nowrap">
                                 <input type="number" min="0" step="1"
                                     x-model.number="item.cant_a_comprar"
-                                    @input="if (item.cant_a_comprar < 0 || isNaN(item.cant_a_comprar)) item.cant_a_comprar = 0"
+                                    @input="if (item.cant_a_comprar < 0 || isNaN(item.cant_a_comprar)) item.cant_a_comprar = 0; item.cantidad_cajas_input = item.cant_a_comprar"
                                     class="input-denso w-16 h-6 px-1 py-0 border border-gray-300 rounded text-right text-xs font-mono font-bold text-gray-900 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
                             </td>
 
@@ -295,6 +298,21 @@
         }
     }
 
+    function getCsrfToken() {
+        const domInput = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (domInput && domInput.value) return domInput.value;
+        const name = 'csrftoken=';
+        const decodedCookie = decodeURIComponent(document.cookie || '');
+        const parts = decodedCookie.split(';');
+        for (let i = 0; i < parts.length; i++) {
+            const c = parts[i].trim();
+            if (c.indexOf(name) === 0) {
+                return c.substring(name.length, c.length);
+            }
+        }
+        return '';
+    }
+
     function comprasDashboard() {
         return {
             items: [],
@@ -321,7 +339,8 @@
                         existencia: existenciaVal,
                         costo_unitario: costoUnitVal,
                         fch_ult_compra: fchUltCompraVal,
-                        cant_a_comprar: sugerido
+                        cant_a_comprar: sugerido,
+                        cantidad_cajas_input: sugerido
                     };
                 });
             },
@@ -387,6 +406,38 @@
                     }
                 }, 4000);
             },
+
+            prepararOrdenCompra() {
+                const articulosConCantidad = this.items.filter(item => {
+                    item.cantidad_cajas_input = Number(item.cant_a_comprar ?? item.cantidad_cajas_input ?? 0) || 0;
+                    return item.cantidad_cajas_input > 0;
+                });
+
+                if (articulosConCantidad.length === 0) {
+                    alert('No hay artículos con cantidad para comprar.');
+                    return;
+                }
+
+                const articulos_mapeados = articulosConCantidad.map(articulo => {
+                    return {
+                        id_articulo: articulo.id_articulo || articulo.ID_ARTICULO,
+                        referencia: articulo.REFERENCIA || articulo.referencia || articulo.id_articulo,
+                        nombre: articulo.nombre || articulo.PRODUCTO_DESCRIPCION || articulo.NOM_ARTICULO || articulo.nom_articulo || '',
+                        cantidad_unidades: (Number(articulo.cantidad_cajas_input) * Number(articulo.embalaje || articulo.EMBALAJE || 1)),
+                        vlr_unitario: Number(articulo.costo_unitario || articulo.COSTO_UNITARIO || 0),
+                        porc_iva: Number(articulo.PRODUCTO_IMPUESTO || articulo.porc_iva || 0),
+                        id_gravamen: articulo.id_gravamen || articulo.ID_GRAVAMEN || '1',
+                        siono_iva_proveedor: articulo.SIONO_IVA_PROVEEDOR || 'N'
+                    };
+                });
+
+                sessionStorage.setItem("draft_orden_compra", JSON.stringify(articulos_mapeados));
+                sessionStorage.setItem("draft_grupo_proveedor", "{{ request.GET.grupo|escapejs }}");
+
+                window.location.href = "{% url 'reportes:crear_orden_compra' %}";
+            },
+
+
 
             renderSparkline(domEl, item) {
                 if (!domEl || typeof echarts === 'undefined') return;

@@ -6,7 +6,7 @@ class CoDocumento(models.Model):
     num_documento = models.CharField(max_length=20)
     fch_documento = models.DateTimeField()
     id_tercero = models.ForeignKey('CoTercero', models.DO_NOTHING, db_column='ID_TERCERO', db_constraint=False)
-    id_vendedor = models.ForeignKey('CtVendedor', models.DO_NOTHING, db_column='ID_VENDEDOR', db_constraint=False)
+    id_vendedor = models.ForeignKey('CtVendedor', models.DO_NOTHING, db_column='ID_VENDEDOR', db_constraint=False, null=True, blank=True)
     id_responsable = models.CharField(max_length=15)
     tot_documento = models.DecimalField(max_digits=15, decimal_places=2)
     obser = models.CharField(max_length=2000, null=True, blank=True)
@@ -158,6 +158,7 @@ class SgMunicipioDian(models.Model):
 
 class CoTercero(models.Model):
     id_tercero = models.CharField(max_length=8, primary_key=True, db_column='ID_TERCERO')
+    cod_tercero = models.CharField(max_length=12, null=True, blank=True, db_column='COD_TERCERO')
     nom_tercero = models.CharField(max_length=200, db_column='NOM_TERCERO') # Asumido 200 por estándar, ajustar si es diferente
     id_regimen = models.CharField(max_length=3, null=True, blank=True, db_column='ID_REGIMEN')
     siono_iva = models.CharField(max_length=1, null=True, blank=True, db_column='SIONO_IVA')
@@ -467,3 +468,93 @@ class NorthCliente(models.Model):
     class Meta:
         managed = False
         db_table = 'north_clientes'
+
+
+# ==========================================
+# COMPRAS E INVENTARIO: PROVEEDORES, BODEGAS Y ÓRDENES DE COMPRA (SPEC-007)
+# ==========================================
+
+class PvProveedor(models.Model):
+    id_tercero = models.OneToOneField(
+        CoTercero,
+        on_delete=models.DO_NOTHING,
+        primary_key=True,
+        db_column='ID_TERCERO',
+        db_constraint=False
+    )
+    activo_inactivo = models.CharField(max_length=1, default='A', db_column='ACTIVO_INACTIVO')
+    id_tipo_proveedor = models.CharField(max_length=8, null=True, blank=True, db_column='ID_TIPO_PROVEEDOR')
+    plazo_pago = models.IntegerField(default=0, db_column='PLAZO_PAGO')
+    cupo_credito = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='CUPO_CREDITO')
+    fch_ultima_compra = models.DateField(null=True, blank=True, db_column='FCH_ULTIMA_COMPRA')
+    cant_chq_devuelto = models.IntegerField(default=0, db_column='CANT_CHQ_DEVUELTO')
+    acum_dias_mora = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='ACUM_DIAS_MORA')
+    cant_pago = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='CANT_PAGO')
+    max_saldo_pagar = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='MAX_SALDO_PAGAR')
+    id_sistema = models.CharField(max_length=8, default='1', db_column='ID_SISTEMA')
+    id_disponible = models.CharField(max_length=8, null=True, blank=True, db_column='ID_DISPONIBLE')
+
+    class Meta:
+        managed = False
+        db_table = 'pv_proveedores'
+
+    def __str__(self):
+        return f"Proveedor {self.id_tercero_id}"
+
+
+class InBodega(models.Model):
+    id_bodega = models.CharField(max_length=8, primary_key=True, db_column='ID_BODEGA')
+    id_sistema = models.CharField(max_length=8, default='1', db_column='ID_SISTEMA')
+    nom_bodega = models.CharField(max_length=50, db_column='NOM_BODEGA')
+    obser = models.CharField(max_length=250, null=True, blank=True, db_column='OBSER')
+
+    class Meta:
+        managed = False
+        db_table = 'in_bodegas'
+
+    def __str__(self):
+        return f"{self.id_bodega} - {self.nom_bodega}"
+
+
+class PvOrdCompra(models.Model):
+    id_documento = models.OneToOneField(
+        CoDocumento,
+        on_delete=models.DO_NOTHING,
+        primary_key=True,
+        db_column='ID_DOCUMENTO',
+        db_constraint=False
+    )
+    fch_entrega_mcia = models.DateField(db_column='FCH_ENTREGA_MCIA')
+    porc_descuento_financiero = models.IntegerField(default=0, null=True, blank=True, db_column='PORC_DESCUENTO_FINANCIERO')
+    fch_limite_descuento = models.DateField(null=True, blank=True, db_column='FCH_LIMITE_DESCUENTO')
+    condiciones_pago = models.CharField(max_length=30, null=True, blank=True, db_column='CONDICIONES_PAGO')
+    plazo_pago = models.IntegerField(default=0, db_column='PLAZO_PAGO')
+    tot_mercancia = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='TOT_MERCANCIA')
+    tot_servicios = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='TOT_SERVICIOS')
+    tot_iva = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='TOT_IVA')
+    tot_descuento = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='TOT_DESCUENTO')
+    vlr_ord_compra = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='VLR_ORD_COMPRA')
+    vlr_saldo = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_column='VLR_SALDO')
+
+    class Meta:
+        managed = False
+        db_table = 'pv_ord_compras'
+
+    def __str__(self):
+        return f"Orden de Compra {self.id_documento_id}"
+
+
+class CoCentroCosto(models.Model):
+    id_centro_costo = models.CharField(max_length=8, primary_key=True, db_column='ID_CENTRO_COSTO')
+    cod_centro_costo = models.CharField(max_length=8, db_column='COD_CENTRO_COSTO')
+    nom_centro_costo = models.CharField(max_length=80, db_column='NOM_CENTRO_COSTO')
+    id_sistema = models.CharField(max_length=8, default='1', db_column='ID_SISTEMA')
+    id_ano = models.CharField(max_length=4, null=True, blank=True, db_column='ID_ANO')
+    obser = models.CharField(max_length=250, null=True, blank=True, db_column='OBSER')
+
+    class Meta:
+        managed = False
+        db_table = 'co_centro_costos'
+
+    def __str__(self):
+        return f"{self.cod_centro_costo} - {self.nom_centro_costo}"

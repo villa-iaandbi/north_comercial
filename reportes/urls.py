@@ -42,5 +42,11 @@ urlpatterns = [
     # SPEC-007: Tablero de Compras Sugeridas (Smart Replenishment)
     path('compras-sugeridas/', views.tablero_compras_sugeridas,
          name='compras_sugeridas'),
+    path('api/compras/guardar-orden/', views.api_guardar_orden_compra,
+         name='api_guardar_orden_compra'),
+    path('api/compras/crear-orden/', views.crear_orden_compra,
+         name='crear_orden_compra'),
 ]
+
+
 
