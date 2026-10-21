@@ -7,6 +7,19 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
+    /* Ocultar flechas en inputs numéricos (Chrome, Safari, Edge, Opera) */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    /* Ocultar flechas en Firefox */
+    input[type="number"] {
+        -moz-appearance: textfield;
+    }
+</style>
+
+<style>
     [x-cloak] {
         display: none !important;
     }
@@ -168,7 +181,7 @@
                         <th class="px-1 py-0.5 text-center">TEND.</th>
                         <th class="py-0.5 px-1 text-right">SUGERIDO (CJS)</th>
                         <th class="py-0.5 px-1 text-right">CANT. A COMP. (CJS)</th>
-                        <th class="py-0.5 px-1 text-right">COSTO UNIT.</th>
+                        <th class="py-0.5 px-1 text-right">COSTO REPOSICIÓN</th>
                         <th class="py-0.5 px-1 text-right">TOTAL FILA</th>
                     </tr>
                 </thead>
@@ -239,9 +252,9 @@
                                     class="input-denso w-16 h-6 px-1 py-0 border border-gray-300 rounded text-right text-xs font-mono font-bold text-gray-900 bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
                             </td>
 
-                            <!-- COSTO UNIT. -->
+                            <!-- COSTO REPOSICIÓN -->
                             <td class="py-0.5 px-1 text-right font-mono font-medium text-gray-700 whitespace-nowrap"
-                                x-text="formatCop(item.costo_unitario)"></td>
+                                x-text="formatCop(item.VLR_REPOSICION || item.vlr_reposicion)"></td>
 
                             <!-- TOTAL FILA (cant_a_comprar * embalaje * costo_unitario) -->
                             <td class="py-0.5 px-1 text-right font-mono font-bold whitespace-nowrap"
@@ -364,7 +377,7 @@
             calcularTotalFila(item) {
                 const cant = Math.max(0, Number(item.cant_a_comprar) || 0);
                 const emb = Math.max(1, Number(item.embalaje) || 1);
-                const costoUnit = Number(item.costo_unitario ?? item.VLR_PROMEDIO ?? item.vlr_promedio ?? 0) || 0;
+                const costoUnit = Number(item.VLR_REPOSICION ?? item.vlr_reposicion ?? 0) || 0;
                 return cant * emb * costoUnit;
             },
 
@@ -423,8 +436,9 @@
                         id_articulo: articulo.id_articulo || articulo.ID_ARTICULO,
                         referencia: articulo.REFERENCIA || articulo.referencia || articulo.id_articulo,
                         nombre: articulo.nombre || articulo.PRODUCTO_DESCRIPCION || articulo.NOM_ARTICULO || articulo.nom_articulo || '',
-                        cantidad_unidades: (Number(articulo.cantidad_cajas_input) * Number(articulo.embalaje || articulo.EMBALAJE || 1)),
-                        vlr_unitario: Number(articulo.costo_unitario || articulo.COSTO_UNITARIO || 0),
+                        cantidad_cajas: Number(articulo.cantidad_cajas_input) || 0,
+                        cantidad_unidades: (Number(articulo.cantidad_cajas_input) * Number(articulo.embalaje || 1)),
+                        vlr_unitario: Number(articulo.VLR_REPOSICION || articulo.vlr_reposicion || 0),
                         porc_iva: Number(articulo.PRODUCTO_IMPUESTO || articulo.porc_iva || 0),
                         id_gravamen: articulo.id_gravamen || articulo.ID_GRAVAMEN || '1',
                         siono_iva_proveedor: articulo.SIONO_IVA_PROVEEDOR || 'N'

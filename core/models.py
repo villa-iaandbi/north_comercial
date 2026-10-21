@@ -575,6 +575,7 @@ class VAnalisisInventario(models.Model):
     fch_ult_venta = models.DateTimeField(null=True, blank=True, db_column='FCH_ULT_VENTA')
     dias_sin_venta = models.IntegerField(null=True, blank=True, db_column='DIAS_SIN_VENTA')
     id_gravamen = models.CharField(max_length=8, null=True, blank=True)
+    vlr_reposicion = models.FloatField(null=True, blank=True)
 
     class Meta:
         managed = False

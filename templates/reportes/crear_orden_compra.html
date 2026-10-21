@@ -13,6 +13,11 @@
 {% endblock %}
 
 {% block content %}
+<style>
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+</style>
 <div x-data="ordenCompraDraft()" x-init="initData()" x-effect="actualizarFechaLimiteDescuento()" class="p-4 bg-gray-900 text-white min-h-screen rounded-lg space-y-4">
     <div class="hidden">{% csrf_token %}</div>
 
@@ -135,7 +140,8 @@
                     <tr>
                         <th class="py-2 px-3 text-left">Referencia</th>
                         <th class="py-2 px-3 text-left">Nombre</th>
-                        <th class="py-2 px-3 text-right">Cantidad (Unidades Físicas)</th>
+                        <th class="py-1 px-2 font-semibold text-right">CANTIDAD (CJS)</th>
+                        <th class="py-1 px-2 font-semibold text-right">CANTIDAD (UNDS)</th>
                         <th class="py-2 px-3 text-right">Vlr Unitario</th>
                         <th class="py-2 px-3 text-right">Subtotal</th>
                         <th class="py-2 px-3 text-right">IVA</th>
@@ -152,6 +158,9 @@
                             <td class="py-0.5 px-1 text-sm text-gray-100 truncate max-w-[320px]"
                                 x-text="item.nombre"></td>
 
+                            <!-- Cantidad (Unidades Físicas) -->
+                            <td class="py-0.5 px-1 text-sm text-right font-mono font-bold text-amber-400 whitespace-nowrap"
+                                x-text="item.cantidad_cajas"></td>
                             <!-- Cantidad (Unidades Físicas) -->
                             <td class="py-0.5 px-1 text-sm text-right font-mono font-bold text-amber-400 whitespace-nowrap"
                                 x-text="formatNum(item.cantidad_unidades)"></td>
@@ -297,6 +306,7 @@
                         return (Number(item.cantidad_unidades) || 0) >= 1;
                     }).map(item => ({
                         ...item,
+                        cantidad_cajas: Number(item.cantidad_cajas) || 0,
                         cantidad_unidades: Number(item.cantidad_unidades) || 0,
                         vlr_unitario: Number(item.vlr_unitario) || 0,
                         id_gravamen: String(item.id_gravamen || '1'),

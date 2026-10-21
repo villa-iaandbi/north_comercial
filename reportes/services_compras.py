@@ -136,6 +136,7 @@ class ServicioComprasSugeridas:
                 V.FCH_ULT_VENTA,
                 V.DIAS_SIN_VENTA,
                 V.ID_GRAVAMEN,
+                V.VLR_REPOSICION,
                 NVL(F.VTA_30, 0) AS VTA_30,
                 NVL(F.VTA_60, 0) AS VTA_60,
                 NVL(F.VTA_90, 0) AS VTA_90,
@@ -202,6 +203,7 @@ class ServicioComprasSugeridas:
 
             existencia = self._to_decimal(reg.get('EXISTENCIA'), Decimal('0.0'))
             vlr_promedio = self._to_decimal(reg.get('VLR_PROMEDIO'), Decimal('0.0'))
+            vlr_reposicion = self._to_decimal(reg.get('VLR_REPOSICION'), Decimal('0.0'))
             valor_total = self._to_decimal(reg.get('VALOR_TOTAL'), Decimal('0.0'))
             rotacion_diaria = self._to_decimal(reg.get('ROTACION_DIARIA'), Decimal('0.0'))
             pedidos_por_llegar = self._to_decimal(reg.get('PEDIDOS_POR_LLEGAR'), Decimal('0.0'))
@@ -236,7 +238,8 @@ class ServicioComprasSugeridas:
                 sugerido_cajas = int(math.ceil(sugerido_cajas_decimal))
 
             sugerido_unidades = Decimal(sugerido_cajas) * embalaje
-            valor_compra_sugerida = round(sugerido_unidades * vlr_promedio, 2)
+            costo_referencia = vlr_reposicion if vlr_reposicion > Decimal('0.0') else vlr_promedio
+            valor_compra_sugerida = round(sugerido_unidades * costo_referencia, 2)
 
             # Clasificación ABC simplificada por Línea (> 10% del valor total de su línea => 'A')
             total_linea = totales_por_linea.get(linea_key, Decimal('0.0'))
@@ -265,7 +268,8 @@ class ServicioComprasSugeridas:
                 'id_gravamen': id_gravamen,
                 'existencia': int(existencia) if existencia == int(existencia) else float(round(existencia, 2)),
                 'vlr_promedio': round(vlr_promedio, 2),
-                'costo_unitario': round(vlr_promedio, 2),
+                'vlr_reposicion': round(vlr_reposicion, 2),
+                'costo_unitario': round(costo_referencia, 2),
                 'valor_total': round(valor_total, 2),
                 'rotacion_diaria': round(rotacion_diaria, 4),
                 'pedidos_por_llegar': round(pedidos_por_llegar, 2),
@@ -295,7 +299,8 @@ class ServicioComprasSugeridas:
                 'ID_GRAVAMEN': id_gravamen,
                 'EXISTENCIA': int(existencia) if existencia == int(existencia) else float(round(existencia, 2)),
                 'VLR_PROMEDIO': round(vlr_promedio, 2),
-                'COSTO_UNITARIO': round(vlr_promedio, 2),
+                'VLR_REPOSICION': round(vlr_reposicion, 2),
+                'COSTO_UNITARIO': round(costo_referencia, 2),
                 'VALOR_TOTAL': round(valor_total, 2),
                 'ROTACION_DIARIA': round(rotacion_diaria, 4),
                 'PEDIDOS_POR_LLEGAR': round(pedidos_por_llegar, 2),
