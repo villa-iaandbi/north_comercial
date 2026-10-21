@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
+import decimal
 import logging
 import math
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -15,6 +16,7 @@ from core.models import (
     PvOrdCompra,
     PvProveedor,
 )
+from core.utils_tributarios import CalculadoraTributaria
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +135,7 @@ class ServicioComprasSugeridas:
                 V.ROTACION_DIARIA,
                 V.FCH_ULT_VENTA,
                 V.DIAS_SIN_VENTA,
+                V.ID_GRAVAMEN,
                 NVL(F.VTA_30, 0) AS VTA_30,
                 NVL(F.VTA_60, 0) AS VTA_60,
                 NVL(F.VTA_90, 0) AS VTA_90,
@@ -194,6 +197,7 @@ class ServicioComprasSugeridas:
             grupo = str(reg.get('GRUPO') or 'SIN GRUPO').strip()
             cod_grupo = str(reg.get('COD_GRUPO') or '').strip()
             linea = str(reg.get('LINEA') or 'SIN LINEA').strip()
+            id_gravamen = str(reg.get('ID_GRAVAMEN') or '1').strip()
             linea_key = linea.upper()
 
             existencia = self._to_decimal(reg.get('EXISTENCIA'), Decimal('0.0'))
@@ -258,6 +262,7 @@ class ServicioComprasSugeridas:
                 'grupo': grupo,
                 'grupo_codigo': cod_grupo or grupo,
                 'linea': linea,
+                'id_gravamen': id_gravamen,
                 'existencia': int(existencia) if existencia == int(existencia) else float(round(existencia, 2)),
                 'vlr_promedio': round(vlr_promedio, 2),
                 'costo_unitario': round(vlr_promedio, 2),
@@ -287,6 +292,7 @@ class ServicioComprasSugeridas:
                 'ESTADO': estado,
                 'GRUPO': grupo,
                 'LINEA': linea,
+                'ID_GRAVAMEN': id_gravamen,
                 'EXISTENCIA': int(existencia) if existencia == int(existencia) else float(round(existencia, 2)),
                 'VLR_PROMEDIO': round(vlr_promedio, 2),
                 'COSTO_UNITARIO': round(vlr_promedio, 2),
@@ -352,11 +358,7 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
         if not articulos or not isinstance(articulos, list):
             raise ValueError("La lista de 'articulos' no puede estar vacía.")
 
-        # Caché de gravámenes para resolver el porcentaje de IVA en el backend
-        cache_gravamenes = {
-            str(g.id_gravamen).strip(): _parse_decimal(g.porc_gravamen)
-            for g in InGravamen.objects.all()
-        }
+        calculadora = CalculadoraTributaria(cargar_retenciones=False)
 
         tot_mercancia = Decimal('0.00')
         tot_iva = Decimal('0.00')
@@ -367,52 +369,37 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
             cantidad_unidades = _parse_decimal(item.get('cantidad_unidades'))
             vlr_unitario = _parse_decimal(item.get('vlr_unitario'))
             id_gravamen = str(item.get('id_gravamen') or '1').strip()
-            siono_iva_prov = str(
+            siono_iva_proveedor = str(
                 item.get('siono_iva_proveedor', siono_iva_proveedor_global) or 'N'
             ).strip().upper()
 
             if not id_articulo or cantidad_unidades <= Decimal('0'):
                 continue
 
-            subtotal_item = (cantidad_unidades * vlr_unitario).quantize(
-                Decimal('0.01'), rounding=ROUND_HALF_UP
+            subtotal_linea, vlr_iva_linea, _ = calculadora.calcular_impuestos_linea(
+                cantidad=cantidad_unidades,
+                vlr_unitario=vlr_unitario,
+                id_gravamen=id_gravamen,
+                siono_iva_proveedor=siono_iva_proveedor
             )
 
-            # Si siono_iva_proveedor == 'S', el proveedor es excluido de IVA y el IVA es 0
-            if siono_iva_prov == 'S':
-                porc_iva = Decimal('0.00')
-                vlr_iva_item = Decimal('0.00')
-            else:
-                if id_gravamen in cache_gravamenes:
-                    porc_iva = cache_gravamenes[id_gravamen]
-                else:
-                    porc_iva = _parse_decimal(item.get('porc_iva'), default=Decimal('0.00'))
-                vlr_iva_item = (subtotal_item * (porc_iva / Decimal('100.00'))).quantize(
-                    Decimal('0.01'), rounding=ROUND_HALF_UP
-                )
-
-            tot_mercancia += subtotal_item
-            tot_iva += vlr_iva_item
+            tot_mercancia += subtotal_linea
+            tot_iva += vlr_iva_linea
 
             items_procesados.append({
                 'idx': idx,
                 'id_articulo': id_articulo,
                 'cantidad_unidades': cantidad_unidades,
                 'vlr_unitario': vlr_unitario,
-                'vlr_iva': vlr_iva_item,
+                'vlr_iva': vlr_iva_linea,
                 'id_gravamen': id_gravamen,
             })
 
         if not items_procesados:
             raise ValueError("No hay artículos válidos con cantidad mayor a cero para procesar.")
 
-        tot_mercancia = tot_mercancia.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        tot_iva = tot_iva.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         tot_servicios = Decimal('0.00')
         tot_descuento = Decimal('0.00')
-        vlr_ord_compra = (tot_mercancia + tot_servicios + tot_iva - tot_descuento).quantize(
-            Decimal('0.01'), rounding=ROUND_HALF_UP
-        )
 
         with transaction.atomic():
             fch_actual = timezone.now()
@@ -458,6 +445,8 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
             num_documento_str = str(num_documento).strip()
             id_doc_consecutivo_str = str(id_doc_consecutivo).strip() if id_doc_consecutivo is not None else None
 
+            gran_total_red = (tot_mercancia + tot_iva).quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
+
             # B. Crear cabecera en CoDocumento
             doc = CoDocumento.objects.create(
                 id_documento=id_documento,
@@ -467,7 +456,7 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
                 id_tercero_id=id_proveedor,
                 id_vendedor=None,
                 id_responsable=str(id_usuario)[:15],
-                tot_documento=vlr_ord_compra,
+                tot_documento=gran_total_red,
                 obser=payload.get('obser') or f"Orden de Compra Generada Nro. {num_documento_str}",
                 estado_doc="GRABADO",
                 fch_registro=fch_actual,
@@ -498,8 +487,8 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
                 tot_servicios=tot_servicios,
                 tot_iva=tot_iva,
                 tot_descuento=tot_descuento,
-                vlr_ord_compra=vlr_ord_compra,
-                vlr_saldo=vlr_ord_compra,
+                vlr_ord_compra=gran_total_red,
+                vlr_saldo=gran_total_red,
             )
 
             # E. Preparar lista de InMovInventario e insertar con bulk_create (entra_sale="N", SIN asientos contables)

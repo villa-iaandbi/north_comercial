@@ -558,3 +558,24 @@ class CoCentroCosto(models.Model):
 
     def __str__(self):
         return f"{self.cod_centro_costo} - {self.nom_centro_costo}"
+
+
+class VAnalisisInventario(models.Model):
+    fecha_foto = models.DateTimeField(null=True, blank=True, db_column='FECHA_FOTO')
+    id_articulo = models.CharField(max_length=15, primary_key=True, db_column='ID_ARTICULO')
+    referencia = models.CharField(max_length=15, null=True, blank=True, db_column='REFERENCIA')
+    nom_articulo = models.CharField(max_length=150, null=True, blank=True, db_column='NOM_ARTICULO')
+    estado = models.CharField(max_length=1, null=True, blank=True, db_column='ESTADO')
+    grupo = models.CharField(max_length=150, null=True, blank=True, db_column='GRUPO')
+    linea = models.CharField(max_length=150, null=True, blank=True, db_column='LINEA')
+    existencia = models.DecimalField(max_digits=15, decimal_places=3, null=True, blank=True, db_column='EXISTENCIA')
+    vlr_promedio = models.DecimalField(max_digits=20, decimal_places=10, null=True, blank=True, db_column='VLR_PROMEDIO')
+    valor_total = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True, db_column='VALOR_TOTAL')
+    rotacion_diaria = models.DecimalField(max_digits=15, decimal_places=4, null=True, blank=True, db_column='ROTACION_DIARIA')
+    fch_ult_venta = models.DateTimeField(null=True, blank=True, db_column='FCH_ULT_VENTA')
+    dias_sin_venta = models.IntegerField(null=True, blank=True, db_column='DIAS_SIN_VENTA')
+    id_gravamen = models.CharField(max_length=8, null=True, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = 'v_analisis_inventario'

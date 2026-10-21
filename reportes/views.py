@@ -459,6 +459,9 @@ def tablero_compras_sugeridas(request):
 
     filtros_disponibles = servicio.get_filtros_disponibles()
     datos_tablero = servicio.get_datos_tablero()
+    for item in datos_tablero:
+        item.setdefault('id_gravamen', item.get('ID_GRAVAMEN') or '1')
+        item.setdefault('ID_GRAVAMEN', item.get('id_gravamen') or '1')
 
     # Bodegas disponibles desde InBodega
     try:
@@ -572,7 +575,7 @@ def crear_orden_compra(request):
         for p in qs_proveedores
     ]
 
-    gravamenes_dict = {str(g.id_gravamen): float(g.porc_gravamen) for g in InGravamen.objects.all()}
+    gravamenes_dict = {str(g.id_gravamen).strip(): float(g.porc_gravamen) for g in InGravamen.objects.all()}
     gravamenes_json = json.dumps(gravamenes_dict)
 
     contexto = {

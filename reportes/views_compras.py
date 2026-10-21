@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.db.models import Q
 from django.core.serializers.json import DjangoJSONEncoder
-from core.models import InBodega, CoTercero, PvProveedor, CoCentroCosto
+from core.models import InBodega, CoTercero, PvProveedor, CoCentroCosto, InGravamen
 from .services_compras import ServicioComprasSugeridas, generar_orden_compra
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,9 @@ def tablero_compras_sugeridas(request):
 
     filtros_disponibles = servicio.get_filtros_disponibles()
     datos_tablero = servicio.get_datos_tablero()
+    for item in datos_tablero:
+        item.setdefault('id_gravamen', item.get('ID_GRAVAMEN') or '1')
+        item.setdefault('ID_GRAVAMEN', item.get('id_gravamen') or '1')
 
     # Bodegas disponibles desde InBodega
     try:
@@ -167,10 +170,14 @@ def crear_orden_compra(request):
         for p in qs_proveedores
     ]
 
+    gravamenes_dict = {str(g.id_gravamen).strip(): float(g.porc_gravamen) for g in InGravamen.objects.all()}
+    gravamenes_json = json.dumps(gravamenes_dict)
+
     contexto = {
         'bodegas': bodegas,
         'centros_costo': centros_costo,
         'proveedores': proveedores,
+        'gravamenes_json': gravamenes_json,
     }
     return render(request, 'reportes/crear_orden_compra.html', contexto)
 
