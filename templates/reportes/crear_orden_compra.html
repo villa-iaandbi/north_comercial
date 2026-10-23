@@ -427,7 +427,7 @@
                 .then(data => {
                     if (data && data.success) {
                         sessionStorage.removeItem("draft_orden_compra");
-                        window.location.href = "{% url 'reportes:bandeja_ordenes_compra' %}";
+                        window.location.replace("{% url 'reportes:bandeja_ordenes_compra' %}");
                     } else {
                         // Esta rama puede que nunca se alcance si el backend siempre responde con status != 200 en error
                         this.errorMsg = (data && data.error) ? data.error : 'No fue posible guardar la Orden de Compra.';

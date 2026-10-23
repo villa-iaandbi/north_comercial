@@ -47,6 +47,7 @@ urlpatterns = [
      path('api/compras/crear-orden/', views.crear_orden_compra,
           name='crear_orden_compra'),
      path('compras/bandeja/', views.bandeja_ordenes_compra, name='bandeja_ordenes_compra'),
+     path('api/compras/anular-orden/', views.api_anular_orden_compra, name='api_anular_orden_compra'),
 ]
 
 

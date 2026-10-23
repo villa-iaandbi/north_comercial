@@ -620,3 +620,47 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
             'success': False,
             'error': str(e),
         }
+
+
+def anular_orden_compra(id_documento: str, motivo: str, id_usuario: str) -> dict:
+    """
+    Anula una Orden de Compra de forma transaccional (SPEC-007).
+      - Cambia estado_doc a 'ANULADO' en CO_DOCUMENTOS.
+      - Pone en cero los totales en CO_DOCUMENTOS y PV_ORD_COMPRAS.
+      - Concatena el motivo de anulación en la observación.
+      - Borra físicamente el detalle en IN_MOV_INVENTARIOS.
+    """
+    with transaction.atomic():
+        # Evitar .get() o .first() para prevenir ORA-00933 en Oracle 11g
+        docs = list(CoDocumento.objects.filter(pk=id_documento))
+        if not docs:
+            return {'success': False, 'error': f"No se encontró el documento con ID {id_documento}"}
+        
+        doc = docs[0]
+        
+        if doc.estado_doc == 'ANULADO':
+            return {'success': False, 'error': 'El documento ya se encuentra anulado.'}
+
+        nueva_obser = f"{doc.obser} | ANULADO: {motivo}"[:250]
+
+        # 1. Actualizar CoDocumento usando filter().update() para evitar triggers
+        CoDocumento.objects.filter(pk=id_documento).update(
+            estado_doc='ANULADO',
+            tot_documento=Decimal('0.00'),
+            obser=nueva_obser
+        )
+
+        # 2. Actualizar PvOrdCompra usando filter().update()
+        PvOrdCompra.objects.filter(id_documento=id_documento).update(
+            tot_mercancia=Decimal('0.00'),
+            tot_servicios=Decimal('0.00'),
+            tot_iva=Decimal('0.00'),
+            tot_descuento=Decimal('0.00'),
+            vlr_ord_compra=Decimal('0.00'),
+            vlr_saldo=Decimal('0.00')
+        )
+
+        # 3. Borrar físicamente el detalle del inventario
+        InMovInventario.objects.filter(id_documento=id_documento).delete()
+
+        return {'success': True, 'num_documento': doc.num_documento}

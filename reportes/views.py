@@ -18,7 +18,10 @@ from pos.models import PosTurno, PosTicketHeader
 from .services_analisis_ventas import VentasClientesAnalyticsService
 from .services_analisis_productos import VentasProductosAnalyticsService
 from .services_analisis_ejecutivo import AnalisisEjecutivoService
-from .services_compras import ServicioComprasSugeridas, generar_orden_compra
+from .services_compras import ServicioComprasSugeridas, generar_orden_compra, anular_orden_compra
+
+logger = logging.getLogger(__name__)
+
 
 
 def bandeja_ordenes_compra(request):
@@ -604,6 +607,48 @@ def crear_orden_compra(request):
         'gravamenes_json': gravamenes_json,
     }
     return render(request, 'reportes/crear_orden_compra.html', contexto)
+
+
+@require_POST
+def api_anular_orden_compra(request):
+    try:
+        # 1. Parsear el body del request como JSON (ya que fetch envía application/json)
+        data = json.loads(request.body)
+
+        id_documento = data.get('id_documento')
+        motivo = data.get('motivo')
+        id_usuario = request.user.id if request.user.is_authenticated else '1'
+
+        # 2. Validar datos requeridos
+        if not id_documento or not motivo:
+            return JsonResponse({
+                'success': False, 
+                'error': 'El ID del documento y el motivo son obligatorios.'
+            }, status=400)
+
+        # 3. Llamar al servicio transaccional
+        resultado = anular_orden_compra(id_documento, motivo, id_usuario)
+
+        # 4. Retornar respuesta
+        if resultado.get('success'):
+            return JsonResponse(resultado)
+        else:
+            return JsonResponse(resultado, status=400)
+
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False, 
+            'error': 'Formato JSON inválido en la petición.'
+        }, status=400)
+    except Exception as e:
+        import traceback
+        logger.exception(f"Error interno en api_anular_orden_compra: {e}")
+        # Retornar siempre JSON para que Alpine.js pueda leer el mensaje de error
+        return JsonResponse({
+            'success': False, 
+            'error': f"Error interno: {str(e)}"
+        }, status=500)
+
 
 
 

@@ -357,14 +357,36 @@
                             <span class="w-1.5 h-1.5 rounded-full bg-amber-400 mr-2.5"></span>
                             Cuentas por Pagar (CxP)
                         </a>
-                        <!-- Sugerido Compras -->
-                        <a href="{% url 'reportes:compras_sugeridas' %}"
-                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if 'compras-sugeridas' in request.get_full_path %}text-rose-400 bg-gray-800/60 font-semibold{% endif %}">
-                            <span class="w-1.5 h-1.5 rounded-full bg-rose-400 mr-2.5"></span>
-                            Sugerido Compras
-                        </a>
                     </div>
                 </div>
+
+                <!-- Menú 8. Compras -->
+                <li class="relative" x-data="{ open_compras: false }">
+                    <button @click="open_compras = !open_compras" class="w-full flex items-center justify-between text-gray-300 hover:text-white hover:bg-gray-800 p-2 rounded transition-colors">
+                        <div class="flex items-center">
+                            <!-- Ícono de Carrito/Compras -->
+                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            </svg>
+                            <span class="font-semibold text-sm">8. Compras</span>
+                        </div>
+                        <svg :class="{'rotate-180': open_compras}" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <!-- Submenú -->
+                    <ul x-show="open_compras" x-collapse class="pl-10 mt-1 space-y-1">
+                        <li>
+                            <a href="{% url 'reportes:bandeja_ordenes_compra' %}" class="block text-sm text-gray-400 hover:text-white hover:bg-gray-800 p-2 rounded transition-colors">
+                                Órdenes de Compra
+                            </a>
+                        </li>
+                        <li>
+                            <!-- Enlace al tablero analítico de Sugeridos -->
+                            <a href="{% url 'reportes:compras_sugeridas' %}" class="block text-sm text-gray-400 hover:text-white hover:bg-gray-800 p-2 rounded transition-colors">
+                                Compras Sugeridas (ROP)
+                            </a>
+                        </li>
+                    </ul>
+                </li>
             </nav>
         </aside>
 
