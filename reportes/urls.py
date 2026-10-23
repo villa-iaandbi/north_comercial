@@ -44,8 +44,9 @@ urlpatterns = [
          name='compras_sugeridas'),
     path('api/compras/guardar-orden/', views.api_guardar_orden_compra,
          name='api_guardar_orden_compra'),
-    path('api/compras/crear-orden/', views.crear_orden_compra,
-         name='crear_orden_compra'),
+     path('api/compras/crear-orden/', views.crear_orden_compra,
+          name='crear_orden_compra'),
+     path('compras/bandeja/', views.bandeja_ordenes_compra, name='bandeja_ordenes_compra'),
 ]
 
 

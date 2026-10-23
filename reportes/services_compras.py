@@ -13,13 +13,13 @@ from core.models import (
     InBodega,
     InGravamen,
     InMovInventario,
+    CoCentroCosto,
     PvOrdCompra,
     PvProveedor,
 )
 from core.utils_tributarios import CalculadoraTributaria
 
 logger = logging.getLogger(__name__)
-
 
 
 class ServicioComprasSugeridas:
@@ -41,7 +41,8 @@ class ServicioComprasSugeridas:
             or filtros.get('proveedor')
             or grupo_codigo
         )
-        self.grupo_codigo = str(raw_grupo).strip() if raw_grupo is not None else ''
+        self.grupo_codigo = str(raw_grupo).strip(
+        ) if raw_grupo is not None else ''
         if self.grupo_codigo.upper() == 'TODOS':
             self.grupo_codigo = ''
 
@@ -74,7 +75,6 @@ class ServicioComprasSugeridas:
         if isinstance(valor_fecha, (datetime.date, datetime.datetime)):
             return valor_fecha.strftime('%d/%m/%Y')
         return str(valor_fecha)[:10]
-
 
     def get_filtros_disponibles(self) -> list:
         """
@@ -110,7 +110,8 @@ class ServicioComprasSugeridas:
                         'grupo_nombre': nom,
                     })
         except Exception as e:
-            logger.error("Error al obtener grupos disponibles en ServicioComprasSugeridas: %s", e)
+            logger.error(
+                "Error al obtener grupos disponibles en ServicioComprasSugeridas: %s", e)
 
         return grupos
 
@@ -130,6 +131,7 @@ class ServicioComprasSugeridas:
                 V.GRUPO,
                 V.LINEA,
                 V.EXISTENCIA,
+                V.UNIDAD_VENTA,
                 V.VLR_PROMEDIO,
                 V.VALOR_TOTAL,
                 V.ROTACION_DIARIA,
@@ -171,11 +173,13 @@ class ServicioComprasSugeridas:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(sql, params)
-                columns = [col[0].upper() for col in cursor.description] if cursor.description else []
+                columns = [col[0].upper()
+                           for col in cursor.description] if cursor.description else []
                 for row in cursor.fetchall():
                     registros.append(dict(zip(columns, row)))
         except Exception as e:
-            logger.error("Error al consultar datos de compras sugeridas en V_ANALISIS_INVENTARIO: %s", e)
+            logger.error(
+                "Error al consultar datos de compras sugeridas en V_ANALISIS_INVENTARIO: %s", e)
             raise e
 
         # Paso 1: Acumular el valor total de inventario por LINEA para clasificación ABC
@@ -184,7 +188,8 @@ class ServicioComprasSugeridas:
             linea_key = str(reg.get('LINEA') or 'SIN LINEA').strip().upper()
             val_inv = self._to_decimal(reg.get('VALOR_TOTAL'), Decimal('0.0'))
             if val_inv > Decimal('0.0'):
-                totales_por_linea[linea_key] = totales_por_linea.get(linea_key, Decimal('0.0')) + val_inv
+                totales_por_linea[linea_key] = totales_por_linea.get(
+                    linea_key, Decimal('0.0')) + val_inv
 
         # Paso 2: Cálculo O(N) de Sugerido en Cajas y Clasificación ABC
         dias_cobertura_total = self.dias_sugeridos + self.stock_minimo
@@ -201,16 +206,25 @@ class ServicioComprasSugeridas:
             id_gravamen = str(reg.get('ID_GRAVAMEN') or '1').strip()
             linea_key = linea.upper()
 
-            existencia = self._to_decimal(reg.get('EXISTENCIA'), Decimal('0.0'))
-            vlr_promedio = self._to_decimal(reg.get('VLR_PROMEDIO'), Decimal('0.0'))
-            vlr_reposicion = self._to_decimal(reg.get('VLR_REPOSICION'), Decimal('0.0'))
-            valor_total = self._to_decimal(reg.get('VALOR_TOTAL'), Decimal('0.0'))
-            rotacion_diaria = self._to_decimal(reg.get('ROTACION_DIARIA'), Decimal('0.0'))
-            pedidos_por_llegar = self._to_decimal(reg.get('PEDIDOS_POR_LLEGAR'), Decimal('0.0'))
+            existencia = self._to_decimal(
+                reg.get('EXISTENCIA'), Decimal('0.0'))
+            vlr_promedio = self._to_decimal(
+                reg.get('VLR_PROMEDIO'), Decimal('0.0'))
+            vlr_reposicion = self._to_decimal(
+                reg.get('VLR_REPOSICION'), Decimal('0.0'))
+            valor_total = self._to_decimal(
+                reg.get('VALOR_TOTAL'), Decimal('0.0'))
+            rotacion_diaria = self._to_decimal(
+                reg.get('ROTACION_DIARIA'), Decimal('0.0'))
+            pedidos_por_llegar = self._to_decimal(
+                reg.get('PEDIDOS_POR_LLEGAR'), Decimal('0.0'))
 
-            vta_30_unidades = self._to_decimal(reg.get('VTA_30'), Decimal('0.0'))
-            vta_60_unidades = self._to_decimal(reg.get('VTA_60'), Decimal('0.0'))
-            vta_90_unidades = self._to_decimal(reg.get('VTA_90'), Decimal('0.0'))
+            vta_30_unidades = self._to_decimal(
+                reg.get('VTA_30'), Decimal('0.0'))
+            vta_60_unidades = self._to_decimal(
+                reg.get('VTA_60'), Decimal('0.0'))
+            vta_90_unidades = self._to_decimal(
+                reg.get('VTA_90'), Decimal('0.0'))
 
             embalaje = self._to_decimal(reg.get('EMBALAJE'), Decimal('1.0'))
             if embalaje <= Decimal('0.0'):
@@ -220,7 +234,8 @@ class ServicioComprasSugeridas:
             vta_60_cajas = round(vta_60_unidades / embalaje, 1)
             vta_90_cajas = round(vta_90_unidades / embalaje, 1)
 
-            dias_sin_venta = int(self._to_decimal(reg.get('DIAS_SIN_VENTA'), Decimal('0')))
+            dias_sin_venta = int(self._to_decimal(
+                reg.get('DIAS_SIN_VENTA'), Decimal('0')))
             fecha_foto = self._format_fecha(reg.get('FECHA_FOTO'))
             fch_ult_venta = self._format_fecha(reg.get('FCH_ULT_VENTA'))
             fch_ult_compra = self._format_fecha(reg.get('FCH_ULT_COMPRA'))
@@ -238,13 +253,16 @@ class ServicioComprasSugeridas:
                 sugerido_cajas = int(math.ceil(sugerido_cajas_decimal))
 
             sugerido_unidades = Decimal(sugerido_cajas) * embalaje
-            costo_referencia = vlr_reposicion if vlr_reposicion > Decimal('0.0') else vlr_promedio
-            valor_compra_sugerida = round(sugerido_unidades * costo_referencia, 2)
+            costo_referencia = vlr_reposicion if vlr_reposicion > Decimal(
+                '0.0') else vlr_promedio
+            valor_compra_sugerida = round(
+                sugerido_unidades * costo_referencia, 2)
 
             # Clasificación ABC simplificada por Línea (> 10% del valor total de su línea => 'A')
             total_linea = totales_por_linea.get(linea_key, Decimal('0.0'))
             if total_linea > Decimal('0.0') and valor_total > Decimal('0.0'):
-                participacion_linea = (valor_total / total_linea) * Decimal('100.0')
+                participacion_linea = (
+                    valor_total / total_linea) * Decimal('100.0')
             else:
                 participacion_linea = Decimal('0.0')
 
@@ -255,7 +273,10 @@ class ServicioComprasSugeridas:
             else:
                 clasificacion_abc = 'C'
 
-            embalaje_out = int(embalaje) if embalaje == int(embalaje) else float(round(embalaje, 2))
+            embalaje_out = int(embalaje) if embalaje == int(
+                embalaje) else float(round(embalaje, 2))
+
+            unidad_venta = str(reg.get('UNIDAD_VENTA') or 'UN').strip()[:2]
 
             resultado.append({
                 'id_articulo': id_articulo,
@@ -265,6 +286,8 @@ class ServicioComprasSugeridas:
                 'grupo': grupo,
                 'grupo_codigo': cod_grupo or grupo,
                 'linea': linea,
+                'unidad_medida': unidad_venta,
+                'UNIDAD_VENTA': unidad_venta,
                 'id_gravamen': id_gravamen,
                 'existencia': int(existencia) if existencia == int(existencia) else float(round(existencia, 2)),
                 'vlr_promedio': round(vlr_promedio, 2),
@@ -320,7 +343,8 @@ class ServicioComprasSugeridas:
         resultado.sort(
             key=lambda item: (
                 str(item.get('grupo') or '').strip().upper(),
-                str(item.get('abc') or item.get('clasificacion_abc') or 'Z').strip().upper(),
+                str(item.get('abc') or item.get(
+                    'clasificacion_abc') or 'Z').strip().upper(),
                 -(int(item.get('sugerido_cajas') or 0)),
             )
         )
@@ -337,6 +361,24 @@ def _parse_decimal(valor, default: Decimal = Decimal('0.00')) -> Decimal:
         return Decimal(str(valor).strip())
     except (InvalidOperation, ValueError, TypeError):
         return default
+
+
+def obtener_consecutivo(tipo_documento, doc_consecutivo=None):
+    raw_cursor = connection.connection.cursor()
+    try:
+        out_val = raw_cursor.var(str, 50)
+        raw_cursor.callproc('CONSECUTIVO_TIPO_DOC', [
+                            tipo_documento, doc_consecutivo, out_val])
+        numero_generado = out_val.getvalue()
+
+        raw_cursor.execute(
+            "SELECT ID_DOC_CONSECUTIVO FROM CO_TIPO_DOC_CONSECUTIVOS WHERE ID_TIPO_DOCUMENTO = :1 AND ROWNUM = 1", [tipo_documento])
+        row = raw_cursor.fetchone()
+        id_consecutivo = row[0] if row else None
+
+        return numero_generado, id_consecutivo
+    finally:
+        raw_cursor.close()
 
 
 def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
@@ -356,12 +398,28 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
         id_bodega = str(payload.get('id_bodega') or '1').strip()
         plazo_pago = int(payload.get('plazo_pago') or 0)
         articulos = payload.get('articulos') or []
-        siono_iva_proveedor_global = str(payload.get('siono_iva_proveedor') or 'N').strip().upper()
+        siono_iva_proveedor_global = str(payload.get(
+            'siono_iva_proveedor') or 'N').strip().upper()
 
         if not id_proveedor:
             raise ValueError("El campo 'id_proveedor' es obligatorio.")
         if not articulos or not isinstance(articulos, list):
             raise ValueError("La lista de 'articulos' no puede estar vacía.")
+
+        # Extraer de 'id_centro_costo', o de 'centro_costo', o usar '1' por defecto
+        raw_cc = payload.get('id_centro_costo') or payload.get(
+            'centro_costo') or '1'
+        cc_input = str(raw_cc).strip()
+
+        cc_list = list(CoCentroCosto.objects.filter(id_centro_costo=cc_input))
+        if not cc_list:
+            cc_list = list(CoCentroCosto.objects.filter(
+                cod_centro_costo=cc_input))
+
+        if not cc_list:
+            raise RuntimeError(f"Centro de costo no válido: '{cc_input}'")
+
+        real_id_centro_costo = cc_list[0].id_centro_costo
 
         calculadora = CalculadoraTributaria(cargar_retenciones=False)
 
@@ -370,13 +428,20 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
         items_procesados = []
 
         for idx, item in enumerate(articulos, start=1):
-            id_articulo = str(item.get('id_articulo') or '').strip()
-            cantidad_unidades = _parse_decimal(item.get('cantidad_unidades'))
-            vlr_unitario = _parse_decimal(item.get('vlr_unitario'))
-            id_gravamen = str(item.get('id_gravamen') or '1').strip()
-            siono_iva_proveedor = str(
-                item.get('siono_iva_proveedor', siono_iva_proveedor_global) or 'N'
-            ).strip().upper()
+            print(f"==== DEBUG ITEM DESDE ALPINE ==== \n{item}\n=================================")
+            # Normalizar llaves a minúsculas para extracción a prueba de fallos
+            item_lower = {str(k).lower(): v for k, v in item.items()}
+
+            id_articulo = str(item_lower.get('id_articulo') or '').strip()
+            cantidad_unidades = _parse_decimal(item_lower.get('cantidad_unidades') or item_lower.get('sugerido_unidades'))
+            vlr_unitario = _parse_decimal(item_lower.get('vlr_unitario') or item_lower.get('costo_unitario'))
+            id_gravamen = str(item_lower.get('id_gravamen') or '1').strip()
+            siono_iva_proveedor = str(item_lower.get('siono_iva_proveedor', siono_iva_proveedor_global) or 'N').strip().upper()
+
+            # Campos corregidos:
+            nom_articulo_real = str(item_lower.get('nom_articulo') or item_lower.get('nombre') or '')[:250]
+            unidad_medida_real = str(item_lower.get('unidad_medida') or item_lower.get('unidad_venta') or 'UN')[:2]
+            existencia_real = _parse_decimal(item_lower.get('existencia'))
 
             if not id_articulo or cantidad_unidades <= Decimal('0'):
                 continue
@@ -398,10 +463,14 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
                 'vlr_unitario': vlr_unitario,
                 'vlr_iva': vlr_iva_linea,
                 'id_gravamen': id_gravamen,
+                'nom_articulo': nom_articulo_real,
+                'id_unidad_medida': unidad_medida_real,
+                'existencia': existencia_real,
             })
 
         if not items_procesados:
-            raise ValueError("No hay artículos válidos con cantidad mayor a cero para procesar.")
+            raise ValueError(
+                "No hay artículos válidos con cantidad mayor a cero para procesar.")
 
         tot_servicios = Decimal('0.00')
         tot_descuento = Decimal('0.00')
@@ -410,59 +479,48 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
             fch_actual = timezone.now()
             current_year = str(fch_actual.year)
 
-            # A. Consecutivo vía raw_cursor llamando 'CONSECUTIVO_TIPO_DOC' con tipo '135' y SEC_DOCUMENTO.NEXTVAL
-            if connection.connection is None:
-                connection.ensure_connection()
-            raw_cursor = connection.connection.cursor()
+            # Obtener consecutivo nativo de Oracle
+            ano_actual = str(timezone.now().year)
+            docs = list(CoTipoDocumento.objects.filter(
+                cod_tipo_documento='135', id_ano=ano_actual))
+            tipo_doc = docs[0] if docs else None
 
-            out_consecutivo = raw_cursor.var(str)
-            out_id_consec = raw_cursor.var(str)
-            raw_cursor.callproc('CONSECUTIVO_TIPO_DOC', ['135', out_consecutivo, out_id_consec])
+            if not tipo_doc:
+                raise RuntimeError(
+                    f"El tipo de documento 135 no está configurado para el año {ano_actual} en co_tipo_documentos.")
+            id_tipo_doc_real = tipo_doc.id_tipo_documento
+            num_doc_generado, id_consec = obtener_consecutivo(id_tipo_doc_real)
 
-            num_documento = out_consecutivo.getvalue()
-            id_doc_consecutivo = out_id_consec.getvalue()
-
-            id_tipo_doc_135 = '135'
-            tipo_doc_obj = CoTipoDocumento.objects.filter(
-                cod_tipo_documento='135',
-                id_sistema='1',
-                id_ano=current_year,
-            ).first()
-            if tipo_doc_obj:
-                id_tipo_doc_135 = str(tipo_doc_obj.id_tipo_documento).strip()
-
-            # Si el procedimiento en Oracle requiere el ID interno del año en curso (ej. '14467' para cod '135')
-            if not num_documento and id_tipo_doc_135 != '135':
-                out_consecutivo = raw_cursor.var(str)
-                out_id_consec = raw_cursor.var(str)
-                raw_cursor.callproc('CONSECUTIVO_TIPO_DOC', [id_tipo_doc_135, out_consecutivo, out_id_consec])
-                num_documento = out_consecutivo.getvalue()
-                id_doc_consecutivo = out_id_consec.getvalue()
-
-            if not num_documento:
+            if not num_doc_generado:
                 raise RuntimeError(
                     "Fallo al generar consecutivo en CONSECUTIVO_TIPO_DOC para el tipo de documento '135'."
                 )
 
-            raw_cursor.execute("SELECT SEC_DOCUMENTO.NEXTVAL FROM DUAL")
-            row_sec = raw_cursor.fetchone()
-            id_documento = str(row_sec[0]).strip()
-            num_documento_str = str(num_documento).strip()
-            id_doc_consecutivo_str = str(id_doc_consecutivo).strip() if id_doc_consecutivo is not None else None
+            # A. Obtener ID de Documento desde la secuencia principal
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT SEC_DOCUMENTO.NEXTVAL FROM DUAL")
+                row_sec = cursor.fetchone()
+                id_documento = str(row_sec[0]).strip()
 
-            gran_total_red = (tot_mercancia + tot_iva).quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
+            num_documento_str = str(num_doc_generado).strip()
+            id_doc_consecutivo_str = str(
+                id_consec).strip() if id_consec is not None else None
 
-            # B. Crear cabecera en CoDocumento
+            gran_total_red = (
+                tot_mercancia + tot_iva).quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
+
+            # C. Crear cabecera en CoDocumento
             doc = CoDocumento.objects.create(
                 id_documento=id_documento,
-                id_tipo_documento=id_tipo_doc_135,
+                id_tipo_documento=id_tipo_doc_real,
                 num_documento=num_documento_str,
                 fch_documento=fch_actual,
                 id_tercero_id=id_proveedor,
                 id_vendedor=None,
                 id_responsable=str(id_usuario)[:15],
                 tot_documento=gran_total_red,
-                obser=payload.get('obser') or f"Orden de Compra Generada Nro. {num_documento_str}",
+                obser=payload.get(
+                    'obser') or f"Orden de Compra Generada Nro. {num_documento_str}",
                 estado_doc="GRABADO",
                 fch_registro=fch_actual,
                 terminal="COMPRAS INTELIGENTES",
@@ -474,19 +532,42 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
                 cambios=1,
             )
 
-            # C. Bypass del Mutating Trigger (ORA-04091 INS_DOCUMENTO_CONSEC) actualizando id_doc_consecutivo
+            # D. Bypass del Mutating Trigger (ORA-04091 INS_DOCUMENTO_CONSEC) actualizando id_doc_consecutivo
             CoDocumento.objects.filter(pk=id_documento).update(
-                id_doc_consecutivo=id_doc_consecutivo_str
+                id_doc_consecutivo=id_doc_consecutivo_str, terminal="COMPRAS INTELIGENTES"
             )
 
-            # D. Crear registro en PvOrdCompra usando el plazo_pago del payload y totales calculados
-            fch_entrega = fch_actual.date() if hasattr(fch_actual, 'date') else datetime.date.today()
+            # E. Crear registro en PvOrdCompra usando el plazo_pago del payload y totales calculados
+            # Extraer porcentaje de descuento
+            porc_desc_fin = _parse_decimal(payload.get('porc_descuento_financiero') or payload.get('desc_financiero') or 0)
+
+            # Extraer fecha límite de descuento (y fecha entrega). Usamos fallback a hoy si viene vacía.
+            raw_fch_entrega = payload.get('fch_entrega') or payload.get('fecha_entrega')
+            raw_fch_limite = payload.get('fch_limite_descuento') or raw_fch_entrega
+
+            try:
+                if raw_fch_limite:
+                    fch_limite_val = datetime.datetime.strptime(str(raw_fch_limite)[:10], '%Y-%m-%d').date()
+                else:
+                    fch_limite_val = fch_actual.date()
+            except ValueError:
+                fch_limite_val = fch_actual.date()
+
+            try:
+                if raw_fch_entrega:
+                    fch_entrega_val = datetime.datetime.strptime(str(raw_fch_entrega)[:10], '%Y-%m-%d').date()
+                else:
+                    fch_entrega_val = fch_actual.date()
+            except ValueError:
+                fch_entrega_val = fch_actual.date()
+
             PvOrdCompra.objects.create(
                 id_documento=doc,
-                fch_entrega_mcia=fch_entrega,
-                porc_descuento_financiero=0,
-                fch_limite_descuento=fch_entrega,
-                condiciones_pago=str(payload.get('condiciones_pago') or f"{plazo_pago} DIAS")[:30],
+                fch_entrega_mcia=fch_entrega_val,
+                porc_descuento_financiero=porc_desc_fin,
+                fch_limite_descuento=fch_limite_val,
+                condiciones_pago=str(payload.get(
+                    'condiciones_pago') or f"{plazo_pago} DIAS")[:30],
                 plazo_pago=plazo_pago,
                 tot_mercancia=tot_mercancia,
                 tot_servicios=tot_servicios,
@@ -511,15 +592,17 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
                         porc_descuento_1=Decimal('0.00'),
                         vlr_iva=item_data['vlr_iva'],
                         impoconsumo=Decimal('0.00'),
-                        vlr_promedio_ini=Decimal('0.00'),
-                        vlr_reposicion=Decimal('0.00'),
+                        vlr_promedio_ini=item_data['vlr_unitario'],
                         vlr_comision_vend=Decimal('0.00'),
-                        existencia=Decimal('0.00'),
+                        existencia=item_data['existencia'],
                         saldo=item_data['cantidad_unidades'],
-                        id_centro_costo="1",
+                        id_centro_costo=real_id_centro_costo,
                         id_bodega=id_bodega,
                         id_sistema="1",
                         id_gravamen=item_data['id_gravamen'],
+                        id_unidad_medida=item_data['id_unidad_medida'],
+                        vlr_reposicion=item_data['vlr_unitario'],
+                        obser=item_data['nom_articulo'],
                     )
                 )
 
@@ -537,5 +620,3 @@ def generar_orden_compra(payload: dict, id_usuario: str = "1") -> dict:
             'success': False,
             'error': str(e),
         }
-
-

@@ -44,7 +44,7 @@
             <label for="select-proveedor" class="block mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
                 Proveedor <span class="text-red-400">*</span>
             </label>
-            <select id="select-proveedor" x-model="form.id_tercero" @change="onProveedorChange($event)"
+            <select id="select-proveedor" x-model="form.id_tercero" @change="recalcularTotales()"
                 class="w-full text-xs py-1 px-2 bg-gray-800 text-white border border-gray-600 rounded focus:outline-none focus:border-blue-500">
                 <option value="">-- Seleccione Proveedor --</option>
                 {% for p in proveedores_activos|default:proveedores %}
@@ -132,6 +132,22 @@
         </div>
     </div>
 
+
+    <!-- Banner de Error Reactivo -->
+    <div x-show="errorMsg" x-transition class="bg-red-900 border-l-4 border-red-500 text-white p-4 mb-6 rounded shadow-lg flex items-center justify-between">
+        <div class="flex items-center">
+            <svg class="h-6 w-6 text-red-500 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span x-text="errorMsg" class="font-bold"></span>
+        </div>
+        <button @click="errorMsg = null" class="text-white hover:text-gray-300">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+    </div>
+
     <!-- 2. TABLA DE ARTÍCULOS (SIN BORDES HORIZONTALES INTERNOS) -->
     <div class="bg-gray-800/60 border border-gray-700 rounded overflow-hidden">
         <div class="overflow-x-auto max-h-[calc(100vh-340px)] overflow-y-auto">
@@ -196,23 +212,15 @@
                         <td colspan="2" class="py-2 px-3 text-right text-emerald-400" x-text="new Intl.NumberFormat('es-CO', {style: 'currency', currency: 'COP'}).format(granTotal())"></td>
                     </tr>
                 </tfoot>
-            </table>
+             </table>
         </div>
     </div>
 
-    <!-- 3. BOTÓN INFERIOR DE CONFIRMACIÓN Y GUARDADO EN ERP -->
-    <div class="flex items-center justify-end gap-3 pt-2">
-        <button type="button"
-            @click="guardarOrden()"
-            :disabled="isSaving"
-            :class="isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-emerald-500'"
-            class="bg-emerald-600 text-white font-bold py-2 px-5 rounded shadow-sm text-xs transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M5 13l4 4L19 7">
-                </path>
-            </svg>
-            <span x-text="isSaving ? 'Guardando en ERP...' : 'Confirmar y Guardar en ERP'">Confirmar y Guardar en ERP</span>
+    <!-- BOTÓN FIJO INFERIOR DE CONFIRMACIÓN -->
+    <div class="sticky bottom-0 z-50 bg-gray-900 border-t border-gray-700 p-4 mt-6 flex justify-end shadow-xl">
+        <button @click="guardarOrden()" :disabled="isSaving || articulos.length === 0" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded shadow disabled:opacity-50 transition-colors">
+            <span x-show="!isSaving">✔ Confirmar y Guardar en ERP</span>
+            <span x-show="isSaving">Guardando en Oracle...</span>
         </button>
     </div>
 </div>
@@ -239,8 +247,14 @@
         const hoyIso = new Date().toISOString().split('T')[0];
 
         return {
+            errorMsg: null,
             isSaving: false,
             tarifasIVA: {{ gravamenes_json|safe|default:"{}" }},
+            proveedoresSiono: {
+                {% for p in proveedores_activos %}
+                "{{ p.id_tercero }}": "{{ p.siono_iva|default:p.id_tercero__siono_iva|default:'N' }}",
+                {% endfor %}
+            },
             articulos: [],
             form: {
                 id_tercero: '{{ proveedor_sugerido_id|default:""|escapejs }}',
@@ -343,8 +357,9 @@
             },
 
             calcularIVALinea(item) {
-                let siono_iva = String(item.siono_iva_proveedor || 'N').trim().toUpperCase();
-                if (siono_iva === 'S') return 0;
+                // Si el proveedor seleccionado actualmente es exento ('S'), el IVA es 0.
+                let sionoActual = String(this.proveedoresSiono[this.form.id_tercero] || 'N').trim().toUpperCase();
+                if (sionoActual === 'S') return 0;
                 
                 let idGrav = String(item.id_gravamen || '1').trim();
                 let tarifa = Number(this.tarifasIVA[idGrav] || 0);
@@ -374,8 +389,10 @@
             },
 
             guardarOrden() {
+                this.errorMsg = null; // Limpiar errores previos
+
                 if (!this.form.id_tercero || !this.form.id_bodega || !this.form.id_centro_costo) {
-                    alert('Por favor complete los campos obligatorios: Proveedor, Bodega y Centro de Costo.');
+                    this.errorMsg = 'Por favor complete los campos obligatorios: Proveedor, Bodega y Centro de Costo.';
                     return;
                 }
 
@@ -384,7 +401,10 @@
                 const payload = {
                     ...this.form,
                     id_proveedor: this.form.id_tercero,
-                    articulos: this.articulos
+                     articulos: this.articulos,
+                    porc_descuento_financiero: this.form.porc_descuento_financiero || 0,
+                    fch_limite_descuento: this.form.fch_limite_descuento || this.form.fch_entrega_mcia,
+                    fch_entrega: this.form.fch_entrega_mcia,
                 };
 
                 fetch("{% url 'reportes:api_guardar_orden_compra' %}", {
@@ -395,23 +415,28 @@
                     },
                     body: JSON.stringify(payload)
                 })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        // Si el status no es 2xx, intentamos leer el JSON de error
+                        return response.json().then(errData => {
+                            throw new Error(errData.error || `Error del servidor: ${response.statusText}`);
+                        });
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (data && data.success) {
-                        alert('Orden de Compra grabada exitosamente en el ERP. Documento Nro: ' + data.num_documento);
-                        sessionStorage.removeItem('draft_orden_compra');
-                        sessionStorage.removeItem('draft_grupo_proveedor');
-                        this.isSaving = false;
-                        window.location.href = "{% url 'reportes:compras_sugeridas' %}";
+                        sessionStorage.removeItem("draft_orden_compra");
+                        window.location.href = "{% url 'reportes:bandeja_ordenes_compra' %}";
                     } else {
-                        const msg = (data && data.error) ? data.error : 'No fue posible guardar la Orden de Compra.';
-                        alert('Error al guardar la Orden de Compra: ' + msg);
+                        // Esta rama puede que nunca se alcance si el backend siempre responde con status != 200 en error
+                        this.errorMsg = (data && data.error) ? data.error : 'No fue posible guardar la Orden de Compra.';
                         this.isSaving = false;
                     }
                 })
                 .catch(err => {
                     console.error('[guardarOrden] Error:', err);
-                    alert('Error de red o del servidor: ' + err.message);
+                    this.errorMsg = err.message || 'Error de red o del servidor. Revise la consola para más detalles.';
                     this.isSaving = false;
                 });
             }

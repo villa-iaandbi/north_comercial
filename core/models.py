@@ -77,6 +77,7 @@ class InMovInventario(models.Model):
     vlr_iva = models.DecimalField(max_digits=15, decimal_places=2)
     impoconsumo = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     vlr_promedio_ini = models.DecimalField(max_digits=15, decimal_places=2)
+    vlr_promedio_fin = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True, db_column='VLR_PROMEDIO_FIN')
     vlr_reposicion = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True, db_column='VLR_REPOSICION')
     vlr_comision_vend = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True, db_column='VLR_COMISION_VEND')
     existencia = models.DecimalField(max_digits=15, decimal_places=2)

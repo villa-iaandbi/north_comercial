@@ -435,11 +435,12 @@
                     return {
                         id_articulo: articulo.id_articulo || articulo.ID_ARTICULO,
                         referencia: articulo.REFERENCIA || articulo.referencia || articulo.id_articulo,
-                        nombre: articulo.nombre || articulo.PRODUCTO_DESCRIPCION || articulo.NOM_ARTICULO || articulo.nom_articulo || '',
+                        nom_articulo: articulo.NOM_ARTICULO || articulo.nom_articulo,
+                        unidad_medida: articulo.UNIDAD_VENTA || articulo.unidad_venta || articulo.EMBALAJE_UNIDAD || 'UN',
+                        existencia: articulo.EXISTENCIA || articulo.existencia || 0,
                         cantidad_cajas: Number(articulo.cantidad_cajas_input) || 0,
                         cantidad_unidades: (Number(articulo.cantidad_cajas_input) * Number(articulo.embalaje || 1)),
                         vlr_unitario: Number(articulo.VLR_REPOSICION || articulo.vlr_reposicion || 0),
-                        porc_iva: Number(articulo.PRODUCTO_IMPUESTO || articulo.porc_iva || 0),
                         id_gravamen: articulo.id_gravamen || articulo.ID_GRAVAMEN || '1',
                         siono_iva_proveedor: articulo.SIONO_IVA_PROVEEDOR || 'N'
                     };
@@ -448,7 +449,8 @@
                 sessionStorage.setItem("draft_orden_compra", JSON.stringify(articulos_mapeados));
                 sessionStorage.setItem("draft_grupo_proveedor", "{{ request.GET.grupo|escapejs }}");
 
-                window.location.href = "{% url 'reportes:crear_orden_compra' %}";
+                let grupoUrl = encodeURIComponent("{{ request.GET.grupo|escapejs }}" || "");
+                window.location.href = `{% url 'reportes:crear_orden_compra' %}?grupo=${grupoUrl}`;
             },
 
 

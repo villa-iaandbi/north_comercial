@@ -12,7 +12,7 @@ from django.db import connection
 from django.db.models import Q
 from django.utils import timezone
 from django.core.serializers.json import DjangoJSONEncoder
-from core.models import InBodega, CoTercero, PvProveedor, CoCentroCosto, InGravamen
+from core.models import InBodega, CoTercero, PvProveedor, CoCentroCosto, InGravamen, CoDocumento, CoTipoDocumento
 from pos.models import PosTurno, PosTicketHeader
 
 from .services_analisis_ventas import VentasClientesAnalyticsService
@@ -20,7 +20,26 @@ from .services_analisis_productos import VentasProductosAnalyticsService
 from .services_analisis_ejecutivo import AnalisisEjecutivoService
 from .services_compras import ServicioComprasSugeridas, generar_orden_compra
 
-logger = logging.getLogger(__name__)
+
+def bandeja_ordenes_compra(request):
+    """
+    Muestra un histórico de las últimas 50 órdenes de compra (documento 135).
+    """
+    # 1. Extraemos los IDs correspondientes al año actual o histórico
+    ids_135 = CoTipoDocumento.objects.filter(cod_tipo_documento='135').values_list('id_tipo_documento', flat=True)
+    
+    # 2. Armamos el QuerySet base optimizado con JOIN al tercero
+    query_ordenes = CoDocumento.objects.select_related('id_tercero').filter(
+        id_tipo_documento__in=ids_135
+    ).order_by('-fch_documento', '-num_documento')
+    
+    # 3. FORZAMOS la evaluación ejecutando list() sobre el queryset completo, y luego aplicamos el slice de Python
+    ordenes_lista = list(query_ordenes)[:50]
+    
+    context = {
+        'ordenes': ordenes_lista
+    }
+    return render(request, 'reportes/bandeja_ordenes_compra.html', context)
 
 
 def format_cop(value) -> str:

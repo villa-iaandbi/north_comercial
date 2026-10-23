@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bandeja de Órdenes de Compra</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #f4f4f4; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <h1>Histórico de Órdenes de Compra (Últimas 50)</h1>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Número Documento</th>
+                <th>Fecha</th>
+                <th>Proveedor</th>
+                <th>Total</th>
+                <th>Estado</th>
+                <th>Observaciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for orden in ordenes %}
+            <tr>
+                <td>{{ orden.num_documento }}</td>
+                <td>{{ orden.fch_documento|date:"d/m/Y H:i" }}</td>
+                <td>{{ orden.id_tercero.nom_tercero }}</td>
+                <td>{{ orden.tot_documento }}</td>
+                <td>{{ orden.estado_doc }}</td>
+                <td>{{ orden.obser }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">No se encontraron órdenes de compra.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</body>
+</html>
