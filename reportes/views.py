@@ -19,6 +19,7 @@ from .services_analisis_ventas import VentasClientesAnalyticsService
 from .services_analisis_productos import VentasProductosAnalyticsService
 from .services_analisis_ejecutivo import AnalisisEjecutivoService
 from .services_compras import ServicioComprasSugeridas, generar_orden_compra, anular_orden_compra
+from .services_analisis_financiero import ServicioAnalisisFinanciero
 
 logger = logging.getLogger(__name__)
 
@@ -648,6 +649,32 @@ def api_anular_orden_compra(request):
             'success': False, 
             'error': f"Error interno: {str(e)}"
         }, status=500)
+
+
+# --- SPEC-010: Tablero Gerencial ---
+
+
+def tablero_gerencial_view(request):
+       # Capturar parámetros de la URL
+       filtros = request.GET.dict()
+       
+       # Instanciar el servicio con la nueva arquitectura
+       servicio = ServicioAnalisisFinanciero(filtros=filtros)
+       datos_tablero = servicio.get_datos_tablero()
+       
+       # Obtener listas para los selectores de la interfaz
+       filtros_disponibles = ServicioAnalisisFinanciero.get_filtros_disponibles()
+       
+       # Empaquetado seguro para ECharts (ADR-015)
+       datos_iniciales_json = json.dumps(datos_tablero, cls=DjangoJSONEncoder)
+       
+       context = {
+           'datos_iniciales_json': datos_iniciales_json,
+           'filtros_disponibles': filtros_disponibles,
+           'periodo_actual': servicio.periodo,
+       }
+       return render(request, 'reportes/tablero_gerencial.html', context)
+
 
 
 

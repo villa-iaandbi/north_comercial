@@ -24,8 +24,11 @@ urlpatterns = [
          views.api_top_productos_dinamico, name='api_top_productos_dinamico'),
 
     # SPEC-003: Tablero Ejecutivo - Análisis Ventas Global y Rentabilidad
-    path('analisis-ventas-global/', views.analisis_ventas_global_view,
+     path('analisis-ventas-global/', views.analisis_ventas_global_view,
          name='analisis_ventas_global'),
+
+    # SPEC-010: Tablero Gerencial (Análisis Financiero)
+    path('analisis-financiero/', views.tablero_gerencial_view, name='tablero_analisis_financiero'),
 
     # SPEC-004: Tablero de Control de Inventarios
     path('control-inventarios/', views_inventario.control_inventarios_view,

@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<script id="datos-iniciales" type="application/json">{{ datos_iniciales_json|safe }}</script>
+
+<div x-data="tableroFinanciero()" class="p-6">
+    <!-- Cabecera -->
+    <div class="flex flex-col md:flex-row justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-white mb-4 md:mb-0">Centro de Mando Financiero</h1>
+   <div class="flex space-x-2 bg-gray-800 p-1 rounded-lg overflow-x-auto">
+       <button @click="tab = 'altimetro'" :class="{'bg-blue-600 text-white': tab === 'altimetro', 'text-gray-400 hover:bg-gray-700': tab !== 'altimetro'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Altímetro (P&G)</button>
+       <button @click="tab = 'combustible'" :class="{'bg-blue-600 text-white': tab === 'combustible', 'text-gray-400 hover:bg-gray-700': tab !== 'combustible'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Combustible (Liquidez)</button>
+       <button @click="tab = 'peso'" :class="{'bg-blue-600 text-white': tab === 'peso', 'text-gray-400 hover:bg-gray-700': tab !== 'peso'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Peso y Balance</button>
+       <button @click="tab = 'eficiencia'" :class="{'bg-blue-600 text-white': tab === 'eficiencia', 'text-gray-400 hover:bg-gray-700': tab !== 'eficiencia'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Eficiencia (DuPont)</button>
+       <button @click="tab = 'vuelo'" :class="{'bg-blue-600 text-white': tab === 'vuelo', 'text-gray-400 hover:bg-gray-700': tab !== 'vuelo'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Plan de Vuelo</button>
+   </div>
+    </div>
+
+    <!-- Pestañas de Navegación -->
+    <div x-show="tab === 'altimetro'" style="display: none;" class="mt-6">
+        <!-- Tarjetas KPI -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Ingresos Netos</h4>
+                <p class="text-2xl font-bold text-white mt-1" x-text="formatCurrency(datos.kpis?.ingresos_netos)"></p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">EBITDA</h4>
+                <p class="text-2xl font-bold text-white mt-1" :class="datos.kpis?.ebitda < 0 ? 'text-red-500' : 'text-green-400'" x-text="formatCurrency(datos.kpis?.ebitda)"></p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Margen Operativo</h4>
+                <p class="text-2xl font-bold text-white mt-1" x-text="(datos.kpis?.margen_operativo || 0) + '%'"></p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Margen Neto</h4>
+                <p class="text-2xl font-bold text-white mt-1" x-text="(datos.kpis?.margen_neto || 0) + '%'"></p>
+            </div>
+        </div>
+
+        <!-- Gráfico Waterfall -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+            <h3 class="text-lg font-bold text-gray-300 mb-4">Cascada de Rentabilidad</h3>
+            <div id="waterfall-chart" style="width: 100%; height: 500px;"></div>
+        </div>
+    </div>
+
+    <!-- Pestaña: Combustible (Placeholder) -->
+    <div x-show="tab === 'combustible'">
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6">
+            <h2 class="text-2xl text-white">Instrumento: Indicador de Combustible (Liquidez)</h2>
+            <p class="text-gray-400 mt-2">Próximamente: Razón Corriente, Prueba Ácida, y Capital de Trabajo Neto.</p>
+        </div>
+    </div>
+    
+    <!-- Otros Placeholders -->
+    <div x-show="tab === 'peso'"><div class="bg-gray-800 p-6 rounded-lg"><h2 class="text-2xl text-white">Instrumento: Peso y Balance (Endeudamiento)</h2></div></div>
+    <div x-show="tab === 'eficiencia'"><div class="bg-gray-800 p-6 rounded-lg"><h2 class="text-2xl text-white">Instrumento: Eficiencia de Motores (Análisis DuPont)</h2></div></div>
+    <div x-show="tab === 'vuelo'"><div class="bg-gray-800 p-6 rounded-lg"><h2 class="text-2xl text-white">Instrumento: Plan de Vuelo (Metas y Presupuesto)</h2></div></div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>
+function tableroFinanciero() {
+    return {
+        tab: 'altimetro',
+        datos: {},
+        
+        init() {
+            const rawData = document.getElementById('datos-iniciales').textContent;
+            this.datos = JSON.parse(rawData);
+            
+            this.$watch('tab', (newTab) => {
+                this.$nextTick(() => {
+                    if (newTab === 'altimetro') this.initWaterfall();
+                    // Aquí se añadirán las inicializaciones de otros gráficos
+                });
+            });
+            
+            // Carga inicial del primer tab
+            this.initWaterfall();
+        },
+        
+        formatCurrency(value) {
+            if (value === undefined || value === null) return '$0';
+            return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value);
+        },
+        
+        initWaterfall() {
+            const chartDom = document.getElementById('waterfall-chart');
+            if (!chartDom) return;
+
+            setTimeout(() => {
+                let existingChart = echarts.getInstanceByDom(chartDom);
+                if (existingChart) existingChart.dispose();
+
+                const myChart = echarts.init(chartDom, 'dark');
+                const cascada = this.datos.kpis?.detalle_cascada || {};
+
+                const option = {
+                    backgroundColor: 'transparent',
+                    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                    xAxis: { 
+                        type: 'category', 
+                        data: ['Ventas', 'Costos', 'G. Admin', 'G. Ventas', 'G. Finan', 'Impuestos', 'Utilidad Neta']
+                    },
+                    yAxis: { type: 'value' },
+                    series: [
+                        {
+                            name: 'Valor',
+                            type: 'bar',
+                            label: { show: true, position: 'top', formatter: (p) => this.formatCurrency(p.value) },
+                            data: [
+                                {value: parseFloat(cascada.ventas || 0), itemStyle: {color: '#10B981'}},
+                                {value: parseFloat(cascada.costos || 0) * -1, itemStyle: {color: '#EF4444'}},
+                                {value: parseFloat(cascada.gastos_admin || 0) * -1, itemStyle: {color: '#EF4444'}},
+                                {value: parseFloat(cascada.gastos_ventas || 0) * -1, itemStyle: {color: '#EF4444'}},
+                                {value: parseFloat(cascada.gastos_financieros || 0) * -1, itemStyle: {color: '#EF4444'}},
+                                {value: parseFloat(cascada.impuestos || 0) * -1, itemStyle: {color: '#EF4444'}},
+                                {value: parseFloat(cascada.utilidad_neta || 0), itemStyle: {color: '#3B82F6'}}
+                            ]
+                        }
+                    ]
+                };
+                myChart.setOption(option);
+                window.addEventListener('resize', () => myChart.resize());
+            }, 150);
+        }
+    }
+}
+</script>
+{% endblock %}
