@@ -6,15 +6,57 @@
 
 <div x-data="tableroFinanciero()" class="p-6">
     <!-- Cabecera -->
-    <div class="flex flex-col md:flex-row justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold text-white mb-4 md:mb-0">Centro de Mando Financiero</h1>
-   <div class="flex space-x-2 bg-gray-800 p-1 rounded-lg overflow-x-auto">
-       <button @click="tab = 'altimetro'" :class="{'bg-blue-600 text-white': tab === 'altimetro', 'text-gray-400 hover:bg-gray-700': tab !== 'altimetro'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Altímetro (P&G)</button>
-       <button @click="tab = 'combustible'" :class="{'bg-blue-600 text-white': tab === 'combustible', 'text-gray-400 hover:bg-gray-700': tab !== 'combustible'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Combustible (Liquidez)</button>
-       <button @click="tab = 'peso'" :class="{'bg-blue-600 text-white': tab === 'peso', 'text-gray-400 hover:bg-gray-700': tab !== 'peso'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Peso y Balance</button>
-       <button @click="tab = 'eficiencia'" :class="{'bg-blue-600 text-white': tab === 'eficiencia', 'text-gray-400 hover:bg-gray-700': tab !== 'eficiencia'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Eficiencia (DuPont)</button>
-       <button @click="tab = 'vuelo'" :class="{'bg-blue-600 text-white': tab === 'vuelo', 'text-gray-400 hover:bg-gray-700': tab !== 'vuelo'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Plan de Vuelo</button>
-   </div>
+    <div class="mb-6">
+        <h1 class="text-3xl font-bold text-white mb-4">Centro de Mando Financiero</h1>
+
+        <!-- Barra de Filtros Globales -->
+        <form method="GET" class="flex flex-wrap items-end gap-4 mb-6 bg-gray-800 p-4 rounded-lg border border-gray-700 shadow-lg">
+            
+            <!-- Selector de Año -->
+            <div class="w-32">
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Año Contable</label>
+                <select name="anio" onchange="this.form.submit()" class="w-full bg-gray-900 border border-gray-600 text-white rounded-md py-2 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    {% for a in filtros_disponibles.anios %}
+                    <option value="{{ a.id }}" {% if a.id == filtros_activos.anio %}selected{% endif %}>{{ a.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Selector de Periodo -->
+            <div class="w-56">
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Periodo de Análisis</label>
+                <select name="periodo" onchange="this.form.submit()" class="w-full bg-gray-900 border border-gray-600 text-white rounded-md py-2 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    {% for p in filtros_disponibles.periodos %}
+                    <option value="{{ p.id }}" {% if p.id == filtros_activos.periodo %}selected{% endif %}>{{ p.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Selector de Centro de Costo -->
+            <div class="w-64">
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Centro de Costo</label>
+                <select name="id_centro_costo" onchange="this.form.submit()" class="w-full bg-gray-900 border border-gray-600 text-white rounded-md py-2 px-3 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    <option value="">Consolidado Total (Todos)</option>
+                    {% for cc in filtros_disponibles.centros_costo %}
+                    <option value="{{ cc.id }}" {% if cc.id|stringformat:"s" == filtros_activos.id_centro_costo %}selected{% endif %}>{{ cc.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="ml-auto">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-900 text-blue-300 border border-blue-700">
+                    Datos Sincronizados
+                </span>
+            </div>
+        </form>
+
+        <div class="flex space-x-2 bg-gray-800 p-1 rounded-lg overflow-x-auto">
+            <button @click="tab = 'altimetro'" :class="{'bg-blue-600 text-white': tab === 'altimetro', 'text-gray-400 hover:bg-gray-700': tab !== 'altimetro'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Altímetro (P&G)</button>
+            <button @click="tab = 'combustible'" :class="{'bg-blue-600 text-white': tab === 'combustible', 'text-gray-400 hover:bg-gray-700': tab !== 'combustible'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Combustible (Liquidez)</button>
+            <button @click="tab = 'peso'" :class="{'bg-blue-600 text-white': tab === 'peso', 'text-gray-400 hover:bg-gray-700': tab !== 'peso'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Peso y Balance</button>
+            <button @click="tab = 'eficiencia'" :class="{'bg-blue-600 text-white': tab === 'eficiencia', 'text-gray-400 hover:bg-gray-700': tab !== 'eficiencia'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Eficiencia (DuPont)</button>
+            <button @click="tab = 'vuelo'" :class="{'bg-blue-600 text-white': tab === 'vuelo', 'text-gray-400 hover:bg-gray-700': tab !== 'vuelo'}" class="px-4 py-2 rounded-md font-semibold transition-colors whitespace-nowrap">Plan de Vuelo</button>
+        </div>
     </div>
 
     <!-- Pestañas de Navegación -->
@@ -46,18 +88,111 @@
         </div>
     </div>
 
-    <!-- Pestaña: Combustible (Placeholder) -->
-    <div x-show="tab === 'combustible'">
-        <div class="bg-gray-800 rounded-lg shadow-xl p-6">
-            <h2 class="text-2xl text-white">Instrumento: Indicador de Combustible (Liquidez)</h2>
-            <p class="text-gray-400 mt-2">Próximamente: Razón Corriente, Prueba Ácida, y Capital de Trabajo Neto.</p>
+    <!-- Pestaña: Combustible (Liquidez) -->
+    <div x-show="tab === 'combustible'" style="display: none;" class="mt-6">
+        <!-- Tarjetas KPI Liquidez -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Razón Corriente</h4>
+                <p class="text-2xl font-bold text-white mt-1" x-text="(datos.kpis?.razon_corriente || 0) + 'x'"></p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Prueba Ácida</h4>
+                <p class="text-2xl font-bold text-white mt-1" x-text="(datos.kpis?.prueba_acida || 0) + 'x'"></p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Capital de Trabajo Neto (CTN)</h4>
+                <p class="text-2xl font-bold mt-1" :class="datos.kpis?.ctn < 0 ? 'text-red-500' : 'text-green-400'" x-text="formatCurrency(datos.kpis?.ctn)"></p>
+            </div>
+        </div>
+
+        <!-- Gráfico de Liquidez -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+            <h3 class="text-lg font-bold text-gray-300 mb-4">Evolución Histórica: Activo vs Pasivo Corriente</h3>
+            <div id="liquidez-chart" style="width: 100%; height: 500px;"></div>
         </div>
     </div>
     
-    <!-- Otros Placeholders -->
-    <div x-show="tab === 'peso'"><div class="bg-gray-800 p-6 rounded-lg"><h2 class="text-2xl text-white">Instrumento: Peso y Balance (Endeudamiento)</h2></div></div>
-    <div x-show="tab === 'eficiencia'"><div class="bg-gray-800 p-6 rounded-lg"><h2 class="text-2xl text-white">Instrumento: Eficiencia de Motores (Análisis DuPont)</h2></div></div>
-    <div x-show="tab === 'vuelo'"><div class="bg-gray-800 p-6 rounded-lg"><h2 class="text-2xl text-white">Instrumento: Plan de Vuelo (Metas y Presupuesto)</h2></div></div>
+    <!-- Pestaña: Peso y Balance (Endeudamiento) -->
+    <div x-show="tab === 'peso'" style="display: none;" class="mt-6">
+        <!-- Tarjetas KPI -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Nivel de Endeudamiento</h4>
+                <p class="text-3xl font-bold mt-1 text-white" x-text="(datos.kpis?.nivel_endeudamiento || 0) + '%'"></p>
+                <p class="text-xs text-gray-500 mt-2">Pasivo Total / Activo Total</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Cobertura de Intereses</h4>
+                <p class="text-3xl font-bold mt-1" :class="(datos.kpis?.cobertura_intereses || 0) >= 3 ? 'text-green-400' : 'text-red-500'" x-text="(datos.kpis?.cobertura_intereses || 0) + 'x'"></p>
+                <p class="text-xs text-gray-500 mt-2">EBITDA / Gastos Financieros (Debe ser > 3x)</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Concentración a Corto Plazo</h4>
+                <p class="text-3xl font-bold text-white mt-1" x-text="(datos.kpis?.concentracion_pasivo_cp || 0) + '%'"></p>
+                <p class="text-xs text-gray-500 mt-2">Pasivo Corriente / Pasivo Total</p>
+            </div>
+        </div>
+        <!-- Gráfico de Estructura de Capital -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+            <h3 class="text-lg font-bold text-gray-300 mb-4">Estructura de Capital (Pasivo vs Patrimonio)</h3>
+            <div id="estructura-chart" style="width: 100%; height: 400px;"></div>
+        </div>
+    </div>
+
+    <!-- Pestaña: Eficiencia (DuPont) -->
+    <div x-show="tab === 'eficiencia'" style="display: none;" class="mt-6">
+        <!-- Tarjetas KPI -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">ROE (Retorno sobre Patrimonio)</h4>
+                <p class="text-3xl font-bold mt-1 text-green-400" x-text="(datos.kpis?.detalle_dupont?.roe || 0) + '%'"></p>
+                <p class="text-xs text-gray-500 mt-2">¿Cuánto renta la plata invertida por los dueños?</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">ROA (Retorno sobre Activos)</h4>
+                <p class="text-3xl font-bold mt-1 text-blue-400" x-text="(datos.kpis?.detalle_dupont?.roa || 0) + '%'"></p>
+                <p class="text-xs text-gray-500 mt-2">Eficiencia de los activos totales (Bodegas, Cartera, Caja)</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Rotación de Activos</h4>
+                <p class="text-3xl font-bold mt-1 text-white" x-text="(datos.kpis?.detalle_dupont?.rotacion_activos || 0) + 'x'"></p>
+                <p class="text-xs text-gray-500 mt-2">Ventas / Activo Total (Velocidad comercial)</p>
+            </div>
+        </div>
+        
+        <!-- Gráfico DuPont Tree -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700 overflow-x-auto">
+            <h3 class="text-lg font-bold text-gray-300 mb-4">Radiografía de Rentabilidad (Árbol DuPont)</h3>
+            <div id="dupont-chart" style="width: 100%; min-width: 800px; height: 500px;"></div>
+        </div>
+    </div>
+
+    <!-- Pestaña: Plan de Vuelo (Presupuesto) -->
+    <div x-show="tab === 'vuelo'" style="display: none;" class="mt-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Ejecución Presupuestal</h4>
+                <p class="text-3xl font-bold mt-1" :class="(datos.presupuesto?.porcentaje_ejecucion || 0) <= 100 ? 'text-green-400' : 'text-red-500'" x-text="(datos.presupuesto?.porcentaje_ejecucion || 0) + '%'"></p>
+                <p class="text-xs text-gray-500 mt-2">Gastos Reales vs Límite Autorizado</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Varianza Total (Ahorro/Sobrecosto)</h4>
+                <p class="text-3xl font-bold mt-1" :class="(datos.presupuesto?.varianza || 0) >= 0 ? 'text-green-400' : 'text-red-500'" x-text="((datos.presupuesto?.varianza || 0) >= 0 ? '+' : '') + formatCurrency(datos.presupuesto?.varianza)"></p>
+                <p class="text-xs text-gray-500 mt-2">Presupuesto sobrante (Si es negativo, hay exceso)</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+                <h4 class="text-sm font-semibold text-gray-400">Gasto Total Real del Mes</h4>
+                <p class="text-3xl font-bold text-white mt-1" x-text="formatCurrency(datos.presupuesto?.total_real)"></p>
+                <p class="text-xs text-gray-500 mt-2">Presupuestado: <span x-text="formatCurrency(datos.presupuesto?.total_presupuesto)"></span></p>
+            </div>
+        </div>
+        
+        <div class="bg-gray-800 rounded-lg shadow-xl p-4 border border-gray-700">
+            <h3 class="text-lg font-bold text-gray-300 mb-4">Control de Gastos Top 10 (Bullet Chart)</h3>
+            <div id="vuelo-chart" style="width: 100%; height: 500px;"></div>
+        </div>
+    </div>
 
 </div>
 
@@ -72,10 +207,13 @@ function tableroFinanciero() {
             const rawData = document.getElementById('datos-iniciales').textContent;
             this.datos = JSON.parse(rawData);
             
-            this.$watch('tab', (newTab) => {
+            this.$watch('tab', (value) => {
                 this.$nextTick(() => {
-                    if (newTab === 'altimetro') this.initWaterfall();
-                    // Aquí se añadirán las inicializaciones de otros gráficos
+                    if (value === 'altimetro') this.initWaterfall();
+                    if (value === 'combustible') this.initLiquidez();
+                    if (value === 'peso') { setTimeout(() => this.initEstructura(), 150); }
+                    if (value === 'eficiencia') { setTimeout(() => this.initDuPont(), 150); }
+                    if (value === 'vuelo') { setTimeout(() => this.initVuelo(), 150); }
                 });
             });
             
@@ -89,46 +227,365 @@ function tableroFinanciero() {
         },
         
         initWaterfall() {
-            const chartDom = document.getElementById('waterfall-chart');
-            if (!chartDom) return;
+               const chartDom = document.getElementById('waterfall-chart');
+               if (!chartDom) return;
+               
+               setTimeout(() => {
+                   let existingChart = echarts.getInstanceByDom(chartDom);
+                   if (existingChart) existingChart.dispose();
+                   
+                   const myChart = echarts.init(chartDom, 'dark');
+                   const c = this.datos.kpis?.detalle_cascada || {};
+                   const val = (k) => parseFloat(c[k] || 0);
+                   
+                   // 1. Extraer Valores
+                   const v_ventas = val('ventas');
+                   const v_costos = val('costos');
+                   const v_gadmin = val('gastos_admin');
+                   const v_gventas = val('gastos_ventas');
+                   const v_otros = val('otros_ingresos');
+                   const v_gfinan = val('gastos_financieros');
+                   const v_impuestos = val('impuestos');
+                   const v_utilidad = val('utilidad_neta');
 
-            setTimeout(() => {
-                let existingChart = echarts.getInstanceByDom(chartDom);
-                if (existingChart) existingChart.dispose();
+                   // 2. Calcular las bases invisibles
+                   const b_costos = v_ventas - v_costos;
+                   const b_gadmin = b_costos - v_gadmin;
+                   const b_gventas = b_gadmin - v_gventas;
+                   const b_otros = b_gventas; // Inicia desde el fondo de G.Ventas
+                   const b_gfinan = b_otros + v_otros - v_gfinan; // Sube por los otros ingresos y luego baja
+                   const b_impuestos = b_gfinan - v_impuestos;
 
-                const myChart = echarts.init(chartDom, 'dark');
-                const cascada = this.datos.kpis?.detalle_cascada || {};
+                   // 3. Armar las series
+                   const placeholderData = [0, b_costos, b_gadmin, b_gventas, b_otros, b_gfinan, b_impuestos, 0];
+                   const incomeData = [v_ventas, '-', '-', '-', v_otros, '-', '-', v_utilidad];
+                   const expenseData = ['-', v_costos, v_gadmin, v_gventas, '-', v_gfinan, v_impuestos, '-'];
 
-                const option = {
-                    backgroundColor: 'transparent',
-                    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-                    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-                    xAxis: { 
-                        type: 'category', 
-                        data: ['Ventas', 'Costos', 'G. Admin', 'G. Ventas', 'G. Finan', 'Impuestos', 'Utilidad Neta']
-                    },
-                    yAxis: { type: 'value' },
-                    series: [
-                        {
-                            name: 'Valor',
-                            type: 'bar',
-                            label: { show: true, position: 'top', formatter: (p) => this.formatCurrency(p.value) },
-                            data: [
-                                {value: parseFloat(cascada.ventas || 0), itemStyle: {color: '#10B981'}},
-                                {value: parseFloat(cascada.costos || 0) * -1, itemStyle: {color: '#EF4444'}},
-                                {value: parseFloat(cascada.gastos_admin || 0) * -1, itemStyle: {color: '#EF4444'}},
-                                {value: parseFloat(cascada.gastos_ventas || 0) * -1, itemStyle: {color: '#EF4444'}},
-                                {value: parseFloat(cascada.gastos_financieros || 0) * -1, itemStyle: {color: '#EF4444'}},
-                                {value: parseFloat(cascada.impuestos || 0) * -1, itemStyle: {color: '#EF4444'}},
-                                {value: parseFloat(cascada.utilidad_neta || 0), itemStyle: {color: '#3B82F6'}}
-                            ]
-                        }
-                    ]
-                };
-                myChart.setOption(option);
-                window.addEventListener('resize', () => myChart.resize());
-            }, 150);
-        }
+                   const option = {
+                       backgroundColor: 'transparent',
+                       tooltip: {
+                           trigger: 'axis',
+                           axisPointer: { type: 'shadow' },
+                           formatter: (params) => {
+                               let tar = params[1].value !== '-' ? params[1] : params[2];
+                               return tar.name + '<br/>' + this.formatCurrency(tar.value);
+                           }
+                       },
+                       grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                       xAxis: { 
+                           type: 'category', 
+                           data: ['Ventas', 'Costos', 'G. Admin', 'G. Ventas', 'Otros Ing.', 'G. Finan', 'Impuestos', 'Util. Neta'],
+                           axisLabel: { color: '#9CA3AF' }
+                       },
+                       yAxis: { 
+                           type: 'value',
+                           axisLabel: { color: '#9CA3AF', formatter: (value) => '$' + (value / 1000000) + 'M' }
+                       },
+                       series: [
+                           {
+                               name: 'Placeholder',
+                               type: 'bar',
+                               stack: 'Total',
+                               itemStyle: { borderColor: 'transparent', color: 'transparent' },
+                               emphasis: { itemStyle: { borderColor: 'transparent', color: 'transparent' } },
+                               data: placeholderData
+                           },
+                           {
+                               name: 'Ingresos/Utilidad',
+                               type: 'bar',
+                               stack: 'Total',
+                               label: { show: true, position: 'top', color: '#fff', formatter: (p) => this.formatCurrency(p.value) },
+                               itemStyle: { color: '#10B981' }, // Verde Esmeralda
+                               data: incomeData
+                           },
+                           {
+                               name: 'Egresos',
+                               type: 'bar',
+                               stack: 'Total',
+                               label: { show: true, position: 'bottom', color: '#EF4444', formatter: (p) => '-' + this.formatCurrency(p.value) },
+                               itemStyle: { color: '#EF4444' }, // Rojo
+                               data: expenseData
+                           }
+                       ]
+                   };
+                   myChart.setOption(option);
+                   window.addEventListener('resize', () => myChart.resize());
+               }, 150);
+           },
+
+           initLiquidez() {
+               const chartDom = document.getElementById('liquidez-chart');
+               if (!chartDom) return;
+               
+               setTimeout(() => {
+                   let existingChart = echarts.getInstanceByDom(chartDom);
+                   if (existingChart) existingChart.dispose();
+                   
+                   const myChart = echarts.init(chartDom, 'dark');
+                   const liquidez = this.datos.tendencias || { periodos: [], activo_corriente: [], pasivo_corriente: [] };
+                   
+                   const option = {
+                       backgroundColor: 'transparent',
+                       tooltip: { 
+                           trigger: 'axis', 
+                           axisPointer: { type: 'cross' },
+                           formatter: (params) => {
+                               let html = `<b>${params[0].name}</b><br/>`;
+                               params.forEach(p => {
+                                   html += `${p.marker} ${p.seriesName}: ${this.formatCurrency(p.value)}<br/>`;
+                               });
+                               return html;
+                           }
+                       },
+                       legend: { data: ['Activo Corriente', 'Pasivo Corriente'], textStyle: { color: '#9CA3AF' } },
+                       grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                       xAxis: { 
+                           type: 'category', 
+                           boundaryGap: false, 
+                           data: liquidez.periodos, // Fechas reales del backend
+                           axisLabel: { color: '#9CA3AF' }
+                       },
+                       yAxis: { 
+                           type: 'value', 
+                           axisLabel: { color: '#9CA3AF', formatter: (value) => '$' + (value / 1000000) + 'M' } 
+                       },
+                       series: [
+                           {
+                               name: 'Activo Corriente',
+                               type: 'line',
+                               areaStyle: { opacity: 0.3 },
+                               itemStyle: { color: '#10B981' },
+                               data: liquidez.activo_corriente // Data real
+                           },
+                           {
+                               name: 'Pasivo Corriente',
+                               type: 'line',
+                               areaStyle: { opacity: 0.3 },
+                               itemStyle: { color: '#EF4444' },
+                               data: liquidez.pasivo_corriente // Data real
+                           }
+                       ]
+                   };
+                   myChart.setOption(option);
+                   window.addEventListener('resize', () => myChart.resize());
+               }, 150);
+           },
+
+           initEstructura() {
+               const chartDom = document.getElementById('estructura-chart');
+               if (!chartDom) return;
+
+               setTimeout(() => {
+                   let existingChart = echarts.getInstanceByDom(chartDom);
+                   if (existingChart) existingChart.dispose();
+
+                   const myChart = echarts.init(chartDom, 'dark');
+                   const tend = this.datos.tendencias || { periodos: [], pasivo_total: [], patrimonio: [] };
+
+                   const option = {
+                       backgroundColor: 'transparent',
+                       tooltip: { 
+                           trigger: 'axis', 
+                           axisPointer: { type: 'shadow' },
+                           formatter: (params) => {
+                               let total = params[0].value + params[1].value;
+                               let html = `<b>${params[0].name}</b><br/>`;
+                               params.forEach(p => {
+                                   let pct = total > 0 ? ((p.value / total) * 100).toFixed(1) : 0;
+                                   html += `${p.marker} ${p.seriesName}: ${this.formatCurrency(p.value)} (${pct}%)<br/>`;
+                               });
+                               return html;
+                           }
+                       },
+                       legend: { data: ['Pasivo (Deuda)', 'Patrimonio (Capital Propio)'], textStyle: { color: '#9CA3AF' } },
+                       grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                       xAxis: { type: 'category', data: tend.periodos, axisLabel: { color: '#9CA3AF' } },
+                       yAxis: { type: 'value', axisLabel: { color: '#9CA3AF', formatter: (value) => '$' + (value / 1000000) + 'M' } },
+                       series: [
+                           {
+                               name: 'Pasivo (Deuda)',
+                               type: 'bar',
+                               stack: 'Total',
+                               itemStyle: { color: '#EF4444' }, // Rojo Deuda
+                               data: tend.pasivo_total
+                           },
+                           {
+                               name: 'Patrimonio (Capital Propio)',
+                               type: 'bar',
+                               stack: 'Total',
+                               itemStyle: { color: '#3B82F6' }, // Azul Dueños
+                               data: tend.patrimonio
+                           }
+                       ]
+                   };
+                   myChart.setOption(option);
+                   window.addEventListener('resize', () => myChart.resize());
+               }, 150);
+           },
+
+           initDuPont() {
+               const chartDom = document.getElementById('dupont-chart');
+               if (!chartDom) return;
+
+               setTimeout(() => {
+                   let existingChart = echarts.getInstanceByDom(chartDom);
+                   if (existingChart) existingChart.dispose();
+
+                   const myChart = echarts.init(chartDom, 'dark');
+                   const d = this.datos.kpis?.detalle_dupont || {};
+
+                   const treeData = {
+                       name: `ROE\n${d.roe || 0}%`,
+                       itemStyle: { color: '#10B981', borderColor: '#059669' },
+                       children: [
+                           {
+                               name: `ROA\n${d.roa || 0}%`,
+                               itemStyle: { color: '#3B82F6', borderColor: '#2563EB' },
+                               children: [
+                                   {
+                                       name: `Margen Neto\n${d.margen_neto || 0}%`,
+                                       children: [
+                                           { name: `Utilidad Neta\n${this.formatCurrency(d.utilidad_neta)}` },
+                                           { name: `Ventas\n${this.formatCurrency(d.ventas)}` }
+                                       ]
+                                   },
+                                   {
+                                       name: `Rotación Activos\n${d.rotacion_activos || 0}x`,
+                                       children: [
+                                           { name: `Ventas\n${this.formatCurrency(d.ventas)}` },
+                                           { name: `Activo Total\n${this.formatCurrency(d.activo_total)}` }
+                                       ]
+                                   }
+                               ]
+                           },
+                           {
+                               name: `Apalancamiento\n${d.apalancamiento || 0}x`,
+                               itemStyle: { color: '#F59E0B', borderColor: '#D97706' },
+                               children: [
+                                   { name: `Activo Total\n${this.formatCurrency(d.activo_total)}` },
+                                   { name: `Patrimonio\n${this.formatCurrency(d.patrimonio)}` }
+                               ]
+                           }
+                       ]
+                   };
+
+                   const option = {
+                       backgroundColor: 'transparent',
+                       tooltip: { trigger: 'item', triggerOn: 'mousemove' },
+                       series: [
+                           {
+                               type: 'tree',
+                               data: [treeData],
+                               top: '5%',
+                               left: '12%',
+                               bottom: '5%',
+                               right: '20%',
+                               symbol: 'roundRect',
+                               symbolSize: [140, 50],
+                               orient: 'LR',
+                               expandAndCollapse: true,
+                               initialTreeDepth: 3,
+                               label: {
+                                   position: 'inside',
+                                   verticalAlign: 'middle',
+                                   align: 'center',
+                                   fontSize: 12,
+                                   fontWeight: 'bold',
+                                   color: '#FFFFFF',
+                                   lineHeight: 16
+                               },
+                               leaves: {
+                                   label: {
+                                       position: 'inside',
+                                       verticalAlign: 'middle',
+                                       align: 'center'
+                                   }
+                               },
+                               itemStyle: {
+                                   color: '#374151',
+                                   borderColor: '#6B7280',
+                                   borderWidth: 2,
+                                   borderRadius: 8
+                               },
+                               lineStyle: {
+                                   color: '#6B7280',
+                                   width: 2,
+                                   curveness: 0.5
+                               },
+                               animationDuration: 550,
+                               animationDurationUpdate: 750
+                           }
+                       ]
+                   };
+
+                   myChart.setOption(option);
+                   window.addEventListener('resize', () => myChart.resize());
+               }, 150);
+           },
+
+           initVuelo() {
+               const chartDom = document.getElementById('vuelo-chart');
+               if (!chartDom) return;
+
+               setTimeout(() => {
+                   let existingChart = echarts.getInstanceByDom(chartDom);
+                   if (existingChart) existingChart.dispose();
+
+                   const myChart = echarts.init(chartDom, 'dark');
+                   const p = this.datos.presupuesto || { cuentas: [], reales: [], presupuestos: [] };
+
+                   // Invertir para que los gastos más grandes salgan arriba en el gráfico de barras horizontales
+                   const cuentasRev = [...p.cuentas].reverse();
+                   const realesRev = [...p.reales].reverse();
+                   const presupRev = [...p.presupuestos].reverse();
+
+                   const option = {
+                       backgroundColor: 'transparent',
+                       tooltip: { 
+                           trigger: 'axis', 
+                           axisPointer: { type: 'shadow' },
+                           formatter: (params) => {
+                               let pReal = params[1].value;
+                               let pMeta = params[0].value;
+                               let icon = pReal > pMeta ? '⚠️' : '✅';
+                               return `<b>${params[0].name}</b><br/>
+                                       ${params[0].marker} Presupuesto: ${this.formatCurrency(pMeta)}<br/>
+                                       ${params[1].marker} Gasto Real: ${this.formatCurrency(pReal)} ${icon}`;
+                           }
+                       },
+                       legend: { data: ['Meta (Presupuesto)', 'Ejecución Real'], textStyle: { color: '#9CA3AF' } },
+                       grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                       xAxis: { type: 'value', axisLabel: { color: '#9CA3AF', formatter: (value) => '$' + (value / 1000000) + 'M' } },
+                       yAxis: { type: 'category', data: cuentasRev, axisLabel: { color: '#9CA3AF' } },
+                       series: [
+                           {
+                               name: 'Meta (Presupuesto)',
+                               type: 'bar',
+                               barWidth: '40%',
+                               itemStyle: { color: 'rgba(75, 85, 99, 0.4)', borderColor: '#9CA3AF', borderWidth: 1, borderType: 'dashed' },
+                               data: presupRev,
+                               z: 1
+                           },
+                           {
+                               name: 'Ejecución Real',
+                               type: 'bar',
+                               barGap: '-75%', 
+                               barWidth: '20%',
+                               itemStyle: { 
+                                   color: (params) => {
+                                       let meta = presupRev[params.dataIndex];
+                                       return params.value > meta ? '#EF4444' : '#10B981'; // Rojo si gasta de más, Verde si ahorra
+                                   } 
+                               },
+                               data: realesRev,
+                               z: 2
+                           }
+                       ]
+                   };
+                   myChart.setOption(option);
+                   window.addEventListener('resize', () => myChart.resize());
+               }, 150);
+           }
     }
 }
 </script>

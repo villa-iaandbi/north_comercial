@@ -655,28 +655,32 @@ def api_anular_orden_compra(request):
 
 
 def tablero_gerencial_view(request):
-       # Capturar parámetros de la URL
-       filtros = request.GET.dict()
-       
-       # Instanciar el servicio con la nueva arquitectura
-       servicio = ServicioAnalisisFinanciero(filtros=filtros)
-       datos_tablero = servicio.get_datos_tablero()
-       
-       # Obtener listas para los selectores de la interfaz
-       filtros_disponibles = ServicioAnalisisFinanciero.get_filtros_disponibles()
-       
-       # Empaquetado seguro para ECharts (ADR-015)
-       datos_iniciales_json = json.dumps(datos_tablero, cls=DjangoJSONEncoder)
-       
-       context = {
-           'datos_iniciales_json': datos_iniciales_json,
-           'filtros_disponibles': filtros_disponibles,
-           'periodo_actual': servicio.periodo,
-       }
-       return render(request, 'reportes/tablero_gerencial.html', context)
+    hoy = datetime.date.today()
+    
+    # 1. Leer parámetros GET o forzar los valores por defecto (Zero-Click Value)
+    anio = request.GET.get('anio', str(hoy.year))
+    periodo = request.GET.get('periodo', f"{hoy.month:02d}")
+    id_centro_costo = request.GET.get('id_centro_costo', '') # Vacío = Todos
 
+    # 2. Empaquetar filtros activos
+    filtros_activos = {
+        'anio': anio,
+        'periodo': periodo,
+        'id_centro_costo': id_centro_costo
+    }
 
+    # 3. Inicializar el motor financiero
+    servicio = ServicioAnalisisFinanciero(filtros_activos)
+    datos = servicio.get_datos_tablero()
+    
+    # 4. Cargar las listas desplegables pasando el año seleccionado
+    filtros_disponibles = ServicioAnalisisFinanciero.get_filtros_disponibles(anio_actual=anio)
+    datos_iniciales_json = json.dumps(datos, cls=DjangoJSONEncoder)
 
-
-
-
+    return render(request, 'reportes/tablero_gerencial.html', {
+        'datos': datos,
+        'datos_iniciales_json': datos_iniciales_json,
+        'filtros_disponibles': filtros_disponibles,
+        'filtros_activos': filtros_activos, # Pasamos esto limpio al HTML
+        'periodo_actual': servicio.periodo,
+    })
