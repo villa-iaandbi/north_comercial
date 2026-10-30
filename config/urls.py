@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import RedirectView
+from reportes import views as reportes_views
 
 urlpatterns = [
     path('', RedirectView.as_view(url='impresion/'), name='home_redirect'),
@@ -27,4 +28,11 @@ urlpatterns = [
     path('logistica/', include('logistica.urls')),
     path('pos/', include('pos.urls')),
     path('reportes/', include('reportes.urls')),
+    path('comercial/', include(('reportes.urls', 'comercial'), namespace='comercial')),
+    path('api/exportar/balance/', reportes_views.exportar_balance_terceros),
+    path('dian/conciliacion/', reportes_views.gestor_lotes_dian, name='gestor_lotes_dian'),
+    path('dian/conciliacion/upload/', reportes_views.upload_excel_dian, name='upload_excel_dian'),
+    path('dian/conciliacion/api/lotes/', reportes_views.api_dian_get_lotes, name='api_dian_get_lotes'),
+    path('dian/conciliacion/api/lotes/<int:id_lote>/', reportes_views.api_dian_get_detalle, name='api_dian_get_detalle'),
+    path('dian/conciliacion/api/lotes/<int:id_lote>/accion/', reportes_views.api_dian_accion_lote, name='api_dian_accion_lote'),
 ]

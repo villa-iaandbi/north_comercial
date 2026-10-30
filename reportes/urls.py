@@ -30,6 +30,17 @@ urlpatterns = [
     # SPEC-010: Tablero Gerencial (Análisis Financiero)
     path('analisis-financiero/', views.tablero_gerencial_view, name='tablero_analisis_financiero'),
 
+    # SPEC-012: Balance de Comprobación
+    path('balance-comprobacion/', views.balance_comprobacion_view, name='balance_comprobacion'),
+    path('api/exportar/balance/', views.exportar_balance_terceros, name='exportar_balance'),
+
+    # SPEC-011: Módulo de Conciliación Electrónica DIAN vs ERP
+    path('dian/conciliacion/', views.gestor_lotes_dian, name='gestor_lotes_dian'),
+    path('dian/conciliacion/upload/', views.upload_excel_dian, name='upload_excel_dian'),
+    path('dian/conciliacion/api/lotes/', views.api_dian_get_lotes, name='api_dian_get_lotes'),
+    path('dian/conciliacion/api/lotes/<int:id_lote>/', views.api_dian_get_detalle, name='api_dian_get_detalle'),
+    path('dian/conciliacion/api/lotes/<int:id_lote>/accion/', views.api_dian_accion_lote, name='api_dian_accion_lote'),
+
     # SPEC-004: Tablero de Control de Inventarios
     path('control-inventarios/', views_inventario.control_inventarios_view,
          name='control_inventarios'),

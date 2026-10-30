@@ -1,0 +1,352 @@
+{% extends 'comercial/base.html' %}
+{% load static %}
+
+{% block contenido %}
+<div x-data="conciliacionDian()" class="w-full h-full flex flex-col p-4 bg-gray-100">
+    
+    <!-- HEADER GLOBALES -->
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold text-gray-800" x-text="vistaActual === 'gestor' ? 'Gestor de Lotes DIAN' : 'Tablero Táctico de Lote'"></h1>
+        
+        <!-- Botón Volver (Solo visible en Tablero Táctico) -->
+        <button x-show="vistaActual === 'detalle'" @click="volverAlGestor()" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition">
+            &larr; Volver al Gestor
+        </button>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- VISTA 1: GESTOR DE LOTES -->
+    <!-- ========================================== -->
+    <div x-show="vistaActual === 'gestor'" class="flex-col space-y-4">
+        
+        <!-- Panel de Subida (Nueva Conciliación) -->
+        <div class="bg-white p-4 rounded shadow flex items-end space-x-4">
+            <div class="flex-1">
+                <label class="block text-sm font-bold text-gray-700 mb-1">Nombre / Observación del Lote</label>
+                <input type="text" x-model="nuevoLote.nombre" class="w-full border-gray-300 rounded px-3 py-1 text-sm focus:ring-blue-500" placeholder="Ej. Supermercado Agosto 2026">
+            </div>
+            <div class="flex-1">
+                <label class="block text-sm font-bold text-gray-700 mb-1">Archivo DIAN (.xlsx)</label>
+                <input type="file" id="archivoDian" accept=".xlsx" class="w-full text-sm">
+            </div>
+            <div>
+                <button @click="subirArchivo()" :disabled="cargando" class="px-4 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 disabled:opacity-50 flex items-center">
+                    <span x-show="!cargando">Subir y Conciliar</span>
+                    <span x-show="cargando">Procesando...</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Tabla Histórica de Lotes (Alta Densidad ADR-016) -->
+        <div class="bg-white rounded shadow overflow-hidden">
+            <table class="w-full text-sm font-mono text-left">
+                <thead class="bg-gray-800 text-white">
+                    <tr>
+                        <th class="py-1 px-2">ID LOTE</th>
+                        <th class="py-1 px-2">DESCRIPCIÓN</th>
+                        <th class="py-1 px-2">INICIO ARCHIVO</th>
+                        <th class="py-1 px-2">FIN ARCHIVO</th>
+                        <th class="py-1 px-2">EMITIDOS</th>
+                        <th class="py-1 px-2">RECIBIDOS</th>
+                        <th class="py-1 px-2">ESTADO</th>
+                        <th class="py-1 px-2 text-right">ACCIONES</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="lote in lotes" :key="lote.id_lote">
+                        <tr class="even:bg-gray-50 hover:bg-blue-50 transition cursor-pointer" @dblclick="abrirLote(lote)">
+                            <td class="py-1 px-2" x-text="lote.id_lote"></td>
+                            <td class="py-1 px-2 truncate max-w-xs" x-text="lote.nom_lote"></td>
+                            <td class="py-1 px-2" x-text="lote.fecha_inicio"></td>
+                            <td class="py-1 px-2" x-text="lote.fecha_fin"></td>
+                            <td class="py-1 px-2" x-text="lote.total_emitidos"></td>
+                            <td class="py-1 px-2" x-text="lote.total_recibidos"></td>
+                            <td class="py-1 px-2 font-bold" :class="lote.estado_lote === 'ABIERTO' ? 'text-green-600' : 'text-gray-500'" x-text="lote.estado_lote"></td>
+                            <td class="py-1 px-2 text-right">
+                                <button @click="abrirLote(lote)" class="text-blue-600 hover:underline">Ver Táctico</button>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="lotes.length === 0">
+                        <td colspan="8" class="py-4 text-center text-gray-500">No hay lotes de conciliación registrados.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- VISTA 2: TABLERO TÁCTICO -->
+    <!-- ========================================== -->
+    <div x-show="vistaActual === 'detalle'" class="flex-col space-y-4" style="display: none;">
+        
+        <!-- Barra de Acciones del Lote -->
+        <div class="flex justify-between items-center bg-white p-3 rounded shadow">
+            <div class="text-sm font-bold text-gray-700">
+                Lote <span x-text="loteActivo?.id_lote"></span>: <span x-text="loteActivo?.nom_lote" class="font-normal"></span>
+            </div>
+            <div class="space-x-2">
+                <!-- Filtros Locales UI -->
+                <select x-model="filtroGrupo" class="border-gray-300 rounded text-sm py-1">
+                    <option value="TODOS">Todos (Emitidos/Recibidos)</option>
+                    <option value="EMITIDO">Solo Emitidos</option>
+                    <option value="RECIBIDO">Solo Recibidos</option>
+                </select>
+
+                <button @click="recalcularLote()" :disabled="loteActivo?.estado_lote === 'CERRADO' || cargando" class="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 disabled:opacity-50 text-sm font-bold shadow">
+                    ↻ Recalcular Cruce ERP
+                </button>
+                <button @click="cerrarAuditoria()" :disabled="loteActivo?.estado_lote === 'CERRADO'" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 text-sm font-bold shadow">
+                    🔒 Cerrar Auditoría
+                </button>
+            </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-4 gap-4">
+            <!-- 1: Verde (Exactos) -->
+            <div class="bg-green-100 p-4 rounded shadow border-l-4 border-green-500 cursor-pointer hover:shadow-md transition" @click="filtroEstado = 1">
+                <div class="text-xs font-bold text-green-700 uppercase">Exactos (Match)</div>
+                <div class="text-2xl font-black text-green-900" x-text="kpis.exactos.cantidad"></div>
+                <div class="text-sm text-green-800" x-text="formatoMoneda(kpis.exactos.valor)"></div>
+            </div>
+            <!-- 2: Amarillo (Descuadres) -->
+            <div class="bg-yellow-100 p-4 rounded shadow border-l-4 border-yellow-500 cursor-pointer hover:shadow-md transition" @click="filtroEstado = 2">
+                <div class="text-xs font-bold text-yellow-700 uppercase">Descuadre Valores</div>
+                <div class="text-2xl font-black text-yellow-900" x-text="kpis.descuadre.cantidad"></div>
+                <div class="text-sm text-yellow-800" x-text="formatoMoneda(kpis.descuadre.valor)"></div>
+            </div>
+            <!-- 3: Rojo (Faltantes ERP) -->
+            <div class="bg-red-100 p-4 rounded shadow border-l-4 border-red-500 cursor-pointer hover:shadow-md transition" @click="filtroEstado = 3">
+                <div class="text-xs font-bold text-red-700 uppercase">Faltantes (No en ERP)</div>
+                <div class="text-2xl font-black text-red-900" x-text="kpis.faltantes.cantidad"></div>
+                <div class="text-sm text-red-800" x-text="formatoMoneda(kpis.faltantes.valor)"></div>
+            </div>
+            <!-- 4: Naranja (Fantasmas) -->
+            <div class="bg-orange-100 p-4 rounded shadow border-l-4 border-orange-500 cursor-pointer hover:shadow-md transition" @click="filtroEstado = 4">
+                <div class="text-xs font-bold text-orange-700 uppercase">Fantasmas (Solo en ERP)</div>
+                <div class="text-2xl font-black text-orange-900" x-text="kpis.fantasmas.cantidad"></div>
+                <div class="text-sm text-orange-800" x-text="formatoMoneda(kpis.fantasmas.valor)"></div>
+            </div>
+        </div>
+
+        <!-- Tabla de Detalle Dinámica (Alta Densidad ADR-016) -->
+        <div class="bg-white rounded shadow flex-1 overflow-auto">
+            <table class="w-full text-sm font-mono text-left whitespace-nowrap">
+                <thead class="bg-gray-800 text-white sticky top-0">
+                    <tr>
+                        <th class="py-1 px-2">TIPO</th>
+                        <th class="py-1 px-2">NIT</th>
+                        <th class="py-1 px-2">RAZÓN SOCIAL</th>
+                        <th class="py-1 px-2">PREFIJO</th>
+                        <th class="py-1 px-2">FOLIO</th>
+                        <th class="py-1 px-2">FECHA</th>
+                        <th class="py-1 px-2 text-right">TOTAL DIAN</th>
+                        <th class="py-1 px-2 text-right">TOTAL ERP</th>
+                        <th class="py-1 px-2 text-right">DIFERENCIA</th>
+                        <th class="py-1 px-2 text-center">ESTADO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="doc in documentosFiltrados()" :key="doc.id_doc">
+                        <tr class="even:bg-gray-50 hover:bg-blue-100">
+                            <td class="py-1 px-2" x-text="doc.grupo_fiscal"></td>
+                            <td class="py-1 px-2" x-text="doc.grupo_fiscal === 'EMITIDO' ? doc.nit_receptor : doc.nit_emisor"></td>
+                            <td class="py-1 px-2 truncate max-w-[200px]" x-text="doc.grupo_fiscal === 'EMITIDO' ? doc.nombre_receptor : doc.nombre_emisor" :title="doc.grupo_fiscal === 'EMITIDO' ? doc.nombre_receptor : doc.nombre_emisor"></td>
+                            <td class="py-1 px-2 font-bold" x-text="doc.prefijo"></td>
+                            <td class="py-1 px-2 font-bold" x-text="doc.folio"></td>
+                            <td class="py-1 px-2" x-text="doc.fecha_emision"></td>
+                            <td class="py-1 px-2 text-right" x-text="formatoMoneda(doc.total)"></td>
+                            <td class="py-1 px-2 text-right" x-text="formatoMoneda(doc.total_erp)"></td>
+                            <td class="py-1 px-2 text-right font-bold" :class="doc.diferencia !== 0 ? 'text-red-600' : ''" x-text="formatoMoneda(doc.diferencia)"></td>
+                            <td class="py-1 px-2 text-center">
+                                <span x-show="doc.estado_cruce === 1" class="px-2 py-0.5 bg-green-200 text-green-800 rounded text-xs font-bold">EXACTO</span>
+                                <span x-show="doc.estado_cruce === 2" class="px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-bold">DESCUADRE</span>
+                                <span x-show="doc.estado_cruce === 3" class="px-2 py-0.5 bg-red-200 text-red-800 rounded text-xs font-bold">FALTANTE</span>
+                                <span x-show="doc.estado_cruce === 4" class="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-bold">FANTASMA</span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function conciliacionDian() {
+    return {
+        vistaActual: 'gestor', // 'gestor' o 'detalle'
+        cargando: false,
+        nuevoLote: { nombre: '' },
+        lotes: [], // Se alimentará por AJAX (Endpoint pendiente para listar lotes)
+        loteActivo: null,
+        documentos: [], // Se alimentará por AJAX al abrir un lote
+        filtroEstado: null, // 1, 2, 3, 4
+        filtroGrupo: 'TODOS',
+        kpis: {
+            exactos: { cantidad: 0, valor: 0 },
+            descuadre: { cantidad: 0, valor: 0 },
+            faltantes: { cantidad: 0, valor: 0 },
+            fantasmas: { cantidad: 0, valor: 0 }
+        },
+
+        init() {
+            this.cargarLotes();
+        },
+
+        formatoMoneda(valor) {
+            if (valor == null) return '$ 0';
+            return '$ ' + parseInt(Math.round(valor)).toLocaleString('es-CO');
+        },
+
+        async cargarLotes() {
+            try {
+                let response = await fetch('/comercial/dian/conciliacion/api/lotes/');
+                let data = await response.json();
+                if(data.status === 'success') {
+                    this.lotes = data.lotes;
+                }
+            } catch (e) { console.error("Error cargando lotes", e); }
+        },
+
+        async subirArchivo() {
+            const input = document.getElementById('archivoDian');
+            if (!input.files.length) {
+                alert('Por favor selecciona un archivo Excel de la DIAN.');
+                return;
+            }
+            if (!this.nuevoLote.nombre) {
+                alert('Por favor asigna un nombre al lote.');
+                return;
+            }
+
+            this.cargando = true;
+            const formData = new FormData();
+            formData.append('archivo_dian', input.files[0]);
+            formData.append('nom_lote', this.nuevoLote.nombre);
+
+            try {
+                const response = await fetch("{% url 'upload_excel_dian' %}", {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    alert('Lote procesado exitosamente.');
+                    this.nuevoLote.nombre = '';
+                    input.value = '';
+                    await this.cargarLotes(); // Refrescar tabla
+                } else {
+                    alert('Error: ' + data.mensaje);
+                }
+            } catch (error) {
+                console.error("Error subiendo archivo:", error);
+                alert("Error de conexión al procesar el archivo.");
+            } finally {
+                this.cargando = false;
+            }
+        },
+
+        async abrirLote(lote) {
+            this.loteActivo = lote;
+            this.vistaActual = 'detalle';
+            this.filtroEstado = null;
+            this.filtroGrupo = 'TODOS';
+            await this.cargarDetalleLote(lote.id_lote);
+        },
+
+        volverAlGestor() {
+            this.loteActivo = null;
+            this.vistaActual = 'gestor';
+        },
+
+        async cargarDetalleLote(id_lote) {
+            try {
+                let response = await fetch(`/comercial/dian/conciliacion/api/lotes/${id_lote}/`);
+                let data = await response.json();
+                if(data.status === 'success') {
+                    this.documentos = data.documentos;
+                    this.calcularKPIs();
+                }
+            } catch (e) { console.error("Error cargando detalle", e); }
+        },
+
+        documentosFiltrados() {
+            return this.documentos.filter(doc => {
+                let matchEstado = this.filtroEstado === null || doc.estado_cruce === this.filtroEstado;
+                let matchGrupo = this.filtroGrupo === 'TODOS' || doc.grupo_fiscal === this.filtroGrupo;
+                return matchEstado && matchGrupo;
+            });
+        },
+
+        calcularKPIs() {
+            // Reiniciar contadores
+            this.kpis = {
+                exactos: { cantidad: 0, valor: 0 },
+                descuadre: { cantidad: 0, valor: 0 },
+                faltantes: { cantidad: 0, valor: 0 },
+                fantasmas: { cantidad: 0, valor: 0 }
+            };
+
+            this.documentos.forEach(doc => {
+                let valorDoc = doc.total || doc.total_erp || 0;
+                if (doc.estado_cruce === 1) {
+                    this.kpis.exactos.cantidad++;
+                    this.kpis.exactos.valor += valorDoc;
+                } else if (doc.estado_cruce === 2) {
+                    this.kpis.descuadre.cantidad++;
+                    this.kpis.descuadre.valor += valorDoc;
+                } else if (doc.estado_cruce === 3) {
+                    this.kpis.faltantes.cantidad++;
+                    this.kpis.faltantes.valor += valorDoc;
+                } else if (doc.estado_cruce === 4) {
+                    this.kpis.fantasmas.cantidad++;
+                    this.kpis.fantasmas.valor += valorDoc;
+                }
+            });
+        },
+
+        async recalcularLote() {
+            if (!confirm('¿Deseas recalcular el cruce contra el ERP?')) return;
+            this.cargando = true;
+            try {
+                let response = await fetch(`/comercial/dian/conciliacion/api/lotes/${this.loteActivo.id_lote}/accion/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accion: 'recalcular' })
+                });
+                let data = await response.json();
+                if(data.status === 'success') {
+                    alert('Recálculo finalizado.');
+                    await this.cargarDetalleLote(this.loteActivo.id_lote);
+                } else {
+                    alert('Error: ' + data.mensaje);
+                }
+            } catch (e) { console.error(e); } finally { this.cargando = false; }
+        },
+
+        async cerrarAuditoria() {
+            if (!confirm('¿Estás seguro? Cerrar el lote lo congelará históricamente.')) return;
+            this.cargando = true;
+            try {
+                let response = await fetch(`/comercial/dian/conciliacion/api/lotes/${this.loteActivo.id_lote}/accion/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accion: 'cerrar' })
+                });
+                let data = await response.json();
+                if(data.status === 'success') {
+                    alert('Auditoría cerrada.');
+                    this.loteActivo.estado_lote = 'CERRADO';
+                    await this.cargarLotes(); // Refrescar lista maestra
+                } else {
+                    alert('Error: ' + data.mensaje);
+                }
+            } catch (e) { console.error(e); } finally { this.cargando = false; }
+        }
+    }
+}
+</script>
+{% endblock %}

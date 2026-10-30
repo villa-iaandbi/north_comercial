@@ -387,6 +387,56 @@
                         </li>
                     </ul>
                 </li>
+
+                <!-- 9. Contabilidad -->
+                <li class="mt-1" x-data="{ open: false }">
+                    <button @click="open = !open" 
+                            class="flex items-center justify-between w-full px-4 py-2 text-sm text-gray-300 rounded-lg hover:bg-gray-800 hover:text-white transition-colors">
+                        <div class="flex items-center">
+                            <!-- Ícono de Calculadora/Contabilidad -->
+                            <svg class="w-5 h-5 mr-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                            </svg>
+                            <span class="font-medium">9. Contabilidad</span>
+                        </div>
+                        <!-- Flecha de despliegue -->
+                        <svg :class="{'rotate-90': open}" class="w-4 h-4 transition-transform text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </button>
+                    
+                    <!-- Sub-opciones -->
+                    <ul x-show="open" 
+                        x-transition:enter="transition-all ease-out duration-200"
+                        x-transition:enter-start="opacity-0 max-h-0"
+                        x-transition:enter-end="opacity-100 max-h-40"
+                        x-transition:leave="transition-all ease-in duration-150"
+                        x-transition:leave-start="opacity-100 max-h-40"
+                        x-transition:leave-end="opacity-0 max-h-0"
+                        class="pl-11 mt-1 space-y-1 overflow-hidden" 
+                        style="display: none;">
+                        
+                        <li>
+                            <!-- La ruta asume el estándar de Django o el href directo -->
+                            <a href="/reportes/analisis-financiero/" class="flex items-center py-1.5 text-xs text-gray-400 hover:text-white transition-colors">
+                                <span class="w-1 h-1 rounded-full bg-gray-500 mr-2"></span>
+                                Analítica Financiera
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/reportes/balance-comprobacion/" class="flex items-center py-1.5 text-xs text-gray-400 hover:text-white transition-colors">
+                                <span class="w-1 h-1 rounded-full bg-gray-500 mr-2"></span>
+                                Balance Comprobación
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'gestor_lotes_dian' %}" class="flex items-center py-1.5 text-xs text-gray-400 hover:text-white transition-colors">
+                                <span class="w-1 h-1 rounded-full bg-gray-500 mr-2"></span>
+                                Conciliación DIAN
+                            </a>
+                        </li>
+                    </ul>
+                </li>
             </nav>
         </aside>
 

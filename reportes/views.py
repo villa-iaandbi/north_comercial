@@ -6,7 +6,10 @@ import datetime
 import pytz
 from decimal import Decimal
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
+import csv
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 from django.views.decorators.http import require_POST
 from django.db import connection
 from django.db.models import Q
@@ -19,7 +22,7 @@ from .services_analisis_ventas import VentasClientesAnalyticsService
 from .services_analisis_productos import VentasProductosAnalyticsService
 from .services_analisis_ejecutivo import AnalisisEjecutivoService
 from .services_compras import ServicioComprasSugeridas, generar_orden_compra, anular_orden_compra
-from .services_analisis_financiero import ServicioAnalisisFinanciero
+from .services_analisis_financiero import ServicioAnalisisFinanciero, estructurar_balance_comprobacion
 
 logger = logging.getLogger(__name__)
 
@@ -684,3 +687,178 @@ def tablero_gerencial_view(request):
         'filtros_activos': filtros_activos, # Pasamos esto limpio al HTML
         'periodo_actual': servicio.periodo,
     })
+
+
+# --- SPEC-012: Balance de Comprobación ---
+
+
+def vista_balance_comprobacion(request):
+    hoy = datetime.date.today()
+
+    # 1. Zero-Click Value
+    anio_filtro = int(request.GET.get('anio') or hoy.year)
+    mes_filtro = int(request.GET.get('mes') or hoy.month)
+    id_centro_costo = request.GET.get('id_centro_costo', '')
+    periodo_corte = f"{anio_filtro}{mes_filtro:02d}"
+
+    # 2. Motor SQL O(1) con consolidación por NIT_CONSOLIDADO
+    sql = """
+        SELECT 
+            COD_CUENTA AS codigo,
+            NIT_CONSOLIDADO AS nit,
+            MAX(NOM_TERCERO_SUCURSAL) AS nom_tercero, 
+            SUM(SALDO_INICIAL) AS saldo_inicial,
+            SUM(DEBITOS_MES) AS debitos,
+            SUM(CREDITOS_MES) AS creditos,
+            SUM(SALDO_FINAL) AS saldo_final
+        FROM V_BI_CONTABILIDAD_DASHBOARD
+        WHERE PERIODO = %(periodo)s
+    """
+    
+    params = {'periodo': periodo_corte}
+
+    if id_centro_costo:
+        sql += " AND ID_CENTRO_COSTO = %(id_centro_costo)s"
+        params['id_centro_costo'] = id_centro_costo
+
+    sql += """
+        GROUP BY 
+            COD_CUENTA, 
+            NIT_CONSOLIDADO
+        ORDER BY COD_CUENTA, MAX(NOM_TERCERO_SUCURSAL)
+    """
+
+    # 3. Ejecutar y mapear al array
+    saldos_crudos = []
+    mapa_cuentas = {}
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT TRIM(COD_CUENTA), MAX(TRIM(UPPER(NOM_CUENTA)))
+            FROM CO_CUENTAS
+            WHERE ID_SISTEMA = '1' AND LENGTH(TRIM(COD_CUENTA)) IN (1, 2, 4, 6, 8)
+            GROUP BY TRIM(COD_CUENTA)
+        """)
+        mapa_cuentas = {str(r[0]).strip(): str(r[1]).strip() for r in cursor.fetchall() if r[0]}
+
+        cursor.execute(sql, params)
+        columnas = [col[0].lower() for col in cursor.description]
+        
+        for row in cursor.fetchall():
+            fila = dict(zip(columnas, row))
+            
+            # La tabla ya nos entrega todo listo
+            ini = Decimal(str(fila.get('saldo_inicial') or 0))
+            deb = Decimal(str(fila.get('debitos') or 0))
+            cred = Decimal(str(fila.get('creditos') or 0))
+            fin = Decimal(str(fila.get('saldo_final') or 0))
+            
+            saldos_crudos.append({
+                'codigo': fila.get('codigo'),
+                'nit': fila.get('nit'),
+                'nom_tercero': fila.get('nom_tercero'),
+                'saldo_inicial': ini,
+                'debitos': deb,
+                'creditos': cred,
+                'saldo_final': fin,
+            })
+
+    # 4. Inyección a Alpine.js
+    cuentas_balance = estructurar_balance_comprobacion(saldos_crudos, mapa_cuentas=mapa_cuentas)
+    filtros_disponibles = ServicioAnalisisFinanciero.get_filtros_disponibles(anio_actual=str(anio_filtro))
+    centros_costo = [
+        {
+            'id_centro_costo': c['id'],
+            'id': c['id'],
+            'nombre': c['nombre'],
+        }
+        for c in filtros_disponibles.get('centros_costo', [])
+    ]
+
+    context = {
+        'balance_data': cuentas_balance,
+        'centros_costo': centros_costo,
+        'mes_default': mes_filtro,
+        'anio_default': anio_filtro,
+        'periodo_actual': periodo_corte,
+    }
+
+    return render(request, 'reportes/balance_comprobacion.html', context)
+
+
+balance_comprobacion_view = vista_balance_comprobacion
+
+
+def exportar_balance_terceros(request):
+    periodo = request.GET.get('periodo', '202501')
+    formato = request.GET.get('formato', 'excel')
+
+    query = """
+        SELECT 
+            CTA_NIVEL_4, 
+            COD_CUENTA, 
+            NOM_CUENTA, 
+            NIT_CONSOLIDADO AS NIT,
+            -- Tomamos un nombre representativo entre las múltiples sucursales
+            MAX(NOM_TERCERO_SUCURSAL) AS NOM_TERCERO, 
+            SUM(SALDO_INICIAL) AS SALDO_INICIAL, 
+            SUM(DEBITOS_MES) AS DEBITOS_MES, 
+            SUM(CREDITOS_MES) AS CREDITOS_MES, 
+            SUM(SALDO_FINAL) AS SALDO_FINAL
+        FROM V_BI_CONTABILIDAD_DASHBOARD
+        WHERE PERIODO = %s
+        GROUP BY 
+            CTA_NIVEL_4, 
+            COD_CUENTA, 
+            NOM_CUENTA, 
+            NIT_CONSOLIDADO
+        ORDER BY COD_CUENTA, MAX(NOM_TERCERO_SUCURSAL)
+    """
+    
+    with connection.cursor() as cursor:
+        cursor.execute(query, [periodo])
+        columnas = [col[0] for col in cursor.description]
+        registros = cursor.fetchall()
+
+    if formato == 'sheets':
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = f'attachment; filename="Balance_Terceros_{periodo}.csv"'
+        
+        writer = csv.writer(response, delimiter=';')
+        writer.writerow(columnas)
+        for fila in registros:
+            writer.writerow(fila)
+        return response
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="Balance_Terceros_{periodo}.xlsx"'
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Balance {periodo}"
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+
+    ws.append(columnas)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+
+    for fila in registros:
+        ws.append(fila)
+
+    ws.freeze_panes = 'A2'
+    wb.save(response)
+    return response
+
+
+# --- SPEC-011: Módulo de Conciliación Electrónica DIAN vs ERP ---
+from .views_dian import (
+    gestor_lotes_dian,
+    upload_excel_dian,
+    api_dian_get_lotes,
+    api_dian_get_detalle,
+    api_dian_accion_lote,
+)
+
+
