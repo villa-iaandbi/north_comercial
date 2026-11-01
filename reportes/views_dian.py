@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import re
 import json
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -45,10 +46,44 @@ def api_dian_get_lotes(request):
 
 
 def api_dian_get_detalle(request, id_lote):
-    """ Retorna el detalle transaccional de un lote """
+    """ Retorna el detalle transaccional de un lote (Paginado, con filtros) y sus KPIs """
+    nit_empresa = os.environ.get('NIT_EMPRESA', '900123456')
+
+    try:
+        page = max(1, int(request.GET.get('page', 1)))
+        limit = min(500, max(1, int(request.GET.get('limit', 100))))  # Tope de seguridad
+    except ValueError:
+        page = 1
+        limit = 100
+
+    # Estados válidos de ESTADO_CRUCE (calculados por P_CONCILIAR_LOTE_DIAN):
+    # 1=EXACTO, 2=DESCUADRE, 3=FALTANTE, 4=FANTASMA. Se filtra estrictamente por ese valor.
+    estado = request.GET.get('estado')
+    if estado and str(estado).isdigit() and int(estado) in (1, 2, 3, 4):
+        estado = int(estado)
+    else:
+        estado = None
+
+    grupo = request.GET.get('grupo')
+    tipo_doc = request.GET.get('tipo_doc')
+
+    service = ConciliacionDianService(nit_empresa)
+    resultado = service.get_detalle_lote_paginado(id_lote, page=page, limit=limit, estado=estado, grupo=grupo, tipo_doc=tipo_doc)
+    return JsonResponse(resultado)
+
+
+def api_dian_estado_recalculo(request, id_lote):
+    """ Polling: estado de la tarea asíncrona (Django-Q2) de recálculo de un lote """
+    if request.method != 'GET':
+        return JsonResponse({"status": "error", "mensaje": "Método no permitido."}, status=405)
+
+    task_id = request.GET.get('task_id', '')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', task_id):
+        return JsonResponse({"status": "error", "mensaje": "task_id inválido."}, status=400)
+
     nit_empresa = os.environ.get('NIT_EMPRESA', '900123456')
     service = ConciliacionDianService(nit_empresa)
-    return JsonResponse(service.get_detalle_lote(id_lote))
+    return JsonResponse(service.consultar_estado_recalculo(id_lote, task_id))
 
 
 @csrf_exempt

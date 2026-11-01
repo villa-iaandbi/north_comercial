@@ -87,14 +87,29 @@
             </div>
             <div class="space-x-2">
                 <!-- Filtros Locales UI -->
-                <select x-model="filtroGrupo" class="border-gray-300 rounded text-sm py-1">
+                <select x-model="filtroGrupo" @change="aplicarFiltroGrupo()" class="border-gray-300 rounded text-sm py-1">
                     <option value="TODOS">Todos (Emitidos/Recibidos)</option>
                     <option value="EMITIDO">Solo Emitidos</option>
                     <option value="RECIBIDO">Solo Recibidos</option>
                 </select>
+                <select x-model="filtroTipoDoc" @change="aplicarFiltroTipo()" class="border-gray-300 rounded text-sm py-1">
+                    <option value="TODOS">Todos los Tipos</option>
+                    <option value="FACTURA">Facturas</option>
+                    <option value="NOTA CR">Notas Crédito</option>
+                    <option value="NOTA DE">Notas Débito</option>
+                    <option value="SOPORTE">Documento Soporte</option>
+                </select>
 
-                <button @click="recalcularLote()" :disabled="loteActivo?.estado_lote === 'CERRADO' || cargando" class="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 disabled:opacity-50 text-sm font-bold shadow">
-                    ↻ Recalcular Cruce ERP
+                <button @click="recalcularLote()" :disabled="loteActivo?.estado_lote === 'CERRADO' || cargando || recalculando" class="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold shadow inline-flex items-center">
+                    <svg x-show="recalculando" class="animate-spin h-4 w-4 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" style="display: none;">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                    <span x-show="!recalculando">↻ Recalcular Cruce ERP</span>
+                    <span x-show="recalculando" style="display: none;">Recalculando...</span>
+                </button>
+                <button @click="modalIva = true" class="px-3 py-1 bg-indigo-100 text-indigo-700 border border-indigo-300 rounded hover:bg-indigo-200 text-sm font-bold shadow transition">
+                    Resumen IVA DIAN
                 </button>
                 <button @click="cerrarAuditoria()" :disabled="loteActivo?.estado_lote === 'CERRADO'" class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 text-sm font-bold shadow">
                     🔒 Cerrar Auditoría
@@ -104,36 +119,66 @@
 
         <!-- KPI Cards -->
         <div class="grid grid-cols-4 gap-4">
-            <!-- 1: Verde (Exactos) -->
-            <div class="bg-green-100 p-4 rounded shadow border-l-4 border-green-500 cursor-pointer hover:shadow-md transition" @click="filtroEstado = 1">
+            <div :class="filtroEstado === 1 ? 'ring-4 ring-green-500 transform scale-105' : 'hover:shadow-md'" class="bg-green-100 p-4 rounded shadow border-l-4 border-green-500 cursor-pointer transition" @click="setFiltroEstado(1)">
                 <div class="text-xs font-bold text-green-700 uppercase">Exactos (Match)</div>
-                <div class="text-2xl font-black text-green-900" x-text="kpis.exactos.cantidad"></div>
-                <div class="text-sm text-green-800" x-text="formatoMoneda(kpis.exactos.valor)"></div>
+                <div class="text-2xl font-black text-green-900" x-text="kpis.exactos ? kpis.exactos.cantidad : 0"></div>
+                <div class="text-sm text-green-800" x-text="formatoMoneda(kpis.exactos ? kpis.exactos.valor_dian : 0)"></div>
             </div>
-            <!-- 2: Amarillo (Descuadres) -->
-            <div class="bg-yellow-100 p-4 rounded shadow border-l-4 border-yellow-500 cursor-pointer hover:shadow-md transition" @click="filtroEstado = 2">
+            <div :class="filtroEstado === 2 ? 'ring-4 ring-yellow-500 transform scale-105' : 'hover:shadow-md'" class="bg-yellow-100 p-4 rounded shadow border-l-4 border-yellow-500 cursor-pointer transition" @click="setFiltroEstado(2)">
                 <div class="text-xs font-bold text-yellow-700 uppercase">Descuadre Valores</div>
-                <div class="text-2xl font-black text-yellow-900" x-text="kpis.descuadre.cantidad"></div>
-                <div class="text-sm text-yellow-800" x-text="formatoMoneda(kpis.descuadre.valor)"></div>
+                <div class="text-2xl font-black text-yellow-900" x-text="kpis.descuadres ? kpis.descuadres.cantidad : 0"></div>
+                <div class="text-sm text-yellow-800" x-text="formatoMoneda(kpis.descuadres ? kpis.descuadres.valor_dian : 0)"></div>
             </div>
-            <!-- 3: Rojo (Faltantes ERP) -->
-            <div class="bg-red-100 p-4 rounded shadow border-l-4 border-red-500 cursor-pointer hover:shadow-md transition" @click="filtroEstado = 3">
+            <div :class="filtroEstado === 3 ? 'ring-4 ring-red-500 transform scale-105' : 'hover:shadow-md'" class="bg-red-100 p-4 rounded shadow border-l-4 border-red-500 cursor-pointer transition" @click="setFiltroEstado(3)">
                 <div class="text-xs font-bold text-red-700 uppercase">Faltantes (No en ERP)</div>
-                <div class="text-2xl font-black text-red-900" x-text="kpis.faltantes.cantidad"></div>
-                <div class="text-sm text-red-800" x-text="formatoMoneda(kpis.faltantes.valor)"></div>
+                <div class="text-2xl font-black text-red-900" x-text="kpis.faltantes ? kpis.faltantes.cantidad : 0"></div>
+                <div class="text-sm text-red-800" x-text="formatoMoneda(kpis.faltantes ? kpis.faltantes.valor_dian : 0)"></div>
             </div>
-            <!-- 4: Naranja (Fantasmas) -->
-            <div class="bg-orange-100 p-4 rounded shadow border-l-4 border-orange-500 cursor-pointer hover:shadow-md transition" @click="filtroEstado = 4">
+            <div :class="filtroEstado === 4 ? 'ring-4 ring-orange-500 transform scale-105' : 'hover:shadow-md'" class="bg-orange-100 p-4 rounded shadow border-l-4 border-orange-500 cursor-pointer transition" @click="setFiltroEstado(4)">
                 <div class="text-xs font-bold text-orange-700 uppercase">Fantasmas (Solo en ERP)</div>
-                <div class="text-2xl font-black text-orange-900" x-text="kpis.fantasmas.cantidad"></div>
-                <div class="text-sm text-orange-800" x-text="formatoMoneda(kpis.fantasmas.valor)"></div>
+                <div class="text-2xl font-black text-orange-900" x-text="kpis.fantasmas ? kpis.fantasmas.cantidad : 0"></div>
+                <div class="text-sm text-orange-800" x-text="formatoMoneda(kpis.fantasmas ? kpis.fantasmas.valor_erp : 0)"></div>
+            </div>
+        </div>
+
+        <!-- Modal Resumen IVA DIAN (Alpine + Tailwind, sin dependencias externas) -->
+        <div x-show="modalIva" x-cloak style="display: none;" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+             @click.self="modalIva = false" @keydown.escape.window="modalIva = false">
+            <div class="bg-white rounded shadow-xl w-full max-w-xl p-5">
+                <div class="flex justify-between items-center mb-3 border-b pb-2">
+                    <h3 class="text-lg font-black text-gray-800">Resumen IVA DIAN</h3>
+                    <button @click="modalIva = false" class="text-gray-500 hover:text-gray-800 text-xl leading-none">&times;</button>
+                </div>
+                <div class="text-xs text-gray-500 mb-3" x-text="loteActivo ? 'Lote: ' + loteActivo.nom_lote : ''"></div>
+                <table class="w-full text-sm font-mono border border-gray-200">
+                    <thead class="bg-gray-800 text-white">
+                        <tr>
+                            <th class="py-1 px-2 text-left">Concepto</th>
+                            <th class="py-1 px-2 text-right">Base DIAN</th>
+                            <th class="py-1 px-2 text-right">IVA DIAN</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="fila in resumenFiscalFilas()" :key="fila.clave">
+                            <tr class="border-t border-gray-200 even:bg-gray-50">
+                                <td class="py-1 px-2 font-bold text-gray-700" x-text="fila.concepto"></td>
+                                <td class="py-1 px-2 text-right" x-text="formatoMoneda(fila.base)"></td>
+                                <td class="py-1 px-2 text-right font-bold" x-text="formatoMoneda(fila.iva)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <div class="text-xs text-gray-400 mt-2">Solo documentos reportados por la DIAN (excluye fantasmas del ERP). Base = Total - IVA.</div>
+                <div class="text-right mt-4">
+                    <button @click="modalIva = false" class="px-4 py-1 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300 text-sm">Cerrar</button>
+                </div>
             </div>
         </div>
 
         <!-- Tabla de Detalle Dinámica (Alta Densidad ADR-016) -->
-        <div class="bg-white rounded shadow flex-1 overflow-auto">
+        <div class="bg-white rounded shadow flex-1 overflow-auto" id="tabla-detalle-container">
             <table class="w-full text-sm font-mono text-left whitespace-nowrap">
-                <thead class="bg-gray-800 text-white sticky top-0">
+                <thead class="bg-gray-800 text-white sticky top-0 z-10">
                     <tr>
                         <th class="py-1 px-2">TIPO</th>
                         <th class="py-1 px-2">NIT</th>
@@ -143,6 +188,8 @@
                         <th class="py-1 px-2">FECHA</th>
                         <th class="py-1 px-2 text-right">TOTAL DIAN</th>
                         <th class="py-1 px-2 text-right">TOTAL ERP</th>
+                        <th class="py-1 px-2 text-right">IVA DIAN</th>
+                        <th class="py-1 px-2 text-right">IVA ERP</th>
                         <th class="py-1 px-2 text-right">DIFERENCIA</th>
                         <th class="py-1 px-2 text-center">ESTADO</th>
                     </tr>
@@ -158,6 +205,8 @@
                             <td class="py-1 px-2" x-text="doc.fecha_emision"></td>
                             <td class="py-1 px-2 text-right" x-text="formatoMoneda(doc.total)"></td>
                             <td class="py-1 px-2 text-right" x-text="formatoMoneda(doc.total_erp)"></td>
+                            <td class="py-1 px-2 text-right" x-text="formatoMoneda(doc.iva)"></td>
+                            <td class="py-1 px-2 text-right" x-text="formatoMoneda(doc.iva_erp)"></td>
                             <td class="py-1 px-2 text-right font-bold" :class="doc.diferencia !== 0 ? 'text-red-600' : ''" x-text="formatoMoneda(doc.diferencia)"></td>
                             <td class="py-1 px-2 text-center">
                                 <span x-show="doc.estado_cruce === 1" class="px-2 py-0.5 bg-green-200 text-green-800 rounded text-xs font-bold">EXACTO</span>
@@ -169,6 +218,15 @@
                     </template>
                 </tbody>
             </table>
+
+            <!-- Controles de Paginación -->
+            <div class="p-4 text-center border-t border-gray-200">
+                <button x-show="hasMore" @click="cargarSiguientePagina()" :disabled="cargandoPagina" class="px-6 py-2 bg-gray-200 text-gray-700 font-bold rounded hover:bg-gray-300 disabled:opacity-50 transition">
+                    <span x-show="!cargandoPagina">Cargar Más Registros</span>
+                    <span x-show="cargandoPagina">Cargando...</span>
+                </button>
+                <p x-show="!hasMore && documentos.length > 0" class="text-sm text-gray-500 font-bold">No hay más registros para mostrar.</p>
+            </div>
         </div>
     </div>
 </div>
@@ -178,17 +236,38 @@ function conciliacionDian() {
     return {
         vistaActual: 'gestor', // 'gestor' o 'detalle'
         cargando: false,
+        cargandoPagina: false,
+        recalculando: false, // true mientras la tarea Django-Q del recálculo está en curso
+        pollTimer: null,
+        pollEnVuelo: false,  // evita solapar consultas si el servidor tarda más de 3 s
+        pollIntentos: 0,
+        pollErrores: 0,
+        POLL_INTERVALO_MS: 3000,
+        POLL_MAX_INTENTOS: 120,  // 120 x 3 s = 6 min (> timeout de la tarea en Django-Q: 5 min)
+        POLL_MAX_ERRORES: 3,     // errores de red consecutivos tolerados
+        POLL_TIMEOUT_REQ_MS: 10000,
+        paginaActual: 1,
+        hasMore: false,
+        modalIva: false, // modal Resumen IVA DIAN
+        reqSeq: 0, // descarta respuestas obsoletas (filtro/recálculo) para que no pisen la foto actual
         nuevoLote: { nombre: '' },
         lotes: [], // Se alimentará por AJAX (Endpoint pendiente para listar lotes)
         loteActivo: null,
         documentos: [], // Se alimentará por AJAX al abrir un lote
         filtroEstado: null, // 1, 2, 3, 4
         filtroGrupo: 'TODOS',
+        filtroTipoDoc: 'TODOS',
         kpis: {
-            exactos: { cantidad: 0, valor: 0 },
-            descuadre: { cantidad: 0, valor: 0 },
-            faltantes: { cantidad: 0, valor: 0 },
-            fantasmas: { cantidad: 0, valor: 0 }
+            exactos: { cantidad: 0, valor_dian: 0, valor_erp: 0 },
+            descuadres: { cantidad: 0, valor_dian: 0, valor_erp: 0 },
+            faltantes: { cantidad: 0, valor_dian: 0, valor_erp: 0 },
+            fantasmas: { cantidad: 0, valor_dian: 0, valor_erp: 0 },
+            resumen_fiscal: {
+                ventas: { base: 0, iva: 0 },
+                devol_ventas: { base: 0, iva: 0 },
+                compras: { base: 0, iva: 0 },
+                devol_compras: { base: 0, iva: 0 }
+            }
         },
 
         init() {
@@ -202,7 +281,7 @@ function conciliacionDian() {
 
         async cargarLotes() {
             try {
-                let response = await fetch('/comercial/dian/conciliacion/api/lotes/');
+                let response = await fetch('/comercial/dian/conciliacion/api/lotes/', { cache: 'no-store' });
                 let data = await response.json();
                 if(data.status === 'success') {
                     this.lotes = data.lotes;
@@ -254,77 +333,217 @@ function conciliacionDian() {
             this.vistaActual = 'detalle';
             this.filtroEstado = null;
             this.filtroGrupo = 'TODOS';
-            await this.cargarDetalleLote(lote.id_lote);
+            this.filtroTipoDoc = 'TODOS';
+            this.paginaActual = 1;
+            this.hasMore = false;
+            this.documentos = []; // Limpiar antes de cargar
+            await this.cargarDetalleLote(lote.id_lote, this.paginaActual);
         },
 
         volverAlGestor() {
+            this.detenerPolling();
             this.loteActivo = null;
             this.vistaActual = 'gestor';
         },
 
-        async cargarDetalleLote(id_lote) {
+        resumenFiscalVacio() {
+            const q = () => ({ base: 0, iva: 0 });
+            return { ventas: q(), devol_ventas: q(), compras: q(), devol_compras: q() };
+        },
+
+        resumenFiscalFilas() {
+            const r = { ...this.resumenFiscalVacio(), ...(this.kpis.resumen_fiscal || {}) };
+            return [
+                { clave: 'ventas', concepto: 'Ventas', ...r.ventas },
+                { clave: 'devol_ventas', concepto: 'Devol. en Ventas', ...r.devol_ventas },
+                { clave: 'compras', concepto: 'Compras', ...r.compras },
+                { clave: 'devol_compras', concepto: 'Devol. en Compras', ...r.devol_compras }
+            ];
+        },
+
+        kpisVacios() {
+            const k = () => ({ cantidad: 0, valor_dian: 0, valor_erp: 0 });
+            return { exactos: k(), descuadres: k(), faltantes: k(), fantasmas: k(), resumen_fiscal: this.resumenFiscalVacio() };
+        },
+
+        async cargarDetalleLote(id_lote, page = 1) {
+            const seq = ++this.reqSeq;
+            this.cargandoPagina = true;
             try {
-                let response = await fetch(`/comercial/dian/conciliacion/api/lotes/${id_lote}/`);
+                let url = `/comercial/dian/conciliacion/api/lotes/${id_lote}/?page=${page}&limit=100`;
+                if (this.filtroEstado) url += `&estado=${this.filtroEstado}`;
+                if (this.filtroGrupo !== 'TODOS') url += `&grupo=${this.filtroGrupo}`;
+                if (this.filtroTipoDoc !== 'TODOS') url += `&tipo_doc=${encodeURIComponent(this.filtroTipoDoc)}`;
+
+                let response = await fetch(url, { cache: 'no-store' });
                 let data = await response.json();
+                // Una petición más reciente (otro filtro / recarga post-recálculo) ya tomó el control
+                if (seq !== this.reqSeq) return;
                 if(data.status === 'success') {
-                    this.documentos = data.documentos;
-                    this.calcularKPIs();
+                    // Asegurar que documentos sea un array
+                    const nuevosDocumentos = Array.isArray(data.documentos) ? data.documentos : [];
+
+                    if (page === 1) {
+                        // SOBREESCRIBIR (nunca acumular): la tabla y las tarjetas son la foto exacta del servidor
+                        this.documentos = nuevosDocumentos;
+                        if (data.kpis) {
+                            this.kpis = { ...this.kpisVacios(), ...data.kpis };
+                        }
+                    } else {
+                        this.documentos = [...this.documentos, ...nuevosDocumentos];
+                    }
+                    this.hasMore = !!data.has_more; // Asegurar booleano
+                    this.paginaActual = data.page || page;
+                } else {
+                    console.error("Error del backend:", data.mensaje);
+                    if (page === 1) this.documentos = [];
                 }
-            } catch (e) { console.error("Error cargando detalle", e); }
+            } catch (e) {
+                console.error("Error cargando detalle", e);
+                if (seq === this.reqSeq && page === 1) this.documentos = [];
+            } finally {
+                if (seq === this.reqSeq) this.cargandoPagina = false;
+            }
+        },
+
+        async setFiltroEstado(estado) {
+            // Si clickea el mismo, lo apaga (toggle)
+            this.filtroEstado = this.filtroEstado === estado ? null : estado;
+            this.paginaActual = 1;
+            this.documentos = [];
+            await this.cargarDetalleLote(this.loteActivo.id_lote, 1);
+        },
+
+        async aplicarFiltroGrupo() {
+            this.paginaActual = 1;
+            this.documentos = [];
+            await this.cargarDetalleLote(this.loteActivo.id_lote, 1);
+        },
+
+        async aplicarFiltroTipo() {
+            this.paginaActual = 1;
+            this.documentos = [];
+            await this.cargarDetalleLote(this.loteActivo.id_lote, 1);
+        },
+
+        async cargarSiguientePagina() {
+            if (this.hasMore && !this.cargandoPagina) {
+                await this.cargarDetalleLote(this.loteActivo.id_lote, this.paginaActual + 1);
+            }
         },
 
         documentosFiltrados() {
-            return this.documentos.filter(doc => {
-                let matchEstado = this.filtroEstado === null || doc.estado_cruce === this.filtroEstado;
-                let matchGrupo = this.filtroGrupo === 'TODOS' || doc.grupo_fiscal === this.filtroGrupo;
-                return matchEstado && matchGrupo;
-            });
-        },
-
-        calcularKPIs() {
-            // Reiniciar contadores
-            this.kpis = {
-                exactos: { cantidad: 0, valor: 0 },
-                descuadre: { cantidad: 0, valor: 0 },
-                faltantes: { cantidad: 0, valor: 0 },
-                fantasmas: { cantidad: 0, valor: 0 }
-            };
-
-            this.documentos.forEach(doc => {
-                let valorDoc = doc.total || doc.total_erp || 0;
-                if (doc.estado_cruce === 1) {
-                    this.kpis.exactos.cantidad++;
-                    this.kpis.exactos.valor += valorDoc;
-                } else if (doc.estado_cruce === 2) {
-                    this.kpis.descuadre.cantidad++;
-                    this.kpis.descuadre.valor += valorDoc;
-                } else if (doc.estado_cruce === 3) {
-                    this.kpis.faltantes.cantidad++;
-                    this.kpis.faltantes.valor += valorDoc;
-                } else if (doc.estado_cruce === 4) {
-                    this.kpis.fantasmas.cantidad++;
-                    this.kpis.fantasmas.valor += valorDoc;
-                }
-            });
+            return this.documentos;
         },
 
         async recalcularLote() {
-            if (!confirm('¿Deseas recalcular el cruce contra el ERP?')) return;
-            this.cargando = true;
+            if (this.recalculando) return;
+            if (!confirm('¿Deseas enviar a recalcular el cruce contra el ERP?')) return;
+
+            const idLote = this.loteActivo.id_lote;
+            this.recalculando = true;
             try {
-                let response = await fetch(`/comercial/dian/conciliacion/api/lotes/${this.loteActivo.id_lote}/accion/`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ accion: 'recalcular' })
-                });
-                let data = await response.json();
-                if(data.status === 'success') {
-                    alert('Recálculo finalizado.');
-                    await this.cargarDetalleLote(this.loteActivo.id_lote);
-                } else {
-                    alert('Error: ' + data.mensaje);
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), this.POLL_TIMEOUT_REQ_MS);
+                let response;
+                try {
+                    response = await fetch(`/comercial/dian/conciliacion/api/lotes/${idLote}/accion/`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ accion: 'recalcular' }),
+                        signal: controller.signal
+                    });
+                } finally {
+                    clearTimeout(timeout);
                 }
-            } catch (e) { console.error(e); } finally { this.cargando = false; }
+                const data = await response.json();
+
+                if (data.status === 'processing' && data.task_id) {
+                    // El PL/SQL corre asíncrono en Django-Q: consultar el estado cada 3 s
+                    this.iniciarPolling(idLote, data.task_id);
+                } else {
+                    alert('Error: ' + (data.mensaje || 'No se pudo iniciar el recálculo.'));
+                    this.recalculando = false;
+                }
+            } catch (e) {
+                console.error("Error iniciando recálculo", e);
+                alert('No se pudo iniciar el recálculo (error de red o tiempo de espera agotado).');
+                this.recalculando = false;
+            }
+        },
+
+        iniciarPolling(idLote, taskId) {
+            this.detenerPolling();
+            this.recalculando = true;
+            this.pollIntentos = 0;
+            this.pollErrores = 0;
+            this.pollTimer = setInterval(() => this.consultarEstadoRecalculo(idLote, taskId), this.POLL_INTERVALO_MS);
+        },
+
+        detenerPolling() {
+            if (this.pollTimer) {
+                clearInterval(this.pollTimer);
+                this.pollTimer = null;
+            }
+            this.pollEnVuelo = false;
+            this.recalculando = false;
+        },
+
+        async consultarEstadoRecalculo(idLote, taskId) {
+            if (this.pollEnVuelo) return;
+
+            // Seguridad: si el usuario salió del lote, no seguir consultando
+            if (!this.loteActivo || this.loteActivo.id_lote !== idLote) {
+                this.detenerPolling();
+                return;
+            }
+
+            this.pollIntentos++;
+            if (this.pollIntentos > this.POLL_MAX_INTENTOS) {
+                this.detenerPolling();
+                alert('El recálculo está tardando más de lo esperado. Recarga la página (F5) y reabre el lote para verificar el resultado.');
+                return;
+            }
+
+            this.pollEnVuelo = true;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), this.POLL_TIMEOUT_REQ_MS);
+            try {
+                const response = await fetch(
+                    `/comercial/dian/conciliacion/api/lotes/${idLote}/estado/?task_id=${encodeURIComponent(taskId)}`,
+                    { cache: 'no-store', signal: controller.signal }
+                );
+                const data = await response.json();
+                this.pollErrores = 0;
+
+                if (data.status === 'finished') {
+                    this.detenerPolling();
+                    await this.recargarTableroTactico();
+                } else if (data.status === 'error') {
+                    this.detenerPolling();
+                    alert('Error en el recálculo: ' + (data.mensaje || 'desconocido'));
+                    await this.recargarTableroTactico();
+                }
+                // status === 'processing': continuar esperando
+            } catch (e) {
+                // Timeout o caída de red: tolerar fallos puntuales, liberar la UI si persisten
+                this.pollErrores++;
+                console.error("Error consultando estado del recálculo", e);
+                if (this.pollErrores >= this.POLL_MAX_ERRORES) {
+                    this.detenerPolling();
+                    alert('Se perdió la comunicación con el servidor mientras se recalculaba. Recarga la página (F5) y reabre el lote para verificar el resultado.');
+                }
+            } finally {
+                clearTimeout(timeout);
+                this.pollEnVuelo = false;
+            }
+        },
+
+        // ADR-013/016: se recarga solo la página 1 (100 filas) y los KPIs desde el servidor
+        async recargarTableroTactico() {
+            if (!this.loteActivo) return;
+            this.paginaActual = 1;
+            await this.cargarDetalleLote(this.loteActivo.id_lote, 1);
         },
 
         async cerrarAuditoria() {

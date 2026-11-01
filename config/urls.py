@@ -35,4 +35,5 @@ urlpatterns = [
     path('dian/conciliacion/api/lotes/', reportes_views.api_dian_get_lotes, name='api_dian_get_lotes'),
     path('dian/conciliacion/api/lotes/<int:id_lote>/', reportes_views.api_dian_get_detalle, name='api_dian_get_detalle'),
     path('dian/conciliacion/api/lotes/<int:id_lote>/accion/', reportes_views.api_dian_accion_lote, name='api_dian_accion_lote'),
+    path('dian/conciliacion/api/lotes/<int:id_lote>/estado/', reportes_views.api_dian_estado_recalculo, name='api_dian_estado_recalculo'),
 ]

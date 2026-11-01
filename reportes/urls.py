@@ -40,6 +40,7 @@ urlpatterns = [
     path('dian/conciliacion/api/lotes/', views.api_dian_get_lotes, name='api_dian_get_lotes'),
     path('dian/conciliacion/api/lotes/<int:id_lote>/', views.api_dian_get_detalle, name='api_dian_get_detalle'),
     path('dian/conciliacion/api/lotes/<int:id_lote>/accion/', views.api_dian_accion_lote, name='api_dian_accion_lote'),
+    path('dian/conciliacion/api/lotes/<int:id_lote>/estado/', views.api_dian_estado_recalculo, name='api_dian_estado_recalculo'),
 
     # SPEC-004: Tablero de Control de Inventarios
     path('control-inventarios/', views_inventario.control_inventarios_view,
