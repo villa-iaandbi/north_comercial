@@ -3,6 +3,7 @@ from reportes import views
 from . import views_inventario
 from . import views_cartera
 from . import views_cxp
+from . import views_exogena
 
 app_name = 'reportes'
 
@@ -41,6 +42,20 @@ urlpatterns = [
     path('dian/conciliacion/api/lotes/<int:id_lote>/', views.api_dian_get_detalle, name='api_dian_get_detalle'),
     path('dian/conciliacion/api/lotes/<int:id_lote>/accion/', views.api_dian_accion_lote, name='api_dian_accion_lote'),
     path('dian/conciliacion/api/lotes/<int:id_lote>/estado/', views.api_dian_estado_recalculo, name='api_dian_estado_recalculo'),
+
+    # SPEC-013: Configuración de Información Exógena DIAN (CRUD CO_PARAM_EXOGENA)
+    path('exogena/parametros/', views_exogena.exogena_parametros_view,
+         name='exogena_parametros'),
+    path('exogena/parametros/api/', views_exogena.exogena_parametros_api,
+         name='exogena_parametros_api'),
+    path('exogena/parametros/api/crear/', views_exogena.exogena_parametro_crear,
+         name='exogena_parametro_crear'),
+    path('exogena/parametros/api/<int:pk>/editar/', views_exogena.exogena_parametro_editar,
+         name='exogena_parametro_editar'),
+    path('exogena/parametros/api/<int:pk>/inactivar/', views_exogena.exogena_parametro_inactivar,
+         name='exogena_parametro_inactivar'),
+    path('exogena/parametros/api/<int:pk>/reactivar/', views_exogena.exogena_parametro_reactivar,
+         name='exogena_parametro_reactivar'),
 
     # SPEC-004: Tablero de Control de Inventarios
     path('control-inventarios/', views_inventario.control_inventarios_view,
