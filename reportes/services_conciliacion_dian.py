@@ -304,10 +304,15 @@ class ConciliacionDianService:
                     # Filtro estricto por el estado que calculó Oracle; sin comparar montos en Python/SQL
                     query_base += " AND D.ESTADO_CRUCE = %s"
                     params_base.append(estado)
-                if grupo and grupo != 'TODOS':
-                    query_base += " AND D.GRUPO_FISCAL = %s"
+                # Filtros con AND estricto sobre TODOS los estados (1, 2, 3 y 4):
+                # los fantasmas (estado 4) NO están eximidos del grupo fiscal ni del tipo de documento.
+                grupo = grupo.strip() if grupo else None
+                tipo_doc = tipo_doc.strip() if tipo_doc else None
+                if grupo and grupo.upper() != 'TODOS':
+                    query_base += " AND UPPER(TRIM(D.GRUPO_FISCAL)) = UPPER(%s)"
                     params_base.append(grupo)
-                if tipo_doc and tipo_doc != 'TODOS':
+                if tipo_doc and tipo_doc.upper() != 'TODOS':
+                    # Equivalente a __icontains: 'Factura' hace match con 'Factura Electrónica de Venta'
                     query_base += " AND UPPER(D.TIPO_DOCUMENTO) LIKE UPPER(%s)"
                     params_base.append(f"%{tipo_doc}%")
 
