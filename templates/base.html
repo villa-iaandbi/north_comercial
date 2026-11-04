@@ -441,6 +441,12 @@
                                 Configuración Exógena
                             </a>
                         </li>
+                        <li>
+                            <a href="{% url 'reportes:auditoria_exogena' %}" class="flex items-center py-1.5 text-xs {% if 'exogena/auditoria' in request.path %}text-white font-semibold{% else %}text-gray-400{% endif %} hover:text-white transition-colors">
+                                <span class="w-1 h-1 rounded-full bg-gray-500 mr-2"></span>
+                                Auditoría Exógena
+                            </a>
+                        </li>
                     </ul>
                 </li>
             </nav>

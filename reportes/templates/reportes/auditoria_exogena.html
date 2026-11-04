@@ -1,0 +1,310 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Auditoría Exógena - North Comercial{% endblock %}
+{% block page_title %}Auditoría de Información Exógena DIAN{% endblock %}
+
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+{{ datos_iniciales|json_script:"auditoria-exogena-datos" }}
+
+<div x-data="auditoriaExogena()"
+     x-init="iniciar()"
+     class="w-full flex flex-col space-y-4">
+
+    <!-- ============================================================ -->
+    <!-- CABECERA: selectores grandes y botón de exportación           -->
+    <!-- ============================================================ -->
+    <div class="bg-white rounded-lg shadow p-5">
+        <div class="mb-4">
+            <h1 class="text-xl font-bold text-gray-800">Tablero de Auditoría Exógena</h1>
+            <p class="text-sm text-gray-500">
+                Montos anualizados por tercero (vista V_EXOGENA_PRECALCULADA). Los terceros cuyo total en el formato
+                es menor al tope se consolidan en <span class="font-semibold">CUANTIAS MENORES</span>
+                (NIT <span x-text="nitCuantiasMenores"></span>).
+            </p>
+        </div>
+
+        <div class="flex flex-wrap items-end gap-5">
+            <div>
+                <label for="aud-ano" class="block text-sm font-bold text-gray-700 mb-1">Año Fiscal</label>
+                <select id="aud-ano" x-model="ano" @change="cambiarAno()"
+                        :disabled="anos.length === 0"
+                        class="border-2 border-gray-300 rounded-lg px-4 py-3 text-lg font-semibold bg-white min-w-[180px] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed">
+                    <template x-for="a in anos" :key="a">
+                        <option :value="a" x-text="a" :selected="a === ano"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div>
+                <label for="aud-formato" class="block text-sm font-bold text-gray-700 mb-1">Formato DIAN</label>
+                <select id="aud-formato" x-model="formato" @change="cargar(1)"
+                        :disabled="formatos.length === 0"
+                        class="border-2 border-gray-300 rounded-lg px-4 py-3 text-lg font-semibold bg-white min-w-[180px] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed">
+                    <template x-for="f in formatos" :key="f">
+                        <option :value="f" x-text="f" :selected="f === formato"></option>
+                    </template>
+                </select>
+            </div>
+
+            <button type="button" @click="exportar()"
+                    :disabled="exportando || cargando || !formato || resumen.total_filas === 0"
+                    class="px-6 py-3 bg-green-600 text-white text-lg font-bold rounded-lg shadow hover:bg-green-700 transition inline-flex items-center disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg x-show="!exportando" class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                <svg x-show="exportando" x-cloak class="w-6 h-6 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+                <span x-text="exportando ? 'Generando...' : 'Exportar Formato a Excel'"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Mensaje de error -->
+    <div x-show="error" x-cloak class="bg-red-50 border border-red-300 text-red-700 rounded-lg px-4 py-3 text-sm font-semibold flex justify-between items-start">
+        <span x-text="error"></span>
+        <button type="button" @click="error = ''" class="ml-4 text-red-500 hover:text-red-700" aria-label="Cerrar">&times;</button>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- INDICADORES                                                   -->
+    <!-- ============================================================ -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" x-show="formato" x-cloak>
+        <div class="bg-white rounded-lg shadow p-4 border-l-4 border-blue-600">
+            <div class="text-xs font-bold text-gray-500 uppercase">Monto total del formato</div>
+            <div class="text-xl font-bold text-gray-800" x-text="moneda(resumen.monto_total)"></div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4 border-l-4 border-green-600">
+            <div class="text-xs font-bold text-gray-500 uppercase">Terceros detallados</div>
+            <div class="text-xl font-bold text-gray-800" x-text="moneda(resumen.monto_terceros_detallados)"></div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4 border-l-4 border-amber-500">
+            <div class="text-xs font-bold text-gray-500 uppercase">Cuantías menores</div>
+            <div class="text-xl font-bold text-gray-800" x-text="moneda(resumen.monto_cuantias_menores)"></div>
+            <div class="text-xs text-gray-500"
+                 x-text="resumen.terceros_consolidados + ' de ' + resumen.terceros_originales + ' terceros consolidados'"></div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4 border-l-4 border-gray-500">
+            <div class="text-xs font-bold text-gray-500 uppercase">Filas a exportar</div>
+            <div class="text-xl font-bold text-gray-800" x-text="resumen.total_filas.toLocaleString('es-CO')"></div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- TABLA DE PREVISUALIZACIÓN (100 filas por página)              -->
+    <!-- ============================================================ -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+            <h2 class="text-sm font-bold text-gray-700">Previsualización de la exportación</h2>
+            <span x-show="cargando" x-cloak class="text-xs text-blue-600 font-semibold">Cargando...</span>
+        </div>
+
+        <div class="overflow-x-auto max-h-[60vh] overflow-y-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-100 text-gray-600 text-xs uppercase sticky top-0 z-10">
+                    <tr>
+                        <th class="px-3 py-2 text-left">Concepto</th>
+                        <th class="px-3 py-2 text-left">NIT</th>
+                        <th class="px-3 py-2 text-left">Razón Social</th>
+                        <th class="px-3 py-2 text-left">Columna XML</th>
+                        <th class="px-3 py-2 text-right">Monto</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    <template x-for="(f, i) in items" :key="i">
+                        <tr :class="f.es_cuantia_menor ? 'bg-amber-50 font-semibold' : 'hover:bg-gray-50'">
+                            <td class="px-3 py-1.5 whitespace-nowrap" x-text="f.concepto_dian"></td>
+                            <td class="px-3 py-1.5 whitespace-nowrap font-mono" x-text="f.nit"></td>
+                            <td class="px-3 py-1.5" x-text="f.razon_social"></td>
+                            <td class="px-3 py-1.5 whitespace-nowrap" x-text="f.columna_xml"></td>
+                            <td class="px-3 py-1.5 text-right whitespace-nowrap font-mono"
+                                :class="Number(f.monto) < 0 ? 'text-red-600' : ''"
+                                x-text="moneda(f.monto)"></td>
+                        </tr>
+                    </template>
+                    <tr x-show="!cargando && items.length === 0" x-cloak>
+                        <td colspan="5" class="px-3 py-10 text-center text-gray-500"
+                            x-text="formato ? 'No hay información para el año y formato seleccionados.' : 'No hay formatos disponibles en la vista de exógena.'"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginación -->
+        <div class="px-4 py-2 border-t border-gray-200 flex items-center justify-between text-sm text-gray-600" x-show="paginacion.total_registros > 0" x-cloak>
+            <span x-text="rangoTexto()"></span>
+            <div class="flex items-center gap-2">
+                <button type="button" @click="cargar(paginacion.pagina - 1)"
+                        :disabled="!paginacion.tiene_anterior || cargando"
+                        class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">Anterior</button>
+                <span class="font-semibold" x-text="'Página ' + paginacion.pagina + ' de ' + paginacion.total_paginas"></span>
+                <button type="button" @click="cargar(paginacion.pagina + 1)"
+                        :disabled="!paginacion.tiene_siguiente || cargando"
+                        class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">Siguiente</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function auditoriaExogena() {
+        const datos = JSON.parse(document.getElementById('auditoria-exogena-datos').textContent);
+
+        const resumenVacio = () => ({
+            total_filas: 0,
+            filas_cuantias_menores: 0,
+            terceros_originales: 0,
+            terceros_consolidados: 0,
+            monto_total: '0',
+            monto_cuantias_menores: '0',
+            monto_terceros_detallados: '0'
+        });
+        const paginacionVacia = () => ({
+            pagina: 1,
+            total_paginas: 1,
+            total_registros: 0,
+            por_pagina: datos.por_pagina || 100,
+            tiene_anterior: false,
+            tiene_siguiente: false
+        });
+
+        const formatoMoneda = new Intl.NumberFormat('es-CO', {
+            style: 'currency',
+            currency: 'COP',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2
+        });
+
+        return {
+            opciones: datos.opciones || [],          // [{ano, formato}]
+            nitCuantiasMenores: datos.nit_cuantias_menores,
+            ano: '',
+            formato: '',
+            items: [],
+            resumen: resumenVacio(),
+            paginacion: paginacionVacia(),
+            cargando: false,
+            exportando: false,
+            error: datos.error || '',
+            _peticion: 0,                             // descarta respuestas obsoletas
+
+            get anos() {
+                return [...new Set(this.opciones.map(o => o.ano))];
+            },
+            get formatos() {
+                return this.opciones.filter(o => o.ano === this.ano).map(o => o.formato);
+            },
+
+            iniciar() {
+                if (this.anos.length === 0) return;
+                this.ano = this.anos[0];                // el más reciente (viene ordenado DESC)
+                this.formato = this.formatos[0] || '';
+                this.cargar(1);
+            },
+
+            cambiarAno() {
+                if (!this.formatos.includes(this.formato)) {
+                    this.formato = this.formatos[0] || '';
+                }
+                this.cargar(1);
+            },
+
+            moneda(valor) {
+                const n = Number(valor);
+                return Number.isFinite(n) ? formatoMoneda.format(n) : '';
+            },
+
+            rangoTexto() {
+                const p = this.paginacion;
+                const desde = (p.pagina - 1) * p.por_pagina + 1;
+                const hasta = Math.min(p.pagina * p.por_pagina, p.total_registros);
+                return 'Mostrando ' + desde.toLocaleString('es-CO') + ' - ' + hasta.toLocaleString('es-CO') +
+                       ' de ' + p.total_registros.toLocaleString('es-CO') + ' filas';
+            },
+
+            urlConParametros(base, extra) {
+                const params = new URLSearchParams(Object.assign({ ano: this.ano, formato: this.formato }, extra || {}));
+                return base + '?' + params.toString();
+            },
+
+            async mensajeDeError(respuesta) {
+                try {
+                    const cuerpo = await respuesta.json();
+                    if (cuerpo && cuerpo.error) return cuerpo.error;
+                } catch (e) { /* cuerpo no JSON */ }
+                return 'Error inesperado (' + respuesta.status + ').';
+            },
+
+            async cargar(pagina) {
+                if (!this.ano || !this.formato) {
+                    this.items = [];
+                    this.resumen = resumenVacio();
+                    this.paginacion = paginacionVacia();
+                    return;
+                }
+                const idPeticion = ++this._peticion;
+                this.cargando = true;
+                this.error = '';
+                try {
+                    const url = this.urlConParametros(datos.url_datos, { page: pagina || 1 });
+                    const respuesta = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    if (idPeticion !== this._peticion) return;
+                    if (!respuesta.ok) {
+                        this.error = await this.mensajeDeError(respuesta);
+                        this.items = [];
+                        this.resumen = resumenVacio();
+                        this.paginacion = paginacionVacia();
+                        return;
+                    }
+                    const cuerpo = await respuesta.json();
+                    if (idPeticion !== this._peticion) return;
+                    this.items = cuerpo.items;
+                    this.resumen = cuerpo.resumen;
+                    this.paginacion = cuerpo.paginacion;
+                } catch (e) {
+                    if (idPeticion === this._peticion) {
+                        this.error = 'No fue posible conectar con el servidor. Intente de nuevo.';
+                    }
+                } finally {
+                    if (idPeticion === this._peticion) this.cargando = false;
+                }
+            },
+
+            async exportar() {
+                if (this.exportando || !this.ano || !this.formato) return;
+                this.exportando = true;
+                this.error = '';
+                try {
+                    const url = this.urlConParametros(datos.url_excel);
+                    const respuesta = await fetch(url);
+                    if (!respuesta.ok) {
+                        this.error = await this.mensajeDeError(respuesta);
+                        return;
+                    }
+                    const blob = await respuesta.blob();
+                    const enlace = document.createElement('a');
+                    const urlBlob = URL.createObjectURL(blob);
+                    enlace.href = urlBlob;
+                    enlace.download = 'Exogena_Formato_' + this.formato + '_' + this.ano + '.xlsx';
+                    document.body.appendChild(enlace);
+                    enlace.click();
+                    document.body.removeChild(enlace);
+                    setTimeout(() => URL.revokeObjectURL(urlBlob), 1000);
+                } catch (e) {
+                    this.error = 'No fue posible generar el archivo. Intente de nuevo.';
+                } finally {
+                    this.exportando = false;
+                }
+            }
+        };
+    }
+</script>
+{% endblock %}

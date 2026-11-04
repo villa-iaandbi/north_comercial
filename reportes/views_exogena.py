@@ -21,6 +21,7 @@ from django.urls import reverse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
+from . import services_exogena
 from .forms import ParametroExogenaForm
 from .models import ParametroExogena
 
@@ -256,3 +257,110 @@ def exogena_parametro_inactivar(request, pk):
 def exogena_parametro_reactivar(request, pk):
     """JSON: revierte el borrado lógico (ESTADO = 'A')."""
     return _cambiar_estado(pk, ParametroExogena.ESTADO_ACTIVO, 'Parámetro reactivado correctamente.')
+
+
+# ---------------------------------------------------------------------- #
+# SPEC-013 Fase 2: Tablero de Auditoría Exógena (V_EXOGENA_PRECALCULADA)
+# ---------------------------------------------------------------------- #
+FILAS_PREVISUALIZACION = 100
+
+
+def _texto_decimal(valor):
+    """Decimal -> str para JSON sin pérdida de precisión."""
+    return format(valor, 'f')
+
+
+@ensure_csrf_cookie
+@require_GET
+def auditoria_exogena_view(request):
+    """Página principal del tablero. Entrega los pares (año, formato) para poblar los selectores."""
+    try:
+        opciones = services_exogena.obtener_opciones()
+        error = ''
+    except DatabaseError:
+        logger.exception('SPEC-013: error consultando opciones de V_EXOGENA_PRECALCULADA')
+        opciones = []
+        error = MENSAJE_ERROR_BD
+
+    contexto = {
+        'datos_iniciales': {
+            'opciones': opciones,
+            'error': error,
+            'por_pagina': FILAS_PREVISUALIZACION,
+            'nit_cuantias_menores': services_exogena.NIT_CUANTIAS_MENORES,
+            'url_datos': reverse('reportes:auditoria_exogena_datos_api'),
+            'url_excel': reverse('reportes:descargar_excel_exogena_api'),
+        },
+    }
+    return render(request, 'reportes/auditoria_exogena.html', contexto)
+
+
+@require_GET
+def auditoria_exogena_datos_api(request):
+    """JSON: previsualización paginada (100 filas por página) con la regla de cuantías menores aplicada."""
+    try:
+        datos = services_exogena.obtener_datos_procesados(
+            request.GET.get('ano'), request.GET.get('formato'))
+    except services_exogena.ParametrosInvalidosError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+    except DatabaseError:
+        logger.exception('SPEC-013: error consultando V_EXOGENA_PRECALCULADA')
+        return JsonResponse({'ok': False, 'error': MENSAJE_ERROR_BD}, status=500)
+
+    paginador = Paginator(datos['filas'], FILAS_PREVISUALIZACION)
+    pagina = paginador.get_page(request.GET.get('page'))  # tolera page inválida/fuera de rango
+    resumen = datos['resumen']
+
+    return JsonResponse({
+        'ok': True,
+        'ano': datos['ano'],
+        'formato': datos['formato'],
+        'items': [
+            {
+                'concepto_dian': f['concepto_dian'],
+                'nit': f['nit'],
+                'razon_social': f['razon_social'],
+                'tipo_doc_dian': f['tipo_doc_dian'],
+                'columna_xml': f['columna_xml'],
+                'monto': _texto_decimal(f['monto']),
+                'es_cuantia_menor': f['es_cuantia_menor'],
+            }
+            for f in pagina.object_list
+        ],
+        'paginacion': {
+            'pagina': pagina.number,
+            'total_paginas': paginador.num_pages,
+            'total_registros': paginador.count,
+            'por_pagina': FILAS_PREVISUALIZACION,
+            'tiene_anterior': pagina.has_previous(),
+            'tiene_siguiente': pagina.has_next(),
+        },
+        'resumen': {
+            'total_filas': resumen['total_filas'],
+            'filas_cuantias_menores': resumen['filas_cuantias_menores'],
+            'terceros_originales': resumen['terceros_originales'],
+            'terceros_consolidados': resumen['terceros_consolidados'],
+            'monto_total': _texto_decimal(resumen['monto_total']),
+            'monto_cuantias_menores': _texto_decimal(resumen['monto_cuantias_menores']),
+            'monto_terceros_detallados': _texto_decimal(resumen['monto_terceros_detallados']),
+        },
+    })
+
+
+@require_GET
+def descargar_excel_exogena_api(request):
+    """Descarga el .xlsx del formato/año seleccionados. Los errores se responden en JSON (el cliente los muestra)."""
+    try:
+        datos = services_exogena.obtener_datos_procesados(
+            request.GET.get('ano'), request.GET.get('formato'))
+    except services_exogena.ParametrosInvalidosError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+    except DatabaseError:
+        logger.exception('SPEC-013: error consultando V_EXOGENA_PRECALCULADA para exportar')
+        return JsonResponse({'ok': False, 'error': MENSAJE_ERROR_BD}, status=500)
+
+    if not datos['filas']:
+        return JsonResponse(
+            {'ok': False, 'error': 'No hay información para el año y formato seleccionados.'}, status=404)
+
+    return services_exogena.generar_excel_response(datos)

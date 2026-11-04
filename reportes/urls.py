@@ -57,6 +57,14 @@ urlpatterns = [
     path('exogena/parametros/api/<int:pk>/reactivar/', views_exogena.exogena_parametro_reactivar,
          name='exogena_parametro_reactivar'),
 
+    # SPEC-013 Fase 2: Tablero de Auditoría Exógena
+    path('exogena/auditoria/', views_exogena.auditoria_exogena_view,
+         name='auditoria_exogena'),
+    path('exogena/auditoria/api/datos/', views_exogena.auditoria_exogena_datos_api,
+         name='auditoria_exogena_datos_api'),
+    path('exogena/auditoria/api/excel/', views_exogena.descargar_excel_exogena_api,
+         name='descargar_excel_exogena_api'),
+
     # SPEC-004: Tablero de Control de Inventarios
     path('control-inventarios/', views_inventario.control_inventarios_view,
          name='control_inventarios'),
