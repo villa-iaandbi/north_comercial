@@ -4,6 +4,7 @@ import logging
 from django.utils import timezone
 import pytz
 from datetime import datetime
+from core.utils_contables import GeneradorContableUniversal
 from core.models import (
     InGravamen, SgParametro, SgUsuarioCentroCosto, CoRetencion, InArticulo,
     MvPedidosNorth, CoDocumento, CtVenta, InMovInventario, CoDocumentoItem, CoTipoDocumento,
@@ -300,77 +301,20 @@ def procesar_lote_pedidos(pedidos_qs):
                 # ==========================================
                 # FASE 5: RETENCIONES FINALES E INSERCIÓN
                 # ==========================================
-                tot_rte_compras = decimal.Decimal('0.00')
-                tot_rte_agricola = decimal.Decimal('0.00')
-                tot_rte_ica = decimal.Decimal('0.00')
-                tot_rte_iva = decimal.Decimal('0.00')
-                
-                if causa_rtefuente == 'SI':
-                    # Lógica de Cascada (ReteFuente)
-                    # Paso A y B: Evaluación Agrícola y Desbordamiento
-                    if id_rte_agricola and id_rte_agricola in cache_retenciones:
-                        rte_obj_agr = cache_retenciones[id_rte_agricola]
-                        if base_retencion_agricola >= rte_obj_agr.vlr_base:
-                            tot_rte_agricola = base_retencion_agricola * (rte_obj_agr.porc_retencion / decimal.Decimal('100.00'))
-                        else:
-                            # Desbordamiento
-                            base_retencion_compras += base_retencion_agricola
-                            base_retencion_agricola = decimal.Decimal('0.00')
+                if not plantilla_items_global:
+                    raise Exception(f"Fallo Crítico: No hay plantilla en CO_PLANTILLAS asignada al tipo de documento {id_tipo_doc_credito}.")
 
-                    # Paso C: Evaluación Compras
-                    if id_rte_compras and id_rte_compras in cache_retenciones:
-                        rte_obj_com = cache_retenciones[id_rte_compras]
-                        if base_retencion_compras >= rte_obj_com.vlr_base:
-                            tot_rte_compras = base_retencion_compras * (rte_obj_com.porc_retencion / decimal.Decimal('100.00'))
-                            
-                    # Unificación de Bases para ICA e IVA
-                    base_total = total_mercancia
-                    
-                    if id_rte_ica and id_rte_ica in cache_retenciones:
-                        rte_obj_ica = cache_retenciones[id_rte_ica]
-                        if base_total >= rte_obj_ica.vlr_base:
-                            tot_rte_ica = base_total * (rte_obj_ica.porc_retencion / decimal.Decimal('100.00'))
-                            
-                    if id_rte_iva and id_rte_iva in cache_retenciones:
-                        # El ReteIVA solo aplica si el cliente pertenece al régimen 3
-                        cliente_obj = primer_pedido.id_tercero
-                        if getattr(cliente_obj, 'id_regimen', None) == '3':
-                            rte_obj_iva = cache_retenciones[id_rte_iva]
-                            if base_total >= rte_obj_iva.vlr_base:
-                                tot_rte_iva = total_iva * (rte_obj_iva.porc_retencion / decimal.Decimal('100.00'))
-
-                tot_retefuente = tot_rte_compras + tot_rte_agricola + tot_rte_ica
-                gran_total = total_mercancia + total_iva + total_impoconsumo_factura - (tot_retefuente + tot_rte_iva)
-                
-                # REDONDEO DE CABECERA (Header-Level Rounding) a Enteros más cercanos (Cero Decimales)
-                total_mercancia_red = total_mercancia.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                total_iva_red = total_iva.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                
-                tot_rte_compras_red = tot_rte_compras.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                tot_rte_agricola_red = tot_rte_agricola.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                tot_rte_ica_red = tot_rte_ica.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                tot_rte_iva_red = tot_rte_iva.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                
-                tot_retefuente_red = tot_retefuente.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                gran_total_red = gran_total.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                
-                total_comision_cabecera_red = total_comision_cabecera.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                total_costo_ventas_red = total_costo_ventas.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                total_impoconsumo_factura_red = total_impoconsumo_factura.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP)
-                
-                print(f"Bases Finales -> Agrícola: {base_retencion_agricola}, Compras (incl. desborde): {base_retencion_compras}, Base Total (ICA/IVA): {base_total}")
-                print(f"Total Factura a insertar (Redondeado): {gran_total_red} (RTE_COM: {tot_rte_compras_red}, RTE_AGR: {tot_rte_agricola_red}, RTE_ICA: {tot_rte_ica_red}, RTE_IVA: {tot_rte_iva_red})")
-                
                 obs_dinamica = f"Facturacion Masiva fact. No. {num_documento} de los pedido(s): {str_pedidos}"
-                
-                doc = CoDocumento.objects.create(
+
+                # Documento instanciado (sin persistir): los totales los calcula el generador contable.
+                doc = CoDocumento(
                     id_documento=id_documento,
                     id_tipo_documento=id_tipo_doc_credito,
                     num_documento=num_documento,
                     id_tercero=tercero_id,
                     id_vendedor=primer_pedido.id_vendedor or '0',
                     id_responsable=primer_pedido.id_vendedor[:8] if primer_pedido.id_vendedor else '0', 
-                    tot_documento=gran_total_red,
+                    tot_documento=decimal.Decimal('0.00'),
                     estado_doc='GRABADO',
                     fch_documento=timestamp_actual,
                     fch_registro=timestamp_actual,
@@ -379,24 +323,59 @@ def procesar_lote_pedidos(pedidos_qs):
                     id_ano=current_year,
                     id_moneda='1',
                     vlr_moneda=decimal.Decimal('1'),
-                    vlr_comision_vend=total_comision_cabecera_red,
+                    vlr_comision_vend=decimal.Decimal('0.00'),
                     cambios=1,
                     obser=obs_dinamica,
                     docto_alterno=primer_pedido.num_pedido
                 )
+
+                base_dict = {
+                    'mcia1': mcia1, 'mcia2': mcia2, 'mcia3': mcia3, 'mcia4': mcia4, 'mcia5': mcia5,
+                    'tot_iva2': tot_iva2, 'tot_iva3': tot_iva3, 'tot_iva4': tot_iva4, 'tot_iva5': tot_iva5,
+                    'total_mercancia': total_mercancia,
+                    'total_iva': total_iva,
+                    'total_impoconsumo': total_impoconsumo_factura,
+                    'total_costo_ventas': total_costo_ventas,
+                    'total_comision_cabecera': total_comision_cabecera,
+                    'base_retencion_agricola': base_retencion_agricola,
+                    'base_retencion_compras': base_retencion_compras,
+                    'id_tercero': tercero_id,
+                    'id_centro_costo': cc_vendedor,
+                    'timestamp': timestamp_actual,
+                }
+
+                params_tributarios = {
+                    'cache_retenciones': cache_retenciones,
+                    'causa_rtefuente': causa_rtefuente,
+                    'id_rte_agricola': id_rte_agricola,
+                    'id_rte_compras': id_rte_compras,
+                    'id_rte_ica': id_rte_ica,
+                    'id_rte_iva': id_rte_iva,
+                    'id_regimen_cliente': getattr(primer_pedido.id_tercero, 'id_regimen', None),
+                }
+
+                lista_asientos, totales = GeneradorContableUniversal.generar_asientos(
+                    doc, base_dict, params_tributarios, plantilla_items_global,
+                    campo_ajuste='OTROS'
+                )
+
+                # Totales de cabecera devueltos por el generador
+                doc.tot_documento = totales['gran_total_red']
+                doc.vlr_comision_vend = totales['total_comision_cabecera_red']
+                doc.save(force_insert=True)
                 
                 # BYPASS ORA-04091 (Mutating Table Trigger INS_DOCUMENTO_CONSEC) en Oracle 11g
                 CoDocumento.objects.filter(pk=id_documento).update(id_doc_consecutivo=consec_id_recuperado)
                 
                 CtVenta.objects.create(
                     id_documento=doc,
-                    tot_mercancia=total_mercancia_red,
-                    tot_iva=total_iva_red,
-                    tot_retefuente=tot_retefuente_red,
-                    vlr_retencion_iva=tot_rte_iva_red,
-                    tot_otr_impuestos=total_impoconsumo_factura_red,
+                    tot_mercancia=totales['total_mercancia_red'],
+                    tot_iva=totales['total_iva_red'],
+                    tot_retefuente=totales['tot_retefuente_red'],
+                    vlr_retencion_iva=totales['tot_rte_iva_red'],
+                    tot_otr_impuestos=totales['total_impoconsumo_factura_red'],
                     tot_descuento=decimal.Decimal('0.00'),
-                    vlr_venta=gran_total_red,
+                    vlr_venta=totales['gran_total_red'],
                     plazo_pago=primer_pedido.plazo_pago or 0,
                     id_precio=lista_precio_pedido or '1',
                     fch_entrega_mcia=timestamp_actual
@@ -409,80 +388,7 @@ def procesar_lote_pedidos(pedidos_qs):
                 # ==========================================
                 # FASE 6: ASIENTOS CONTABLES DINÁMICOS
                 # ==========================================
-                if not plantilla_items_global:
-                    raise Exception(f"Fallo Crítico: No hay plantilla en CO_PLANTILLAS asignada al tipo de documento {id_tipo_doc_credito}.")
-                
-                mapa_valores = {
-                    'MCIA1': mcia1.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
-                    'MCIA2': mcia2.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
-                    'MCIA3': mcia3.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
-                    'MCIA4': mcia4.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
-                    'MCIA5': mcia5.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
-                    'TOT_IVA2': tot_iva2.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
-                    'TOT_IVA3': tot_iva3.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
-                    'TOT_IVA4': tot_iva4.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
-                    'TOT_IVA5': tot_iva5.quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP),
-                    'COSTO_VENTA': total_costo_ventas_red if total_costo_ventas_red > 0 else decimal.Decimal('0'),
-                    'CXC': gran_total_red,
-                    'TOT_IMPOCONSUMO': total_impoconsumo_factura_red,
-                    'RECUPERACION_COSTO': total_costo_ventas_red if total_costo_ventas_red > 0 else decimal.Decimal('0'),
-                    'RTE_COMPRAS': tot_rte_compras_red,
-                    'RTE_AGRICOLA': tot_rte_agricola_red,
-                    'RTE_ICA': tot_rte_ica_red,
-                    'RTE_OTROS': tot_rte_iva_red
-                }
-                
-                asientos = []
-                idx_origen = 1  
-                
-                for p_item in plantilla_items_global:
-                    val = mapa_valores.get(p_item.campo, decimal.Decimal('0'))
-                    if val > 0:
-                        asientos.append(CoDocumentoItem(
-                            id_documento=doc,
-                            id_item=str(idx_origen),
-                            id_tercero=tercero_id,
-                            fch_documento=timestamp_actual,
-                            id_centro_costo=cc_vendedor, 
-                            debe_haber=p_item.debe_haber,
-                            id_cuenta=p_item.id_cuenta,
-                            siono_pendiente='N',
-                            campo=p_item.campo,
-                            valor=val
-                        ))
-                        idx_origen += 1
-                        
-                # ---------------------------------------------
-                # Balanceo Automático de Redondeos 
-                # ---------------------------------------------
-                if asientos:
-                    suma_debitos = sum(a.valor for a in asientos if a.debe_haber == 'D')
-                    suma_creditos = sum(a.valor for a in asientos if a.debe_haber == 'H')
-                    diferencia = suma_debitos - suma_creditos
-                    
-                    if diferencia != decimal.Decimal('0.00'):
-                        item_costo = next((p for p in plantilla_items_global if p.campo == 'COSTO_VENTA'), None)
-                        if item_costo:
-                            faltante_dh = 'H' if diferencia > 0 else 'D'
-                            ajuste_val = abs(diferencia)
-                            
-                            print(f"Detectado descuadre contable de {ajuste_val}. Balanceando mediante COSTO_VENTA ({faltante_dh}).")
-                            
-                            asientos.append(CoDocumentoItem(
-                                id_documento=doc,
-                                id_item=str(idx_origen),
-                                id_tercero=tercero_id,
-                                fch_documento=timestamp_actual,
-                                id_centro_costo=cc_vendedor,
-                                debe_haber=faltante_dh,
-                                id_cuenta=item_costo.id_cuenta,
-                                siono_pendiente='N',
-                                campo='COSTO_VENTA',
-                                valor=ajuste_val
-                            ))
-                            idx_origen += 1
-
-                    CoDocumentoItem.objects.bulk_create(asientos)
+                CoDocumentoItem.objects.bulk_create(lista_asientos)
                 
                 for p in lista_pedidos:
                     p.procesado = 'S'
