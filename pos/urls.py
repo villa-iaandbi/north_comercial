@@ -1,9 +1,24 @@
 from django.urls import path
 from pos import views
+from pos import views_arqueo
+from pos import views_cajas
+from pos import views_promociones
 
 app_name = 'pos'
 
 urlpatterns = [
+    # Maestro de Cajas (TS_CAJAS)
+    path('cajas/', views_cajas.CajaListView.as_view(), name='cajas_lista'),
+    path('cajas/nueva/', views_cajas.CajaCreateView.as_view(), name='cajas_nueva'),
+    path('cajas/editar/<str:pk>/', views_cajas.CajaUpdateView.as_view(), name='cajas_editar'),
+    path('cajas/api/consecutivos/', views_cajas.api_consecutivos, name='cajas_api_consecutivos'),
+
+    # Arqueo en Caliente (tickets no consolidados)
+    path('arqueo/', views_arqueo.ArqueoCalienteView.as_view(), name='arqueo_caliente'),
+
+    # Descuentos y Promociones
+    path('promociones/', views_promociones.PromocionListView.as_view(), name='promociones_lista'),
+
     path('', views.pos_home, name='pos_home'),
     path('api/catalog/', views.api_catalog, name='api_catalog'),
     path('api/terceros/', views.api_terceros, name='api_terceros'),

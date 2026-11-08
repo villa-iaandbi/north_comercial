@@ -352,6 +352,7 @@ class CoTipoDocumento(models.Model):
     id_tipo_documento = models.CharField(max_length=8, db_column='ID_TIPO_DOCUMENTO', primary_key=True)
     nom_tipo_documento = models.CharField(max_length=150, db_column='NOM_TIPO_DOCUMENTO')
     cod_tipo_documento = models.CharField(max_length=8, db_column='COD_TIPO_DOCUMENTO')
+    modulo = models.CharField(max_length=50, null=True, blank=True, db_column='MODULO')
     
     class Meta:
         managed = False

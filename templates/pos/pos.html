@@ -4,6 +4,9 @@
 {% block title %}Punto de Venta (POS) - North Comercial{% endblock %}
 {% block page_title %}Caja Registradora POS (Offline-First, Promociones & DIAN){% endblock %}
 
+{# El POS requiere el 100% del ancho: sidebar colapsado por defecto #}
+{% block sidebar_collapsed %}true{% endblock %}
+
 {% block extra_head %}
 <script src="{% static 'pos/pos_db.js' %}"></script>
 <script src="{% static 'pos/sw.js' %}"></script>

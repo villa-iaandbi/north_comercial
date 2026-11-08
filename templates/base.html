@@ -32,7 +32,7 @@
 
 <body class="bg-gray-100 text-gray-800 font-sans antialiased" x-data="{ 
           sidebarOpen: false, 
-          desktopSidebarCollapsed: window.location.pathname.includes('/reportes/analisis-ventas') || window.location.pathname.includes('/reportes/analisis-productos') || window.location.pathname.includes('/reportes/control-inventarios') || window.location.pathname.includes('/reportes/control-cartera') || window.location.pathname.includes('/reportes/control-cxp')
+          desktopSidebarCollapsed: {% block sidebar_collapsed %}false{% endblock %} || window.location.pathname.includes('/reportes/analisis-ventas') || window.location.pathname.includes('/reportes/analisis-productos') || window.location.pathname.includes('/reportes/control-inventarios') || window.location.pathname.includes('/reportes/control-cartera') || window.location.pathname.includes('/reportes/control-cxp')
       }">
 
     <!-- Wrapper principal -->
@@ -72,6 +72,7 @@
                           {% elif request.resolver_match.app_name == 'facturacion' %}'facturacion'
                           {% elif request.resolver_match.app_name == 'logistica' %}'entregas'
                           {% elif request.resolver_match.app_name == 'recibos' or request.resolver_match.url_name == 'cartera' %}'tesoreria'
+                          {% elif request.resolver_match.url_name == 'promociones_lista' %}'descuentos'
                           {% elif request.resolver_match.app_name == 'pos' or request.resolver_match.url_name == 'cierre_caja' %}'pos'
                           {% else %}'facturacion'{% endif %}
             }">
@@ -258,6 +259,16 @@
                             <span class="w-1.5 h-1.5 rounded-full bg-violet-400 mr-2.5"></span>
                             Apertura de Caja
                         </a>
+                        <a href="{% url 'pos:cajas_lista' %}"
+                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'cajas_lista' %}text-purple-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 mr-2.5"></span>
+                            Maestro de Cajas
+                        </a>
+                        <a href="{% url 'pos:arqueo_caliente' %}"
+                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'arqueo_caliente' %}text-purple-400 bg-gray-800/60{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full bg-pink-400 mr-2.5"></span>
+                            Arqueo en Caliente
+                        </a>
                         <a href="{% url 'reportes:cierre_caja' %}"
                             class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'cierre_caja' %}text-fuchsia-400 bg-gray-800/60{% endif %}">
                             <span class="w-1.5 h-1.5 rounded-full bg-fuchsia-400 mr-2.5"></span>
@@ -287,8 +298,8 @@
                         </svg>
                     </button>
                     <div x-show="openMenu === 'descuentos'" class="pl-9 pr-2 py-1 space-y-1">
-                        <a href="{% url 'pos:pos_home' %}#promociones"
-                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors">
+                        <a href="{% url 'pos:promociones_lista' %}"
+                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'promociones_lista' %}text-orange-400 bg-gray-800/60{% endif %}">
                             <span class="w-1.5 h-1.5 rounded-full bg-orange-400 mr-2.5"></span>
                             Configuración Promociones
                         </a>
