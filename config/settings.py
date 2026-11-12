@@ -62,6 +62,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'core.tenant.TenantMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -98,13 +99,32 @@ DATABASES = {
         'HOST': '',
         'PORT': '',
     },
+    # Placeholder del tenant: las credenciales reales se inyectan por hilo en
+    # core.tenant.activate_dynamic_connection() a partir de la sesión del cajero.
+    'dynamic_oracle': {
+        'ENGINE': 'django.db.backends.oracle',
+        'NAME': '',
+        'USER': '',
+        'PASSWORD': '',
+        'HOST': '',
+        'PORT': '',
+    },
     'qcluster_db': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'sqlite_db' / 'qcluster.sqlite3',
     }
 }
 
-DATABASE_ROUTERS = ['core.routers.DjangoQRouter']
+DATABASE_ROUTERS = [
+    'core.routers.TenantDatabaseRouter',
+    'core.routers.DjangoQRouter',
+]
+
+# ----------------------------------------------------------------------
+# SUPABASE REST (login de cajeros y configuración multi-tenant)
+# ----------------------------------------------------------------------
+SUPABASE_URL = os.getenv('SUPABASE_URL', '').rstrip('/')
+SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY', '')
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},

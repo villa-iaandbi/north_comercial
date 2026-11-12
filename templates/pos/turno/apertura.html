@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apertura de Caja - North Comercial</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="flex min-h-screen items-center justify-center bg-gray-100 font-sans antialiased">
+    <form method="post" class="w-full max-w-sm space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        {% csrf_token %}
+        <div class="flex items-center justify-between">
+            <h1 class="text-xl font-bold text-gray-800">Apertura de Caja</h1>
+            <a href="{% url 'pos:logout' %}" class="text-xs font-semibold text-gray-500 hover:text-gray-800">Salir</a>
+        </div>
+        <p class="text-sm text-gray-500">Cajero: {{ usuario.email }}</p>
+        {% for message in messages %}
+        <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{{ message }}</div>
+        {% endfor %}
+        <div>
+            <label for="caja" class="mb-1 block text-sm font-semibold text-gray-600">Caja</label>
+            <select id="caja" name="caja" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                <option value="">Seleccione...</option>
+                {% for caja in cajas %}
+                <option value="{{ caja.id_caja }}" {% if caja.id_caja == caja_sel %}selected{% endif %}>{{ caja.cod_caja }} - {{ caja.descripcion }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="base_efectivo" class="mb-1 block text-sm font-semibold text-gray-600">Base de efectivo inicial</label>
+            <input id="base_efectivo" name="base_efectivo" type="number" min="0" step="0.01" value="0" required
+                class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        </div>
+        <button type="submit" class="w-full rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700">Abrir turno</button>
+    </form>
+</body>
+</html>
