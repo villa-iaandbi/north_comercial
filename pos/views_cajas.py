@@ -4,7 +4,7 @@ from datetime import datetime
 from django import forms
 from django.contrib import messages
 from django.http import Http404, JsonResponse
-from django.db import connection
+from core.tenant import get_oracle_connection
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, ListView, UpdateView
 
@@ -25,7 +25,7 @@ TW_INPUT = (
 def _consecutivos_oracle():
     """Retorna lista de (id_doc_consecutivo, nom, prefijo) desde CO_DOC_CONSECUTIVOS."""
     try:
-        with connection.cursor() as cursor:
+        with get_oracle_connection().cursor() as cursor:
             cursor.execute(
                 "SELECT ID_DOC_CONSECUTIVO, NOM_DOC_CONSECUTIVO, PREFIJO "
                 "FROM CO_DOC_CONSECUTIVOS ORDER BY ID_DOC_CONSECUTIVO"
@@ -49,7 +49,7 @@ def _consecutivos_por_tipo_documento(id_tipo_documento, ano=None):
         return []
     ano = ano or _ano_actual()
     try:
-        with connection.cursor() as cursor:
+        with get_oracle_connection().cursor() as cursor:
             cursor.execute(
                 "SELECT DC.ID_DOC_CONSECUTIVO, DC.NOM_DOC_CONSECUTIVO, DC.PREFIJO "
                 "FROM CO_TIPO_DOC_CONSECUTIVOS TDC "
@@ -182,7 +182,7 @@ class CajaCreateView(CreateView):
 
     def form_valid(self, form):
         # El ID se toma de la secuencia de Oracle antes de insertar.
-        with connection.cursor() as cursor:
+        with get_oracle_connection().cursor() as cursor:
             cursor.execute("SELECT SEC_TS_CAJAS.NEXTVAL FROM DUAL")
             form.instance.id_caja = str(int(cursor.fetchone()[0]))
         messages.success(self.request, 'Caja creada correctamente.')

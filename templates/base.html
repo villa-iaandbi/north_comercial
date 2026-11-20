@@ -254,11 +254,16 @@
                             <span class="w-1.5 h-1.5 rounded-full bg-purple-400 mr-2.5"></span>
                             Ventas POS
                         </a>
-                        <a href="{% url 'pos:pos_home' %}#apertura"
-                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors">
+                        {% firstof request.session.usuario_rol request.session.pos_user.rol '' as rol_raw %}
+                        {% with rol_sesion=rol_raw|upper|cut:' ' %}
+                        {% if rol_sesion == 'CAJERO' or rol_sesion == 'DBA' or rol_sesion == 'SUPERVISOR' %}
+                        <a href="{% url 'pos:apertura_turno' %}"
+                            class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'apertura_turno' %}text-purple-400 bg-gray-800/60{% endif %}">
                             <span class="w-1.5 h-1.5 rounded-full bg-violet-400 mr-2.5"></span>
                             Apertura de Caja
                         </a>
+                        {% endif %}
+                        {% endwith %}
                         <a href="{% url 'pos:cajas_lista' %}"
                             class="flex items-center px-3 py-2 text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-800/80 rounded-md transition-colors {% if request.resolver_match.url_name == 'cajas_lista' %}text-purple-400 bg-gray-800/60{% endif %}">
                             <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 mr-2.5"></span>
@@ -494,17 +499,21 @@
                 <!-- Perfil y acciones derecha -->
                 <div class="flex items-center">
                     <div class="relative" x-data="{ userOpen: false }">
+                        {% firstof request.session.usuario_nombre request.session.pos_user.nombre '' as nombre_sesion %}
                         <button @click="userOpen = !userOpen" class="flex items-center text-sm focus:outline-none">
-                            <span class="mr-3 font-medium text-gray-600 hidden md:block">
-                                {% if request.user.is_authenticated %}
-                                {{ request.user.username }}
-                                {% else %}
-                                Usuario
+                            <span class="mr-3 text-right hidden md:block leading-tight">
+                                <span class="block font-medium text-gray-600">
+                                    {% if nombre_sesion %}{{ nombre_sesion }}{% elif request.user.is_authenticated %}{{ request.user.username }}{% else %}Usuario{% endif %}
+                                </span>
+                                {% if request.session.nom_empresa or request.session.usuario_rol %}
+                                <span class="block text-xs text-gray-400">
+                                    {{ request.session.nom_empresa|default:'' }}{% if request.session.nom_empresa and request.session.usuario_rol %} · {% endif %}{{ request.session.usuario_rol|default:'' }}
+                                </span>
                                 {% endif %}
                             </span>
                             <div
                                 class="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
-                                U
+                                {% if nombre_sesion %}{{ nombre_sesion|slice:":1"|upper }}{% else %}U{% endif %}
                             </div>
                         </button>
                         <!-- Dropdown perfil dropdown -->
@@ -513,7 +522,7 @@
                             style="display: none;">
                             <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Mi Perfil</a>
                             <div class="border-t border-gray-100"></div>
-                            <a href="#" class="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Cerrar Sesión</a>
+                            <a href="{% url 'logout' %}" class="block px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Cerrar Sesión</a>
                         </div>
                     </div>
                 </div>

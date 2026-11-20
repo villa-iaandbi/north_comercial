@@ -17,10 +17,13 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import RedirectView
+from pos.views_auth import PosLoginView, pos_logout
 from reportes import views as reportes_views
 
 urlpatterns = [
-    path('', RedirectView.as_view(url='impresion/'), name='home_redirect'),
+    path('', RedirectView.as_view(pattern_name='reportes:dashboard'), name='home_redirect'),
+    path('login/', PosLoginView.as_view(), name='login'),
+    path('logout/', pos_logout, name='logout'),
     path('admin/', admin.site.urls),
     path('facturacion/', include('facturacion.urls')),
     path('recibos/', include('recibos.urls')),

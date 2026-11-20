@@ -117,16 +117,6 @@ class PosPuntosCliente(models.Model):
         return f"Puntos Cliente {self.id_tercero}: {self.puntos_saldo} pts"
 
 
-class TsCajaManager(models.Manager):
-    """
-    El router DjangoQRouter envía toda la app 'pos' a SQLite (qcluster_db).
-    TS_CAJAS es una tabla maestra que vive en Oracle, por lo que este manager
-    fuerza la base de datos 'default'.
-    """
-    def get_queryset(self):
-        return super().get_queryset().using('default')
-
-
 class TsCaja(models.Model):
     ESTADOS = (('A', 'Activa'), ('I', 'Inactiva'))
 
@@ -139,21 +129,17 @@ class TsCaja(models.Model):
     id_doc_consecutivo = models.CharField(max_length=20, db_column='ID_DOC_CONSECUTIVO')
     estado = models.CharField(max_length=1, default='A', choices=ESTADOS, db_column='ESTADO')
 
-    objects = TsCajaManager()
-
     class Meta:
         managed = False
         db_table = 'TS_CAJAS'
         ordering = ['id_caja']
 
     def save(self, *args, **kwargs):
-        kwargs.setdefault('using', 'default')
         if self._state.adding:
             kwargs.setdefault('force_insert', True)
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        kwargs.setdefault('using', 'default')
         return super().delete(*args, **kwargs)
 
     def __str__(self):

@@ -1,8 +1,10 @@
 from django.urls import path
 from pos import views
 from pos import views_arqueo
+from pos import views_auth
 from pos import views_cajas
 from pos import views_promociones
+from pos import views_turno
 
 app_name = 'pos'
 
@@ -12,6 +14,11 @@ urlpatterns = [
     path('cajas/nueva/', views_cajas.CajaCreateView.as_view(), name='cajas_nueva'),
     path('cajas/editar/<str:pk>/', views_cajas.CajaUpdateView.as_view(), name='cajas_editar'),
     path('cajas/api/consecutivos/', views_cajas.api_consecutivos, name='cajas_api_consecutivos'),
+
+    # Login de cajeros (Supabase) y apertura de turno
+    path('login/', views_auth.PosLoginView.as_view(), name='login'),
+    path('logout/', views_auth.pos_logout, name='logout'),
+    path('apertura/', views_turno.AperturaTurnoView.as_view(), name='apertura_turno'),
 
     # Arqueo en Caliente (tickets no consolidados)
     path('arqueo/', views_arqueo.ArqueoCalienteView.as_view(), name='arqueo_caliente'),
