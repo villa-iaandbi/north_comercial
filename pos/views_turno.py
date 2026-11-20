@@ -6,10 +6,10 @@ from django.utils.decorators import method_decorator
 from django.views import View
 
 from pos.models import PosTurno, TsCaja
-from pos.views_auth import SESSION_USER_KEY, pos_login_required
+from pos.views_auth import SESSION_USER_KEY, pos_role_required
 
 
-@method_decorator(pos_login_required, name='dispatch')
+@method_decorator(pos_role_required('CAJERO', 'DBA', 'SUPERVISOR'), name='dispatch')
 class AperturaTurnoView(View):
     """Selección de caja (TS_CAJAS del tenant) y base de efectivo inicial."""
     template_name = 'pos/turno/apertura.html'

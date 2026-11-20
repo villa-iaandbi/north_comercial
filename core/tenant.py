@@ -9,6 +9,7 @@ import threading
 
 from django.conf import settings
 from django.db import connections
+from django.shortcuts import redirect
 
 TENANT_SESSION_KEY = 'tenant_db_config'
 DYNAMIC_ALIAS = 'dynamic_oracle'
@@ -75,9 +76,25 @@ def get_oracle_connection():
     return connections['default']
 
 
+def _exempt_prefixes():
+    """Prefijos de ruta que no exigen sesión multi-tenant."""
+    prefixes = ['/login/', '/logout/', '/pos/login/', '/pos/logout/', '/admin/', '/static/']
+    for url in (settings.STATIC_URL, getattr(settings, 'MEDIA_URL', '')):
+        # Django normaliza un MEDIA_URL vacío a '/': nunca eximir la raíz del sitio.
+        if url and url.strip('/') and not url.startswith(('http://', 'https://', '//')):
+            prefix = '/' + url.lstrip('/')
+            if prefix not in prefixes:
+                prefixes.append(prefix)
+    return tuple(prefixes)
+
+
 class TenantMiddleware:
     """
-    Copia ``session['tenant_db_config']`` al ``threading.local()`` al iniciar la
+    Guardia global de sesión multi-tenant.
+
+    Exige ``session['tenant_db_config']`` válido para cualquier ruta que no sea
+    exenta (login/logout, admin, estáticos/media); sin sesión redirige a /login/.
+    Con sesión válida copia el tenant al ``threading.local()`` al iniciar la
     petición y lo limpia siempre al terminar, para que el hilo (reutilizado por el
     servidor) no arrastre credenciales de una empresa a la petición de otra.
     Debe ir después de SessionMiddleware.
@@ -85,6 +102,10 @@ class TenantMiddleware:
 
     def __init__(self, get_response):
         self.get_response = get_response
+        self.exempt_prefixes = _exempt_prefixes()
+
+    def _is_exempt(self, path):
+        return path.startswith(self.exempt_prefixes)
 
     def __call__(self, request):
         config = request.session.get(TENANT_SESSION_KEY)
@@ -92,6 +113,8 @@ class TenantMiddleware:
             set_tenant_config(config)
         else:
             clear_tenant_config()
+            if not self._is_exempt(request.path_info):
+                return redirect(settings.LOGIN_URL)
         try:
             return self.get_response(request)
         finally:

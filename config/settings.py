@@ -72,6 +72,9 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'config.urls'
 
+# Login global multi-tenant (ver core.tenant.TenantMiddleware)
+LOGIN_URL = '/login/'
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',

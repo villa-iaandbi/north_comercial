@@ -11,9 +11,14 @@ from pos.models import (
     PrPromocion, PrCondicion, PrAccion, PosPuntosCliente
 )
 from pos.pos_consolidator import consolidar_cierre_z
+from pos.views_auth import pos_role_required
 
 logger = logging.getLogger(__name__)
 
+ROLES_APERTURA = ('CAJERO', 'DBA', 'SUPERVISOR')
+
+
+@pos_role_required(*ROLES_APERTURA)
 def pos_home(request):
     """Renderiza la pantalla principal del Punto de Venta (POS)."""
     turno_abierto = PosTurno.objects.filter(estado='ABIERTO').order_by('-id_turno').first()
@@ -95,6 +100,7 @@ def api_terceros(request):
 
 
 @csrf_exempt
+@pos_role_required(*ROLES_APERTURA)
 def api_shift_open(request):
     """Apertura de Caja: Exige ingresar la Base Económica inicial antes de facturar."""
     if request.method != 'POST':
@@ -103,7 +109,14 @@ def api_shift_open(request):
     try:
         data = json.loads(request.body)
         caja_id = data.get('caja_id', 'CAJA-01')
-        usuario = data.get('usuario', request.user.username if request.user.is_authenticated else 'cajero')
+        # El usuario sale de la sesión POS; el body nunca define quién abre el turno.
+        usuario = (
+            (request.session.get('pos_user') or {}).get('email')
+            or request.session.get('id_usuario')
+            or (request.user.username if request.user.is_authenticated else None)
+            or 'cajero'
+        )
+        usuario = str(usuario)
         base_economica = Decimal(str(data.get('base_economica', 0)))
 
         turno_existente = PosTurno.objects.filter(caja_id=caja_id, estado='ABIERTO').first()
