@@ -154,6 +154,16 @@ class TsCaja(models.Model):
     id_doc_consecutivo = models.CharField(max_length=20, db_column='ID_DOC_CONSECUTIVO')
     estado = models.CharField(max_length=1, default='A', choices=ESTADOS, db_column='ESTADO')
 
+    # Resolución DIAN y control de consecutivo por caja (offline-first).
+    num_resolucion = models.CharField(max_length=50, null=True, blank=True, db_column='NUM_RESOLUCION')
+    fch_expedicion = models.DateField(null=True, blank=True, db_column='FCH_EXPEDICION')
+    fch_vencimiento = models.DateField(null=True, blank=True, db_column='FCH_VENCIMIENTO')
+    prefijo = models.CharField(max_length=15, null=True, blank=True, db_column='PREFIJO')
+    rango_inicial = models.BigIntegerField(null=True, blank=True, default=1, db_column='RANGO_INICIAL')
+    rango_final = models.BigIntegerField(null=True, blank=True, default=0, db_column='RANGO_FINAL')
+    consecutivo_actual = models.BigIntegerField(null=True, blank=True, default=0, db_column='CONSECUTIVO_ACTUAL')
+    clave_tecnica = models.CharField(max_length=100, null=True, blank=True, db_column='CLAVE_TECNICA')
+
     class Meta:
         managed = False
         db_table = 'TS_CAJAS'

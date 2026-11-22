@@ -19,6 +19,7 @@ from pos.models import (
 )
 from pos.pos_consolidator import consolidar_cierre_z
 from pos.views_auth import pos_role_required
+from core.tenant import get_oracle_connection
 
 logger = logging.getLogger(__name__)
 
@@ -96,15 +97,136 @@ def _fecha_bogota(valor):
     return valor
 
 
+def _id_sistema_sesion(request):
+    """ID_SISTEMA de la empresa en sesión (north_configuraciones.id_sistema); '1' por defecto."""
+    return str(request.session.get('id_sistema') or '1').strip() or '1'
+
+
+def _caja_id_sesion(request, fallback='CAJA-01', enviado=None):
+    """
+    Caja activa del POS. Prioridad: request.session['caja_id'] (la que fijó la apertura de
+    turno con TS_CAJAS.COD_CAJA), luego el valor enviado (body JSON o ?caja_id=) y por último
+    el fallback.
+    """
+    caja = (
+        request.session.get('caja_id')
+        or enviado
+        or request.GET.get('caja_id')
+        or fallback
+    )
+    return str(caja).strip() or fallback
+
+
+def _a_int(valor, default=0):
+    """NUMBER de Oracle (int/Decimal/float/None) -> int."""
+    try:
+        return int(valor) if valor is not None and valor != '' else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _obtener_numeracion_caja(caja_id):
+    """
+    Resolución y consecutivo de la caja desde TS_CAJAS (Oracle del tenant activo).
+    caja_id puede ser COD_CAJA, ID_CAJA o variantes ('CAJA-01'); ver _resolver_caja_ts.
+
+    Retorna dict {id_caja, cod_caja, prefijo, num_resolucion, fch_vencimiento ('YYYY-MM-DD'|None),
+    rango_inicial, rango_final, consecutivo_actual} o None si la caja no existe o Oracle falla
+    (nunca lanza excepciones: el POS debe seguir operando offline).
+    """
+    caja_ref = str(caja_id or '').strip()
+    if not caja_ref:
+        return None
+    try:
+        from impresion.document_renderer import _resolver_caja_ts
+        with get_oracle_connection().cursor() as cursor:
+            cursor.execute(
+                "SELECT ID_CAJA, COD_CAJA, DESCRIPCION, PREFIJO, NUM_RESOLUCION, FCH_VENCIMIENTO, "
+                "RANGO_INICIAL, RANGO_FINAL, CONSECUTIVO_ACTUAL FROM TS_CAJAS"
+            )
+            fila = _resolver_caja_ts(caja_ref, cursor.fetchall())
+        if not fila:
+            logger.warning(f"POS: la caja '{caja_ref}' no corresponde a ninguna fila de TS_CAJAS.")
+            return None
+        id_caja, cod_caja, _desc, prefijo, num_res, fch_ven, rango_ini, rango_fin, consec = fila
+        return {
+            'id_caja': str(id_caja or '').strip(),
+            'cod_caja': str(cod_caja or '').strip(),
+            'prefijo': str(prefijo or '').strip(),
+            'num_resolucion': str(num_res or '').strip(),
+            'fch_vencimiento': fch_ven.strftime('%Y-%m-%d') if fch_ven else None,
+            'rango_inicial': _a_int(rango_ini, 1),
+            'rango_final': _a_int(rango_fin, 0),
+            'consecutivo_actual': _a_int(consec, 0),
+        }
+    except Exception as exc:
+        logger.warning(f"POS: no se pudo leer la numeración de TS_CAJAS para la caja '{caja_ref}': {exc}")
+        return None
+
+
+def _consecutivo_num_ticket(t_data, prefijo=''):
+    """
+    Entero de consecutivo del ticket: 'consecutivo_num' del payload (lo envía el frontend) o, como
+    compatibilidad, el entero que sigue al prefijo de la caja en ticket_id (p. ej. 'CJ01-45' -> 45).
+    Los ticket_id antiguos ('POS-<ts>-<n>') no coinciden y devuelven 0.
+    """
+    crudo = t_data.get('consecutivo_num')
+    if crudo is not None and str(crudo).strip() != '':
+        try:
+            return max(0, int(crudo))
+        except (TypeError, ValueError):
+            logger.warning(f"POS: consecutivo_num inválido en el ticket {t_data.get('ticket_id')}: {crudo!r}")
+            return 0
+    ticket_id = str(t_data.get('ticket_id') or '').strip()
+    prefijo = (prefijo or '').strip()
+    if prefijo and ticket_id.upper().startswith(prefijo.upper()):
+        resto = ticket_id[len(prefijo):]
+        if resto.isdigit():
+            return int(resto)
+    return 0
+
+
+def _actualizar_consecutivo_caja(id_caja, consecutivo_num):
+    """
+    TS_CAJAS.CONSECUTIVO_ACTUAL = GREATEST(actual, consecutivo_num) (nunca retrocede). Operación
+    idempotente; si Oracle no responde solo registra un warning (el ticket local ya está guardado).
+    Retorna True si actualizó una fila.
+    """
+    if not id_caja or not consecutivo_num or consecutivo_num <= 0:
+        return False
+    try:
+        conn = get_oracle_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "UPDATE TS_CAJAS SET CONSECUTIVO_ACTUAL = GREATEST(NVL(CONSECUTIVO_ACTUAL, 0), %s) "
+                "WHERE TRIM(ID_CAJA) = %s",
+                [int(consecutivo_num), str(id_caja).strip()],
+            )
+            actualizadas = cursor.rowcount
+        if not conn.get_autocommit() and not conn.in_atomic_block:
+            conn.commit()
+        return bool(actualizadas)
+    except Exception as exc:
+        logger.warning(
+            f"POS: no se pudo actualizar TS_CAJAS.CONSECUTIVO_ACTUAL (caja {id_caja}, "
+            f"consecutivo {consecutivo_num}): {exc}"
+        )
+        return False
+
+
 def _datos_empresa(request):
     """Datos de la empresa para el encabezado/CUFE. Nunca lanza excepciones."""
+    id_sistema = _id_sistema_sesion(request)
     datos = {
         'nom_sistema': request.session.get('nom_empresa') or '',
         'nit_emp': '', 'dir_emp': '', 'municipio_emp': '', 'tels_emp': '',
     }
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT NOM_SISTEMA, NIT, DIRECCION FROM SG_SISTEMAS WHERE ID_SISTEMA = '1'")
+            cursor.execute(
+                "SELECT NOM_SISTEMA, NIT, DIRECCION FROM SG_SISTEMAS WHERE ID_SISTEMA = %s",
+                [id_sistema],
+            )
             row = cursor.fetchone()
         if row:
             datos['nom_sistema'] = row[0] or datos['nom_sistema']
@@ -437,7 +559,7 @@ def _procesar_tiquete_pos(request, header, empresa, es_nuevo=True):
         from impresion.document_renderer import render_pos_ticket_to_pdf, obtener_datos_emisor_pos
         caja_id = header.turno.caja_id if header.turno_id else ''
         # Emisor, resolución DIAN y responsabilidades tributarias: misma fuente Oracle que la factura masiva.
-        emisor = obtener_datos_emisor_pos(caja_id)
+        emisor = obtener_datos_emisor_pos(caja_id, id_sistema=_id_sistema_sesion(request))
         empresa_pdf = {**empresa, **{k: v for k, v in emisor.items() if v}}
         ticket_data = _armar_ticket_data(
             header, items, resultado['cufe'], empresa_pdf, resultado['estado_dian'], calculo,
@@ -551,7 +673,7 @@ def api_shift_open(request):
 
     try:
         data = json.loads(request.body)
-        caja_id = data.get('caja_id', 'CAJA-01')
+        caja_id = _caja_id_sesion(request, enviado=data.get('caja_id'))
         # El usuario sale de la sesión POS; el body nunca define quién abre el turno.
         usuario = (
             (request.session.get('pos_user') or {}).get('email')
@@ -586,7 +708,9 @@ def api_shift_open(request):
                 'base_economica': float(turno.base_economica),
                 'fch_apertura': turno.fch_apertura.strftime('%Y-%m-%d %H:%M:%S'),
                 'estado': turno.estado
-            }
+            },
+            'caja_id': turno.caja_id,
+            'numeracion': _obtener_numeracion_caja(turno.caja_id),
         })
     except Exception as e:
         logger.error(f"Error en Apertura de Caja POS: {e}")
@@ -595,10 +719,15 @@ def api_shift_open(request):
 
 def api_shift_status(request):
     """Consulta el estado del turno actual de caja."""
-    caja_id = request.GET.get('caja_id', 'CAJA-01')
+    caja_id = _caja_id_sesion(request)
     turno = PosTurno.objects.filter(caja_id=caja_id, estado='ABIERTO').order_by('-id_turno').first()
     if not turno:
-        return JsonResponse({'status': 'success', 'turno_abierto': False})
+        return JsonResponse({
+            'status': 'success',
+            'turno_abierto': False,
+            'caja_id': caja_id,
+            'numeracion': _obtener_numeracion_caja(caja_id),
+        })
 
     tickets_count = turno.tickets.count()
     return JsonResponse({
@@ -612,7 +741,9 @@ def api_shift_status(request):
             'fch_apertura': turno.fch_apertura.strftime('%Y-%m-%d %H:%M:%S'),
             'estado': turno.estado,
             'tickets_count': tickets_count
-        }
+        },
+        'caja_id': turno.caja_id,
+        'numeracion': _obtener_numeracion_caja(turno.caja_id),
     })
 
 
@@ -628,7 +759,7 @@ def api_sync_tickets(request):
     try:
         payload = json.loads(request.body)
         tickets_data = payload.get('tickets', [])
-        caja_id = payload.get('caja_id', 'CAJA-01')
+        caja_id = _caja_id_sesion(request, enviado=payload.get('caja_id'))
 
         turno = PosTurno.objects.filter(caja_id=caja_id, estado='ABIERTO').order_by('-id_turno').first()
         if not turno:
@@ -640,6 +771,10 @@ def api_sync_tickets(request):
         synced_ids = []
         tickets_resultado = []
         empresa_ctx = _datos_empresa(request) if tickets_data else {}
+        # Numeración de la caja del turno (una sola lectura de TS_CAJAS por sincronización).
+        numeracion = _obtener_numeracion_caja(turno.caja_id) if tickets_data else None
+        id_caja_ts = (numeracion or {}).get('id_caja', '')
+        prefijo_caja = (numeracion or {}).get('prefijo', '')
         for t_data in tickets_data:
             ticket_id = t_data.get('ticket_id')
             if not ticket_id:
@@ -648,6 +783,8 @@ def api_sync_tickets(request):
             existente = PosTicketHeader.objects.filter(ticket_id=ticket_id).first()
             if existente:
                 synced_ids.append(ticket_id)
+                # Idempotente: reafirma el consecutivo por si el UPDATE de un intento previo falló.
+                _actualizar_consecutivo_caja(id_caja_ts, _consecutivo_num_ticket(t_data, prefijo_caja))
                 # Reintento de sync: se devuelve de nuevo CUFE/PDF sin duplicar JSON ni transmisión.
                 tickets_resultado.append(_procesar_tiquete_pos(request, existente, empresa_ctx, es_nuevo=False))
                 continue
@@ -710,6 +847,10 @@ def api_sync_tickets(request):
                 puntos_obj.puntos_acumulados += puntos_ganados
                 puntos_obj.save()
 
+            # Consecutivo por caja: TS_CAJAS.CONSECUTIVO_ACTUAL nunca retrocede (GREATEST).
+            # Si Oracle falla solo se registra warning; el ticket local ya quedó guardado.
+            _actualizar_consecutivo_caja(id_caja_ts, _consecutivo_num_ticket(t_data, prefijo_caja))
+
             synced_ids.append(ticket_id)
             tickets_resultado.append(_procesar_tiquete_pos(request, header, empresa_ctx, es_nuevo=True))
 
@@ -732,7 +873,7 @@ def api_cierre_z(request):
 
     try:
         data = json.loads(request.body)
-        caja_id = data.get('caja_id', 'CAJA-01')
+        caja_id = _caja_id_sesion(request, enviado=data.get('caja_id'))
 
         turno = PosTurno.objects.filter(caja_id=caja_id, estado='ABIERTO').order_by('-id_turno').first()
         if not turno:

@@ -93,6 +93,13 @@
                 </span>
             </template>
 
+            <!-- Caja y próximo consecutivo -->
+            <template x-if="numeracion && numeracion.prefijo">
+                <span class="text-sm font-semibold text-gray-300">
+                    Caja <span x-text="turno.caja_id"></span> · Próx: <span class="text-yellow-300 font-bold" x-text="numeracion.prefijo + siguienteConsecutivo"></span>
+                </span>
+            </template>
+
             <!-- Counter Tickets Pendientes de Sync -->
             <span x-show="unsyncedCount > 0" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-orange-600 text-white animate-bounce">
                 Sync Pendiente: <span class="ml-1 text-sm font-black" x-text="unsyncedCount"></span>
@@ -126,6 +133,15 @@
                 Cierre Z (Finalizar Turno)
             </button>
         </div>
+    </div>
+
+    <!-- Alerta de resolución DIAN / folios -->
+    <div x-show="alertaResolucion" style="display:none"
+         class="mb-4 rounded-lg border-l-4 px-4 py-2 text-sm font-semibold shadow-sm"
+         :class="alertaResolucion && alertaResolucion.nivel === 'rojo'
+                 ? 'bg-red-100 border-red-600 text-red-800'
+                 : 'bg-yellow-100 border-yellow-500 text-yellow-800'">
+        <span x-text="alertaResolucion ? (alertaResolucion.nivel === 'rojo' ? '⛔ ' : '⚠️ ') + alertaResolucion.mensaje : ''"></span>
     </div>
 
     <!-- Grid Principal POS -->
@@ -526,7 +542,9 @@
 function posApp() {
     return {
         isOnline: navigator.onLine,
-        turno: { abierto: false, id_turno: null, caja_id: 'CAJA-01', base_economica: 0, tickets_count: 0 },
+        turno: { abierto: false, id_turno: null, caja_id: null, base_economica: 0, tickets_count: 0 },
+        numeracion: null,
+        confirmandoPago: false,
         catalog: [],
         filteredCatalog: [],
         promociones: [],
@@ -578,19 +596,124 @@ function posApp() {
             }
         },
 
+        // Fecha local de hoy en formato YYYY-MM-DD (comparable como texto con fch_vencimiento).
+        hoyISO() {
+            const d = new Date();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${d.getFullYear()}-${mm}-${dd}`;
+        },
+
+        // Aplica la respuesta de api_shift_status / api_shift_open: fusiona la numeración del
+        // servidor con la guardada en IndexedDB (sin pisar ventas offline pendientes) y persiste.
+        async aplicarRespuestaTurno(data, abierto) {
+            const cajaId = data.caja_id || (data.turno && data.turno.caja_id) || null;
+            const turno = abierto
+                ? { abierto: true, ...data.turno }
+                : { abierto: false, id_turno: null, caja_id: cajaId, base_economica: 0, tickets_count: 0 };
+
+            let saved = null;
+            try { saved = await window.posDB.getShift(); } catch (e) { console.warn('[POS] getShift falló:', e); }
+            const mismaCaja = !!(saved && cajaId && String(saved.caja_id) === String(cajaId));
+            const local = mismaCaja ? (saved.numeracion || null) : null;
+
+            let numeracion = data.numeracion ? { ...data.numeracion } : null;
+            if (numeracion && local && String(local.prefijo || '') === String(numeracion.prefijo || '')) {
+                numeracion.consecutivo_actual = Math.max(
+                    Number(local.consecutivo_actual || 0),
+                    Number(numeracion.consecutivo_actual || 0)
+                );
+            } else if (!numeracion && local) {
+                numeracion = { ...local };  // el servidor no pudo leer TS_CAJAS: se conserva lo local
+            }
+
+            this.turno = turno;
+            this.numeracion = numeracion;
+            await this.guardarTurnoLocal();
+        },
+
+        async guardarTurnoLocal() {
+            try {
+                await window.posDB.saveShift({
+                    caja_id: this.turno.caja_id,
+                    turno: this.turno,
+                    numeracion: this.numeracion
+                });
+            } catch (e) {
+                console.error('[POS] No fue posible guardar el turno en IndexedDB:', e);
+            }
+        },
+
         async checkShiftStatus() {
             try {
-                const res = await fetch('/pos/api/shift/status/?caja_id=CAJA-01');
+                // Sin caja conocida no se envía caja_id: el backend usa request.session['caja_id'].
+                const qs = this.turno.caja_id ? `?caja_id=${encodeURIComponent(this.turno.caja_id)}` : '';
+                const res = await fetch(`/pos/api/shift/status/${qs}`);
                 const data = await res.json();
-                if (data.status === 'success' && data.turno_abierto) {
-                    this.turno = { abierto: true, ...data.turno };
+                if (data.status !== 'success') throw new Error(data.message || 'Respuesta no válida');
+                if (data.turno_abierto) {
+                    await this.aplicarRespuestaTurno(data, true);
                 } else {
-                    this.turno = { abierto: false, id_turno: null, caja_id: 'CAJA-01', base_economica: 0, tickets_count: 0 };
+                    await this.aplicarRespuestaTurno(data, false);
                     this.showAperturaModal = true;
                 }
             } catch (e) {
                 console.warn('[POS] Error al verificar estado del turno online, operando offline:', e);
+                try {
+                    const saved = await window.posDB.getShift();
+                    if (saved && saved.turno) {
+                        this.turno = { ...saved.turno };
+                        this.numeracion = saved.numeracion || null;
+                    }
+                } catch (e2) {
+                    console.error('[POS] No fue posible restaurar el turno desde IndexedDB:', e2);
+                }
             }
+        },
+
+        // --- Alertas de resolución DIAN (banner) ---
+        get siguienteConsecutivo() {
+            const n = this.numeracion;
+            if (!n) return 0;
+            return Math.max(
+                Number(n.consecutivo_actual || 0),
+                Math.max(0, Number(n.rango_inicial || 1) - 1)
+            ) + 1;
+        },
+
+        get alertaResolucion() {
+            const n = this.numeracion;
+            if (!n || !n.prefijo) return null;
+            const rojo = [];
+            const amarillo = [];
+
+            const rangoFinal = Number(n.rango_final || 0);
+            if (rangoFinal > 0) {
+                const restantes = rangoFinal - Number(n.consecutivo_actual || 0);
+                if (this.siguienteConsecutivo > rangoFinal) {
+                    rojo.push('Rango de facturación DIAN agotado para esta caja');
+                } else if (restantes <= 100) {
+                    amarillo.push(`Quedan ${restantes} folios disponibles (rango final ${rangoFinal})`);
+                }
+            }
+
+            if (n.fch_vencimiento) {
+                const hoy = this.hoyISO();
+                if (hoy > n.fch_vencimiento) {
+                    rojo.push(`Resolución DIAN vencida el ${n.fch_vencimiento.split('-').reverse().join('/')}`);
+                } else {
+                    const dias = Math.round(
+                        (new Date(n.fch_vencimiento + 'T00:00:00') - new Date(hoy + 'T00:00:00')) / 86400000
+                    );
+                    if (dias <= 15) {
+                        amarillo.push(dias === 0 ? 'La resolución DIAN vence hoy' : `La resolución DIAN vence en ${dias} día(s)`);
+                    }
+                }
+            }
+
+            if (rojo.length) return { nivel: 'rojo', mensaje: rojo.join(' · ') };
+            if (amarillo.length) return { nivel: 'amarillo', mensaje: amarillo.join(' · ') };
+            return null;
         },
 
         async loadLocalCatalog() {
@@ -954,14 +1077,38 @@ function posApp() {
         },
 
         async confirmPayment() {
+            if (this.confirmandoPago) return;
             if (this.totalPagado < this.totTicket) {
                 alert('El monto ingresado es inferior al total a pagar.');
                 return;
             }
 
-            const ticketId = 'POS-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+            // Consecutivo real por caja (prefijo + número). Sin numeración/prefijo: id temporal POS-...
+            let ticketId;
+            let consecutivoNum = 0;
+            const num = this.numeracion;
+            if (num && num.prefijo) {
+                const nextNum = this.siguienteConsecutivo;
+                const rangoFinal = Number(num.rango_final || 0);
+                if (rangoFinal > 0 && nextNum > rangoFinal) {
+                    alert('Rango de facturación DIAN agotado para esta caja. No es posible emitir más tiquetes.');
+                    return;
+                }
+                if (num.fch_vencimiento && this.hoyISO() > num.fch_vencimiento) {
+                    alert('Resolución DIAN vencida para esta caja. No es posible emitir más tiquetes.');
+                    return;
+                }
+                ticketId = `${num.prefijo}${nextNum}`;
+                consecutivoNum = nextNum;
+            } else {
+                ticketId = 'POS-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+            }
+
+            this.confirmandoPago = true;
+            try {
             const ticket = {
                 ticket_id: ticketId,
+                consecutivo_num: consecutivoNum,
                 id_tercero: this.cliente.id_tercero,
                 nom_tercero: this.cliente.nom_tercero,
                 fch_ticket: new Date().toLocaleString('es-CO'),
@@ -982,6 +1129,12 @@ function posApp() {
 
             await window.posDB.saveTicket(ticket);
             this.lastIssuedTicket = ticket;
+
+            // El consecutivo solo avanza una vez guardado el ticket local.
+            if (consecutivoNum > 0) {
+                this.numeracion = { ...this.numeracion, consecutivo_actual: consecutivoNum };
+                await this.guardarTurnoLocal();
+            }
             
             // Limpiar estado
             this.cart = [];
@@ -999,6 +1152,9 @@ function posApp() {
 
             // Abrir Modal de Impresión / Descarga
             this.showReceiptModal = true;
+            } finally {
+                this.confirmandoPago = false;
+            }
         },
 
         printThermalReceipt() {
@@ -1010,11 +1166,11 @@ function posApp() {
                 const res = await fetch('/pos/api/shift/open/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ caja_id: 'CAJA-01', base_economica: this.aperturaBase })
+                    body: JSON.stringify({ caja_id: this.turno.caja_id || undefined, base_economica: this.aperturaBase })
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    this.turno = { abierto: true, ...data.turno };
+                    await this.aplicarRespuestaTurno(data, true);
                     this.showAperturaModal = false;
                     alert('Turno de caja abierto correctamente.');
                 } else {
@@ -1060,7 +1216,7 @@ function posApp() {
                 const res = await fetch('/pos/api/sync-tickets/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ caja_id: 'CAJA-01', tickets: unsynced })
+                    body: JSON.stringify({ caja_id: this.turno.caja_id || undefined, tickets: unsynced })
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
@@ -1089,14 +1245,15 @@ function posApp() {
                 const res = await fetch('/pos/api/cierre-z/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ caja_id: 'CAJA-01' })
+                    body: JSON.stringify({ caja_id: this.turno.caja_id || undefined })
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
                     this.lastIssuedDocId = data.id_documento;
                     alert(`⚡ ${data.message}`);
                     this.showCierreZModal = false;
-                    this.turno = { abierto: false, id_turno: null, caja_id: 'CAJA-01', base_economica: 0, tickets_count: 0 };
+                    this.turno = { abierto: false, id_turno: null, caja_id: this.turno.caja_id, base_economica: 0, tickets_count: 0 };
+                    await this.guardarTurnoLocal();  // conserva la numeración de la caja para la próxima apertura
                     this.showAperturaModal = true;
                     this.showReceiptModal = true; // Mostrar modal de descarga .docx oficial
                     await window.posDB.runGarbageCollection();

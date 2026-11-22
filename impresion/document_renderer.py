@@ -67,15 +67,16 @@ def build_qr_base64(datos_fac, cufe):
 import re
 
 
-def _fetch_empresa_data(cursor):
+def _fetch_empresa_data(cursor, id_sistema='1'):
     """
-    Datos del emisor (SG_SISTEMAS id='1'). Misma consulta para la factura masiva
+    Datos del emisor (SG_SISTEMAS, por defecto id='1'). Misma consulta para la factura masiva
     (_build_context) y para el tiquete POS (obtener_datos_emisor_pos).
     """
+    id_sistema = str(id_sistema or '1').strip() or '1'
     cursor.execute("""
         SELECT NOM_SISTEMA, NIT, DIRECCION, ESLOGAN, OBSER1, OBSER2, LOGO_1 
-        FROM SG_SISTEMAS WHERE ID_SISTEMA='1'
-    """)
+        FROM SG_SISTEMAS WHERE ID_SISTEMA = %s
+    """, [id_sistema])
     empresa_row = cursor.fetchone()
     if empresa_row:
         return {
@@ -135,21 +136,67 @@ def _resolver_caja_ts(caja_ref, filas):
     return None
 
 
+def _fmt_fecha_dd_mm_yyyy(valor):
+    """DATE de Oracle (datetime/date) -> 'DD/MM/YYYY'; '' si viene nulo o no es fecha."""
+    try:
+        return valor.strftime('%d/%m/%Y') if valor else ''
+    except Exception:
+        return ''
+
+
+def _a_entero(valor):
+    """NUMBER de Oracle -> int; None si viene nulo o no es numérico."""
+    if valor is None or valor == '':
+        return None
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def _texto_resolucion_dian(num_resolucion, fch_expedicion, fch_vencimiento, prefijo,
+                           rango_inicial, rango_final):
+    """
+    Texto de resolución para el tiquete térmico 80mm, omitiendo lo que venga nulo. Ej.:
+    'Res. DIAN No. 18764000001 del 01/01/2025 al 01/01/2027 Prefijo SETT del 1 al 5000'
+    Las fechas se esperan ya formateadas (DD/MM/YYYY) o vacías.
+    """
+    texto = f"Res. DIAN No. {num_resolucion}"
+    if fch_expedicion and fch_vencimiento:
+        texto += f" del {fch_expedicion} al {fch_vencimiento}"
+    elif fch_expedicion:
+        texto += f" del {fch_expedicion}"
+    elif fch_vencimiento:
+        texto += f" vigente hasta {fch_vencimiento}"
+    if prefijo:
+        texto += f" Prefijo {prefijo}"
+    if rango_final and rango_final > 0:
+        texto += f" del {rango_inicial if rango_inicial is not None else 1} al {rango_final}"
+    return texto
+
+
 def obtener_datos_emisor_pos(caja_id=None, id_sistema='1'):
     """
     Datos fiscales del emisor para el tiquete POS, con la misma fuente que la facturación masiva:
       - SG_SISTEMAS (nombre, NIT, dirección, teléfono si existe, OBSER1 = responsabilidades tributarias)
-      - TS_CAJAS (PosTurno.caja_id puede traer 'CAJA-01', ID_CAJA, COD_CAJA o DESCRIPCION; ver _resolver_caja_ts): COD_CAJA,
-        ID_TIPO_DOCUMENTO e ID_DOC_CONSECUTIVO.
-      - Resolución DIAN: CO_DOC_CONSECUTIVOS.OBSER del ID_DOC_CONSECUTIVO de la caja (filtrado por
-        ID_SISTEMA y el ID_ANO más reciente). Si no hay OBSER, respaldo: RESOLUCION(<ID_TIPO_DOCUMENTO>).
+        filtrado por id_sistema (por defecto '1').
+      - TS_CAJAS (PosTurno.caja_id puede traer 'CAJA-01', ID_CAJA, COD_CAJA o DESCRIPCION; ver _resolver_caja_ts):
+        COD_CAJA, ID_TIPO_DOCUMENTO, ID_DOC_CONSECUTIVO y la resolución DIAN propia de la caja
+        (NUM_RESOLUCION, FCH_EXPEDICION, FCH_VENCIMIENTO, PREFIJO, RANGO_INICIAL, RANGO_FINAL, CLAVE_TECNICA).
+      - Resolución DIAN: si TS_CAJAS.NUM_RESOLUCION tiene valor se arma el texto con esas columnas.
+        Respaldo: CO_DOC_CONSECUTIVOS.OBSER del ID_DOC_CONSECUTIVO de la caja (filtrado por
+        ID_SISTEMA y el ID_ANO más reciente) y, si tampoco hay OBSER, RESOLUCION(<ID_TIPO_DOCUMENTO>).
+      - Prefijo: TS_CAJAS.PREFIJO tiene prioridad sobre CO_DOC_CONSECUTIVOS.PREFIJO.
     Nunca lanza excepciones: ante cualquier fallo devuelve los campos disponibles.
     """
+    id_sistema = str(id_sistema or '1').strip() or '1'
     datos = {'nom_sistema': '', 'nit_emp': '', 'dir_emp': '', 'tels_emp': '',
-             'contribuyente': '', 'resolucion': '', 'cod_caja': '', 'prefijo_caja': ''}
+             'contribuyente': '', 'resolucion': '', 'cod_caja': '', 'prefijo_caja': '',
+             'prefijo': '', 'num_resolucion': '', 'fch_expedicion': '', 'fch_vencimiento': '',
+             'rango_inicial': None, 'rango_final': None, 'clave_tecnica': ''}
     try:
         with connection.cursor() as cursor:
-            emp = _fetch_empresa_data(cursor)
+            emp = _fetch_empresa_data(cursor, id_sistema)
             datos['nom_sistema'] = emp.get('nom_empresa') or ''
             datos['nit_emp'] = str(emp.get('nit') or '')
             datos['dir_emp'] = emp.get('dir') or ''
@@ -157,7 +204,7 @@ def obtener_datos_emisor_pos(caja_id=None, id_sistema='1'):
 
             # Teléfono del emisor: columna opcional; la factura masiva espera la llave 'tels'.
             try:
-                cursor.execute("SELECT TELS FROM SG_SISTEMAS WHERE ID_SISTEMA='1'")
+                cursor.execute("SELECT TELS FROM SG_SISTEMAS WHERE ID_SISTEMA = %s", [id_sistema])
                 row = cursor.fetchone()
                 datos['tels_emp'] = (row[0] or '') if row else ''
             except Exception:
@@ -167,13 +214,27 @@ def obtener_datos_emisor_pos(caja_id=None, id_sistema='1'):
             if caja_ref:
                 try:
                     cursor.execute(
-                        "SELECT ID_CAJA, COD_CAJA, DESCRIPCION, ID_TIPO_DOCUMENTO, ID_DOC_CONSECUTIVO "
+                        "SELECT ID_CAJA, COD_CAJA, DESCRIPCION, ID_TIPO_DOCUMENTO, ID_DOC_CONSECUTIVO, "
+                        "NUM_RESOLUCION, FCH_EXPEDICION, FCH_VENCIMIENTO, PREFIJO, "
+                        "RANGO_INICIAL, RANGO_FINAL, CLAVE_TECNICA "
                         "FROM TS_CAJAS"
                     )
                     fila = _resolver_caja_ts(caja_ref, cursor.fetchall())
                     if fila:
-                        _id_caja, cod_caja, _descripcion, id_tipo_doc, id_doc_consec = fila
+                        (_id_caja, cod_caja, _descripcion, id_tipo_doc, id_doc_consec,
+                         num_res, fch_exp, fch_ven, prefijo_ts,
+                         rango_ini, rango_fin, clave_tecnica) = fila
                         datos['cod_caja'] = str(cod_caja or '').strip()
+                        datos['num_resolucion'] = str(num_res or '').strip()
+                        datos['fch_expedicion'] = _fmt_fecha_dd_mm_yyyy(fch_exp)
+                        datos['fch_vencimiento'] = _fmt_fecha_dd_mm_yyyy(fch_ven)
+                        datos['rango_inicial'] = _a_entero(rango_ini)
+                        datos['rango_final'] = _a_entero(rango_fin)
+                        datos['clave_tecnica'] = str(clave_tecnica or '').strip()
+                        prefijo_ts = str(prefijo_ts or '').strip().upper()
+
+                        # Respaldo desde CO_DOC_CONSECUTIVOS (OBSER y PREFIJO).
+                        obser_consec, prefijo_consec = '', ''
                         if id_doc_consec:
                             cursor.execute(
                                 "SELECT OBSER, PREFIJO FROM ("
@@ -181,16 +242,28 @@ def obtener_datos_emisor_pos(caja_id=None, id_sistema='1'):
                                 "  WHERE ID_DOC_CONSECUTIVO = %s AND ID_SISTEMA = %s "
                                 "  ORDER BY ID_ANO DESC"
                                 ") WHERE ROWNUM <= 1",
-                                [id_doc_consec, str(id_sistema)],
+                                [id_doc_consec, id_sistema],
                             )
                             res = cursor.fetchone()
                             if res:
-                                datos['resolucion'] = str(res[0] or '').strip()
-                                datos['prefijo_caja'] = str(res[1] or '').strip()
-                        if not datos['resolucion'] and id_tipo_doc:
-                            cursor.execute("SELECT RESOLUCION(%s) FROM DUAL", [id_tipo_doc])
-                            res = cursor.fetchone()
-                            datos['resolucion'] = str((res[0] if res else '') or '').strip()
+                                obser_consec = str(res[0] or '').strip()
+                                prefijo_consec = str(res[1] or '').strip()
+
+                        datos['prefijo'] = prefijo_ts or prefijo_consec
+                        datos['prefijo_caja'] = datos['prefijo']
+
+                        if datos['num_resolucion']:
+                            datos['resolucion'] = _texto_resolucion_dian(
+                                datos['num_resolucion'], datos['fch_expedicion'],
+                                datos['fch_vencimiento'], datos['prefijo'],
+                                datos['rango_inicial'], datos['rango_final'],
+                            )
+                        else:
+                            datos['resolucion'] = obser_consec
+                            if not datos['resolucion'] and id_tipo_doc:
+                                cursor.execute("SELECT RESOLUCION(%s) FROM DUAL", [id_tipo_doc])
+                                res = cursor.fetchone()
+                                datos['resolucion'] = str((res[0] if res else '') or '').strip()
                     else:
                         print(f"POS: la caja '{caja_ref}' no corresponde a ninguna fila de TS_CAJAS.")
                 except Exception as exc:
