@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from django.conf import settings
 from django.template.loader import render_to_string
-from django.db import connection
+from core.tenant import get_oracle_connection
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +195,7 @@ def obtener_datos_emisor_pos(caja_id=None, id_sistema='1'):
              'prefijo': '', 'num_resolucion': '', 'fch_expedicion': '', 'fch_vencimiento': '',
              'rango_inicial': None, 'rango_final': None, 'clave_tecnica': ''}
     try:
-        with connection.cursor() as cursor:
+        with get_oracle_connection().cursor() as cursor:
             emp = _fetch_empresa_data(cursor, id_sistema)
             datos['nom_sistema'] = emp.get('nom_empresa') or ''
             datos['nit_emp'] = str(emp.get('nit') or '')
@@ -295,7 +295,7 @@ def obtener_tercero_pos(id_tercero=None):
     }
 
     def _consultar(valor):
-        with connection.cursor() as cursor:
+        with get_oracle_connection().cursor() as cursor:
             cursor.execute(
                 "SELECT COD_TERCERO, NOM_TERCERO, NOM_NEGOCIO, E_MAIL, DIR, TELS, ID_MUNICIPIO_DIAN, "
                 "       ID_REGIMEN, NOM_DEPTO(SUBSTR(ID_MUNICIPIO, 1, 2)), NOM_MUNICIPIO_DIAN(ID_MUNICIPIO_DIAN) "
@@ -344,7 +344,7 @@ def _build_context(id_documento):
     Construye el contexto exacto para la plantilla HTML consultando la base de datos de Oracle.
     Extrae dinámicamente datos de empresa, parámetros, y cruza detalles con impuestos.
     """
-    with connection.cursor() as cursor:
+    with get_oracle_connection().cursor() as cursor:
         # 0. Datos de la Empresa (SG_SISTEMAS id='1')
         empresa_data = _fetch_empresa_data(cursor)
 

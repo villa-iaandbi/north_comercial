@@ -6,6 +6,7 @@ from django.utils.decorators import method_decorator
 from django.views import View
 
 from pos.models import PosTurno, TsCaja
+from pos.views import _token_empresa_sesion
 from pos.views_auth import SESSION_USER_KEY, pos_role_required
 
 
@@ -44,12 +45,16 @@ class AperturaTurnoView(View):
 
         # PosTurno.caja_id es texto (convención del POS: código de la caja).
         caja_ref = caja.cod_caja or str(caja.id_caja)
-        turno = PosTurno.objects.filter(caja_id=caja_ref, estado='ABIERTO').order_by('-id_turno').first()
+        token = _token_empresa_sesion(request)
+        turno = PosTurno.objects.filter(
+            caja_id=caja_ref, estado='ABIERTO', token_empresa=token
+        ).order_by('-id_turno').first()
         if turno is not None and turno.usuario != usuario:
             messages.error(request, f'La caja {caja_ref} ya tiene un turno abierto por {turno.usuario}.')
             return self._render(request, caja_sel=id_caja)
         if turno is None:
             turno = PosTurno.objects.create(
+                token_empresa=token,
                 caja_id=caja_ref,
                 usuario=usuario,
                 base_economica=base,

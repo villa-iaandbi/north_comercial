@@ -1,8 +1,11 @@
+import re
+
 from django.db import models
 from decimal import Decimal
 
 class PosTurno(models.Model):
     id_turno = models.BigAutoField(primary_key=True)
+    token_empresa = models.CharField(max_length=100, default='', db_index=True)
     caja_id = models.CharField(max_length=20, default='CAJA-01')
     usuario = models.CharField(max_length=50, default='cajero')
     base_economica = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0'))
@@ -19,7 +22,9 @@ class PosTurno(models.Model):
 
 
 class PosTicketHeader(models.Model):
-    ticket_id = models.CharField(max_length=60, primary_key=True)
+    # PK = ticket_id; con tenant se guarda como '<hash8>~<ticket_id>' (ver pos.views._clave_tenant).
+    ticket_id = models.CharField(max_length=80, primary_key=True)
+    token_empresa = models.CharField(max_length=100, default='', db_index=True)
     turno = models.ForeignKey(PosTurno, on_delete=models.CASCADE, related_name='tickets')
     id_tercero = models.CharField(max_length=20, default='222222222222')
     nom_tercero = models.CharField(max_length=200, default='VENTAS MASIVAS (CONSUMIDOR FINAL)')
@@ -38,12 +43,18 @@ class PosTicketHeader(models.Model):
     sync_status = models.BooleanField(default=True)
     consolidado_cierre = models.BooleanField(default=False)
 
+    @property
+    def numero_ticket(self):
+        """Número visible del tiquete (sin el prefijo interno de tenant)."""
+        return re.sub(r'^[0-9a-f]{8}~', '', self.ticket_id or '')
+
     def __str__(self):
         return f"Ticket {self.ticket_id} - ${self.tot_ticket}"
 
 
 class PosTicketDetail(models.Model):
     ticket = models.ForeignKey(PosTicketHeader, on_delete=models.CASCADE, related_name='items')
+    token_empresa = models.CharField(max_length=100, default='', db_index=True)
     id_articulo = models.CharField(max_length=15)
     referencia = models.CharField(max_length=30, blank=True, default='')
     nom_articulo = models.CharField(max_length=150)
@@ -64,6 +75,7 @@ class PosTicketDetail(models.Model):
 
 class PrPromocion(models.Model):
     id_promocion = models.BigAutoField(primary_key=True)
+    token_empresa = models.CharField(max_length=100, default='', db_index=True)
     nom_promocion = models.CharField(max_length=150)
     fch_inicio = models.DateTimeField()
     fch_fin = models.DateTimeField()
@@ -132,7 +144,9 @@ class PrAccion(models.Model):
 
 
 class PosPuntosCliente(models.Model):
-    id_tercero = models.CharField(max_length=20, primary_key=True)
+    # PK = id_tercero; con tenant se guarda como '<hash8>~<id_tercero>' (ver pos.views._clave_tenant).
+    id_tercero = models.CharField(max_length=40, primary_key=True)
+    token_empresa = models.CharField(max_length=100, default='', db_index=True)
     puntos_saldo = models.IntegerField(default=0)
     puntos_acumulados = models.IntegerField(default=0)
     puntos_redimidos = models.IntegerField(default=0)

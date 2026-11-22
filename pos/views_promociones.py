@@ -15,6 +15,7 @@ from django.views.generic import ListView
 
 from core.tenant import get_oracle_connection
 from pos.models import PrAccion, PrCondicion, PrPromocion
+from pos.views import _token_empresa_sesion
 
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class PromocionListView(ListView):
         # Mismo criterio de prioridad que api_promociones (mayor prioridad primero).
         return (
             PrPromocion.objects
+            .filter(token_empresa=_token_empresa_sesion(self.request))
             .prefetch_related('condiciones', 'acciones')
             .order_by('-activo', '-prioridad', '-fch_inicio')
         )
@@ -484,7 +486,9 @@ def _guardar(request, promocion):
 
     with transaction.atomic():
         if promocion is None:
-            promocion = PrPromocion.objects.create(**cabecera)
+            promocion = PrPromocion.objects.create(
+                token_empresa=_token_empresa_sesion(request), **cabecera
+            )
         else:
             for campo, valor in cabecera.items():
                 setattr(promocion, campo, valor)
@@ -509,7 +513,9 @@ def promocion_crear(request):
 
 def promocion_editar(request, pk):
     """Edición de promoción; reemplaza condiciones y acciones previas."""
-    promocion = get_object_or_404(PrPromocion, pk=pk)
+    promocion = get_object_or_404(
+        PrPromocion, pk=pk, token_empresa=_token_empresa_sesion(request)
+    )
     if request.method == 'POST':
         guardada, ctx = _guardar(request, promocion)
         if guardada is not None:
@@ -522,7 +528,9 @@ def promocion_editar(request, pk):
 @require_POST
 def promocion_toggle_activo(request, pk):
     """Activa / desactiva una promoción."""
-    promocion = get_object_or_404(PrPromocion, pk=pk)
+    promocion = get_object_or_404(
+        PrPromocion, pk=pk, token_empresa=_token_empresa_sesion(request)
+    )
     promocion.activo = not promocion.activo
     promocion.save(update_fields=['activo'])
     estado = 'activada' if promocion.activo else 'desactivada'
@@ -533,7 +541,9 @@ def promocion_toggle_activo(request, pk):
 @require_POST
 def promocion_eliminar(request, pk):
     """Elimina la promoción (condiciones y acciones caen por CASCADE)."""
-    promocion = get_object_or_404(PrPromocion, pk=pk)
+    promocion = get_object_or_404(
+        PrPromocion, pk=pk, token_empresa=_token_empresa_sesion(request)
+    )
     nombre = promocion.nom_promocion
     promocion.delete()
     messages.success(request, f'Promoción «{nombre}» eliminada.')

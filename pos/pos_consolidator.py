@@ -1,6 +1,7 @@
 import logging
 from decimal import Decimal
-from django.db import connection, transaction
+from django.db import transaction
+from core.tenant import get_oracle_connection
 from django.utils import timezone
 from core.models import (
     CoDocumento, CtVenta, InMovInventario, CoDocumentoItem
@@ -11,7 +12,7 @@ from facturacion.dian_async import encolar_transmision_dian
 
 logger = logging.getLogger(__name__)
 
-def consolidar_cierre_z(turno_id):
+def consolidar_cierre_z(turno_id, id_sistema='1'):
     """
     Ejecuta el Cierre Z de un turno de caja:
     1. Agrupa los tickets confirmados del turno por ID_ARTICULO.
@@ -21,6 +22,7 @@ def consolidar_cierre_z(turno_id):
     5. Actualiza el turno a 'CERRADO'.
     6. Orquesta la Transmisión Asíncrona a la DIAN en segundo plano vía Django-Q2.
     """
+    id_sistema = str(id_sistema or '1').strip() or '1'
     turno = PosTurno.objects.get(pk=turno_id)
     if turno.estado == 'CERRADO':
         return {
@@ -86,8 +88,10 @@ def consolidar_cierre_z(turno_id):
     id_centro_costo = get_system_parameter('POS_CC_DEF', '01')
     tercero_pos = '222222222222'
 
-    with transaction.atomic(using='default'):
-        with connection.cursor() as cursor:
+    # Oracle del tenant activo (no el alias 'default' del .env).
+    oracle = get_oracle_connection()
+    with transaction.atomic(using=oracle.alias):
+        with oracle.cursor() as cursor:
             cursor.execute("SELECT SEC_DOCUMENTO.NEXTVAL FROM DUAL")
             row = cursor.fetchone()
             if row:
@@ -102,12 +106,12 @@ def consolidar_cierre_z(turno_id):
             OBSER, ESTADO_DOC, FCH_REGISTRO, TERMINAL, ID_SISTEMA, ID_ANO
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        with connection.cursor() as cursor:
+        with oracle.cursor() as cursor:
             cursor.execute(sql_co_doc, [
                 vID_DOC, id_tipo_doc, vID_DOC, now_naive,
                 tercero_pos, id_vendedor, id_vendedor, float(tot_general),
                 f"CIERRE Z TURNO #{turno.id_turno} CAJA {turno.caja_id}",
-                'GRABADO', now_naive, 'NORTH-LOCAL', '1', id_ano
+                'GRABADO', now_naive, 'NORTH-LOCAL', id_sistema, id_ano
             ])
 
             sql_ct_ventas = """
@@ -135,7 +139,7 @@ def consolidar_cierre_z(turno_id):
                     str(item_seq), vID_DOC, art_id, now_naive, 'S',
                     float(info['cantidad']), float(info['vlr_unitario']), 0.00,
                     float(info['vlr_iva']), 0.00, float(info['vlr_unitario']),
-                    0.00, id_centro_costo, id_bodega, '1'
+                    0.00, id_centro_costo, id_bodega, id_sistema
                 ])
                 item_seq += 1
 

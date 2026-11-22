@@ -2,6 +2,7 @@ from django.db.models import Sum
 from django.views.generic import ListView
 
 from pos.models import PosTicketHeader, TsCaja
+from pos.views import _token_empresa_sesion
 
 
 class ArqueoCalienteView(ListView):
@@ -31,7 +32,7 @@ class ArqueoCalienteView(ListView):
         # id_caja y cod_caja de TsCaja, ya que están en bases de datos distintas.
         queryset = (
             PosTicketHeader.objects
-            .filter(consolidado_cierre=False)
+            .filter(consolidado_cierre=False, token_empresa=_token_empresa_sesion(self.request))
             .select_related('turno')
             .prefetch_related('items')
             .order_by('-fch_ticket')
