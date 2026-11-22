@@ -70,6 +70,31 @@ class PrPromocion(models.Model):
     activo = models.BooleanField(default=True)
     prioridad = models.IntegerField(default=1)
 
+    # --- Motor de promociones v2 (todos con default seguro: no rompen registros existentes) ---
+    ALCANCE_CHOICES = [
+        ('TODA_TIENDA', 'Toda la tienda'),
+        ('GRUPO', 'Grupo / Marca'),
+        ('LINEA', 'Línea'),
+        ('PRODUCTO', 'Un producto'),
+        ('SELECCION_PRODUCTOS', 'Varios productos'),
+    ]
+    TIPO_BENEFICIO_CHOICES = [
+        ('DESCUENTO_PORC', 'Porcentaje de descuento (%)'),
+        ('DESCUENTO_VALOR', 'Valor fijo ($)'),
+        ('N_ESIMA_UNIDAD', 'N-ésima unidad (Ej: 2da al 50%, 2x1, 3x2)'),
+    ]
+    # Días de vigencia semanal: "0,1,2,3,4,5,6" (0=Lunes ... 6=Domingo). Vacío = todos los días.
+    dias_semana = models.CharField(max_length=20, blank=True, default='')
+    monto_minimo = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    alcance = models.CharField(max_length=30, choices=ALCANCE_CHOICES, default='TODA_TIENDA')
+    # IDs separados por coma según el alcance (ID_GRUPO / ID_LINEA / ID_ARTICULO). Vacío si TODA_TIENDA.
+    alcance_valores = models.TextField(blank=True, default='')
+    tipo_beneficio = models.CharField(max_length=30, choices=TIPO_BENEFICIO_CHOICES, default='DESCUENTO_PORC')
+    # % en escala 0-100 (DESCUENTO_PORC y N_ESIMA_UNIDAD) o monto en $ (DESCUENTO_VALOR).
+    valor_beneficio = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    # N_ESIMA_UNIDAD: 2 = 2da unidad / 2x1, 3 = 3x2, etc.
+    cada_n_unidades = models.PositiveSmallIntegerField(default=2)
+
     def __str__(self):
         return f"Promoción: {self.nom_promocion}"
 

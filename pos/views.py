@@ -9,6 +9,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db import connection
+from django.db.models import Q
 from django.conf import settings
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -475,7 +476,9 @@ def api_catalog(request):
         NVL(a.VLR_REPOSICION, 0) AS PRECIO,
         a.ID_GRAVAMEN,
         NVL(g.PORC_GRAVAMEN, 0) AS PORC_GRAVAMEN,
-        NVL(a.IMPOCONSUMO, 0) AS VLR_INC_FIJO_UNIT
+        NVL(a.IMPOCONSUMO, 0) AS VLR_INC_FIJO_UNIT,
+        a.ID_GRUPO,
+        a.ID_LINEA
     FROM IN_ARTICULOS a
     LEFT JOIN IN_GRAVAMENES g ON a.ID_GRAVAMEN = g.ID_GRAVAMEN
     WHERE NVL(a.ACTIVO_INACTIVO, 'A') = 'A'
@@ -493,6 +496,9 @@ def api_catalog(request):
                 # IN_ARTICULOS.IMPOCONSUMO es un valor fijo por unidad (COP); no existe INC porcentual.
                 item['vlr_inc_fijo_unit'] = float(item['vlr_inc_fijo_unit'])
                 item['porc_impoconsumo'] = 0.0
+                # Para cruzar promociones por Grupo/Línea en el POS offline (siempre texto; '' si es nulo).
+                item['id_grupo'] = str(item.get('id_grupo') or '').strip()
+                item['id_linea'] = str(item.get('id_linea') or '').strip()
 
         return JsonResponse({'status': 'success', 'catalog': catalog, 'count': len(catalog)})
     except Exception as e:
@@ -754,8 +760,12 @@ def api_promociones(request):
     """
     try:
         now = timezone.now()
-        # Filtro de vigencia: fch_inicio <= now <= fch_fin
-        promos_qs = PrPromocion.objects.filter(activo=True).order_by('-prioridad')
+        # Filtro de vigencia: fch_inicio <= now <= fch_fin (extremos nulos = sin límite)
+        promos_qs = PrPromocion.objects.filter(
+            (Q(fch_inicio__isnull=True) | Q(fch_inicio__lte=now)) &
+            (Q(fch_fin__isnull=True) | Q(fch_fin__gte=now)),
+            activo=True,
+        ).order_by('-prioridad')
         
         promociones_data = []
         for p in promos_qs:
@@ -772,6 +782,15 @@ def api_promociones(request):
                 'id_promocion': p.id_promocion,
                 'nom_promocion': p.nom_promocion,
                 'prioridad': p.prioridad,
+                # Motor v2
+                'dias_semana': p.dias_semana,
+                'monto_minimo': float(p.monto_minimo),
+                'alcance': p.alcance,
+                'alcance_valores': [v.strip() for v in (p.alcance_valores or '').split(',') if v.strip()],
+                'tipo_beneficio': p.tipo_beneficio,
+                'valor_beneficio': float(p.valor_beneficio),
+                'cada_n_unidades': p.cada_n_unidades,
+                # Compatibilidad con el motor anterior
                 'condiciones': condiciones,
                 'acciones': acciones
             })

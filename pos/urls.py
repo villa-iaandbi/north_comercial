@@ -25,6 +25,10 @@ urlpatterns = [
 
     # Descuentos y Promociones
     path('promociones/', views_promociones.PromocionListView.as_view(), name='promociones_lista'),
+    path('promociones/nueva/', views_promociones.promocion_crear, name='promociones_crear'),
+    path('promociones/<int:pk>/editar/', views_promociones.promocion_editar, name='promociones_editar'),
+    path('promociones/<int:pk>/toggle/', views_promociones.promocion_toggle_activo, name='promociones_toggle'),
+    path('promociones/<int:pk>/eliminar/', views_promociones.promocion_eliminar, name='promociones_eliminar'),
 
     path('', views.pos_home, name='pos_home'),
     path('api/catalog/', views.api_catalog, name='api_catalog'),
@@ -36,6 +40,7 @@ urlpatterns = [
     
     # Cap 7: Promociones y Fidelización
     path('api/promociones/', views.api_promociones, name='api_promociones'),
+    path('api/promociones/catalogos/', views_promociones.api_promociones_catalogos, name='api_promociones_catalogos'),
     path('api/puntos/saldo/', views.api_puntos_saldo, name='api_puntos_saldo'),
     path('api/puntos/redimir/', views.api_puntos_redimir, name='api_puntos_redimir'),
 ]
