@@ -10,6 +10,13 @@ except ImportError:
     import pytz
     ZoneInfo = pytz.timezone
 
+try:
+    from django.conf import settings
+except ImportError:  # Ejecución aislada sin Django
+    settings = None
+
+logger = logging.getLogger(__name__)
+
 BOGOTA_TZ = ZoneInfo("America/Bogota")
 
 class InvoicePayloadBuilder:
@@ -33,8 +40,16 @@ class InvoicePayloadBuilder:
         """
         try:
             # Resolución de la ruta dinámica
-            base_dir = getattr(settings, 'BASE_DIR', Path(os.getcwd()))
-            payloads_dir = getattr(settings, 'FEL_PAYLOADS_DIR', base_dir / 'logs' / 'fel_payloads')
+            base_dir = Path(os.getcwd())
+            payloads_dir = None
+            if settings is not None:
+                try:
+                    base_dir = Path(getattr(settings, 'BASE_DIR', base_dir))
+                    payloads_dir = getattr(settings, 'FEL_PAYLOADS_DIR', None)
+                except Exception:  # p.ej. ImproperlyConfigured fuera de Django configurado
+                    base_dir = Path(os.getcwd())
+            if not payloads_dir:
+                payloads_dir = base_dir / 'logs' / 'fel_payloads'
             
             # Garantizar la existencia del directorio
             os.makedirs(payloads_dir, exist_ok=True)

@@ -253,9 +253,15 @@
                     <span>IVA Generado:</span>
                     <span x-text="formatCOP(totIVA)"></span>
                 </div>
+                <template x-if="totINC > 0">
+                    <div class="flex justify-between text-xs font-semibold text-gray-300">
+                        <span>Impoconsumo (INC):</span>
+                        <span x-text="formatCOP(totINC)"></span>
+                    </div>
+                </template>
                 <template x-if="descuentoPromocion > 0">
                     <div class="flex justify-between text-xs font-bold text-purple-400">
-                        <span>Descuento Promoción:</span>
+                        <span>Descuento Promoción (ya incluido):</span>
                         <span x-text="'-' + formatCOP(descuentoPromocion)"></span>
                     </div>
                 </template>
@@ -666,18 +672,22 @@ function posApp() {
             } else {
                 const vlrUnitario = item.precio;
                 const porcIva = item.porc_gravamen || 0;
-                const vlrIva = vlrUnitario * (porcIva / 100);
-                
+
                 this.cart.push({
                     id_articulo: item.id_articulo,
                     referencia: item.referencia,
                     nom_articulo: item.nom_articulo,
                     cantidad: 1,
-                    vlr_unitario: vlrUnitario,
+                    vlr_unitario: vlrUnitario,          // precio unitario con IVA/INC incluidos
                     porc_descuento: 0,
                     porc_iva: porcIva,
-                    vlr_iva: vlrIva,
-                    tot_linea: vlrUnitario,
+                    porc_inc: item.porc_impoconsumo || 0,
+                    vlr_inc_fijo_unit: item.vlr_inc_fijo_unit || 0,
+                    vlr_iva: 0,
+                    vlr_inc: 0,
+                    base_neta: 0,
+                    descuento_linea: 0,
+                    tot_linea: vlrUnitario,             // bruto = cantidad * vlr_unitario
                     es_regalo: false
                 });
             }
@@ -697,8 +707,54 @@ function posApp() {
 
         recalcCartLine(index) {
             const item = this.cart[index];
-            item.tot_linea = item.cantidad * item.vlr_unitario;
-            item.vlr_iva = (item.vlr_unitario * (item.porc_iva / 100)) * item.cantidad;
+            item.tot_linea = this.r2(item.cantidad * item.vlr_unitario);
+        },
+
+        // Redondeo half-up a 2 decimales (igual a Decimal ROUND_HALF_UP de pos/views.py)
+        r2(x) {
+            return Math.round(Number((x * 100).toFixed(6))) / 100;
+        },
+
+        // Cálculo en reversa (precios con IVA/INC incluidos). Debe mantenerse idéntico a
+        // calcular_ticket_en_reversa() de pos/views.py:
+        //   bruto = cant * precio; descuento = propio + prorrateo del global; pagar = bruto - descuento
+        //   con INC fijo/unidad: saldo = pagar - cant*inc_fijo
+        //   base = saldo / (1 + %iva + %inc); iva = base*%iva; inc = inc_fijo_linea + base*%inc
+        //   (el residuo de redondeo, <= 0.01, se absorbe en la base para que base+iva+inc == pagar)
+        recalcTaxes() {
+            const lines = this.cart;
+            const pre = lines.map(i => {
+                const bruto = this.r2(i.cantidad * i.vlr_unitario);
+                const propio = this.r2(bruto * (i.porc_descuento || 0) / 100);
+                return { bruto, propio, neto: Math.max(0, this.r2(bruto - propio)) };
+            });
+            const sumNeto = this.r2(pre.reduce((s, p) => s + p.neto, 0));
+            const global = Math.min(Math.max(this.descuentoPromocion || 0, 0), sumNeto);
+            let lastPos = -1;
+            pre.forEach((p, k) => { if (p.neto > 0) lastPos = k; });
+            let asignado = 0;
+            lines.forEach((item, k) => {
+                const p = pre[k];
+                let cuota = 0;
+                if (sumNeto > 0 && p.neto > 0) {
+                    cuota = (k === lastPos) ? this.r2(global - asignado) : this.r2(global * p.neto / sumNeto);
+                    asignado = this.r2(asignado + cuota);
+                }
+                const pagar = Math.max(0, this.r2(p.neto - cuota));
+                const incFijo = Math.min(pagar, this.r2(item.cantidad * (item.vlr_inc_fijo_unit || 0)));
+                const saldo = this.r2(pagar - incFijo);
+                const pIva = (item.porc_iva || 0) / 100;
+                const pInc = (item.porc_inc || 0) / 100;
+                let base = this.r2(saldo / (1 + pIva + pInc));
+                const iva = this.r2(base * pIva);
+                const incPct = this.r2(base * pInc);
+                base = this.r2(pagar - iva - incPct - incFijo);
+                item.tot_linea = p.bruto;
+                item.descuento_linea = this.r2(p.propio + cuota);
+                item.base_neta = base;
+                item.vlr_iva = iva;
+                item.vlr_inc = this.r2(incFijo + incPct);
+            });
         },
 
         removeFromCart(index) {
@@ -707,6 +763,11 @@ function posApp() {
         },
 
         evaluatePromotions() {
+            this.computePromotions();
+            this.recalcTaxes();
+        },
+
+        computePromotions() {
             this.descuentoPromocion = 0;
             this.promocionesAplicadas = [];
             this.cart = this.cart.filter(item => !item.es_regalo);
@@ -752,7 +813,12 @@ function posApp() {
                                     vlr_unitario: 0,
                                     porc_descuento: 100,
                                     porc_iva: 0,
+                                    porc_inc: 0,
+                                    vlr_inc_fijo_unit: 0,
                                     vlr_iva: 0,
+                                    vlr_inc: 0,
+                                    base_neta: 0,
+                                    descuento_linea: 0,
                                     tot_linea: 0,
                                     es_regalo: true
                                 });
@@ -764,16 +830,20 @@ function posApp() {
         },
 
         get totMercancia() {
-            return this.cart.reduce((sum, item) => sum + (item.tot_linea - item.vlr_iva), 0);
+            return this.r2(this.cart.reduce((sum, item) => sum + item.base_neta, 0));
         },
 
         get totIVA() {
-            return this.cart.reduce((sum, item) => sum + item.vlr_iva, 0);
+            return this.r2(this.cart.reduce((sum, item) => sum + item.vlr_iva, 0));
         },
 
+        get totINC() {
+            return this.r2(this.cart.reduce((sum, item) => sum + item.vlr_inc, 0));
+        },
+
+        // Base neta + IVA + INC (el descuento ya está descontado de la base)
         get totTicket() {
-            const raw = (this.totMercancia + this.totIVA) - this.descuentoPromocion;
-            return raw > 0 ? raw : 0;
+            return this.r2(this.totMercancia + this.totIVA + this.totINC);
         },
 
         get puntosGanados() {
@@ -874,6 +944,7 @@ function posApp() {
                 fch_ticket: new Date().toLocaleString('es-CO'),
                 tot_mercancia: this.totMercancia,
                 tot_iva: this.totIVA,
+                tot_inc: this.totINC,
                 tot_ticket: this.totTicket,
                 descuento_promocion: this.descuentoPromocion,
                 pago_efectivo: this.pagoEfectivo,

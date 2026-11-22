@@ -1,11 +1,17 @@
 import json
 import logging
-from decimal import Decimal
+import os
+import re
+from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db import connection
+from django.conf import settings
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from pos.models import (
     PosTurno, PosTicketHeader, PosTicketDetail,
     PrPromocion, PrCondicion, PrAccion, PosPuntosCliente
@@ -16,6 +22,433 @@ from pos.views_auth import pos_role_required
 logger = logging.getLogger(__name__)
 
 ROLES_APERTURA = ('CAJERO', 'DBA', 'SUPERVISOR')
+
+
+# ==========================================
+# TIQUETE POS: CUFE LOCAL + JSON DIAN + PDF TÉRMICO
+# ==========================================
+
+try:
+    from zoneinfo import ZoneInfo
+    BOGOTA_TZ = ZoneInfo('America/Bogota')
+except Exception:  # pragma: no cover
+    import pytz
+    BOGOTA_TZ = pytz.timezone('America/Bogota')
+
+CONSUMIDOR_FINAL = '222222222222'
+
+
+def _parsear_fecha_ticket(valor):
+    """
+    Normaliza la fecha de un ticket a datetime naive (hora de Colombia). Soporta:
+      - datetime / ISO 8601 ('YYYY-MM-DD HH:MM:SS', 'YYYY-MM-DDTHH:MM:SS', con o sin 'Z'/zona)
+      - Localizado es-CO de Chrome: '19/11/2026, 5:32:15 p. m.' (a. m./p. m./AM/PM, con \xa0)
+      - 24h: 'DD/MM/YYYY HH:MM[:SS]' o 'DD/MM/YYYY, HH:MM[:SS]'
+    Si viene vacío o no se puede interpretar, retorna la hora actual de Colombia.
+    """
+    ahora = datetime.now(BOGOTA_TZ).replace(tzinfo=None)
+    if isinstance(valor, datetime):
+        dt = valor
+    else:
+        texto = str(valor or '')
+        # Espacios no separables / estrechos (\xa0, \u202f) y espacios múltiples
+        texto = re.sub(r'[\s\u00a0\u202f]+', ' ', texto).strip()
+        if not texto:
+            return ahora
+        dt = None
+        try:
+            dt = parse_datetime(texto)
+        except ValueError:
+            dt = None
+        if dt is None:
+            m_loc = re.match(
+                r'^(\d{1,2})/(\d{1,2})/(\d{4})[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(?:([ap])\.?\s*m\.?)?$',
+                texto, re.IGNORECASE,
+            )
+            if not m_loc:
+                logger.warning(f"POS: fecha de ticket no reconocida: {valor!r}")
+                return ahora
+            dia, mes, anio, hora, minuto, segundo, meridiano = m_loc.groups()
+            hora = int(hora)
+            if meridiano:
+                if not 1 <= hora <= 12:
+                    return ahora
+                hora = hora % 12 + (12 if meridiano.lower() == 'p' else 0)
+            try:
+                dt = datetime(int(anio), int(mes), int(dia), hora, int(minuto), int(segundo or 0))
+            except ValueError:
+                logger.warning(f"POS: fecha de ticket inválida: {valor!r}")
+                return ahora
+    if timezone.is_aware(dt):
+        dt = dt.astimezone(BOGOTA_TZ).replace(tzinfo=None)
+    return dt
+
+
+def _fecha_bogota(valor):
+    """Normaliza fch_ticket (datetime o str ISO) a datetime naive en hora de Colombia."""
+    if isinstance(valor, str):
+        valor = parse_datetime(valor)
+    if not isinstance(valor, datetime):
+        return datetime.now(BOGOTA_TZ).replace(tzinfo=None)
+    if timezone.is_aware(valor):
+        valor = valor.astimezone(BOGOTA_TZ).replace(tzinfo=None)
+    return valor
+
+
+def _datos_empresa(request):
+    """Datos de la empresa para el encabezado/CUFE. Nunca lanza excepciones."""
+    datos = {
+        'nom_sistema': request.session.get('nom_empresa') or '',
+        'nit_emp': '', 'dir_emp': '', 'municipio_emp': '', 'tels_emp': '',
+    }
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT NOM_SISTEMA, NIT, DIRECCION FROM SG_SISTEMAS WHERE ID_SISTEMA = '1'")
+            row = cursor.fetchone()
+        if row:
+            datos['nom_sistema'] = row[0] or datos['nom_sistema']
+            datos['nit_emp'] = str(row[1] or '')
+            datos['dir_emp'] = row[2] or ''
+    except Exception as exc:
+        logger.warning(f"POS: no se pudieron leer los datos de empresa en Oracle: {exc}")
+    return datos
+
+
+def _nit_sin_dv(nit):
+    """Solo dígitos del NIT sin dígito de verificación (formato 'NNNNNNNNN-D')."""
+    return re.sub(r'\D', '', str(nit or '').split('-')[0])
+
+
+CENT = Decimal('0.01')
+CERO = Decimal('0')
+
+
+def _r2(valor):
+    """Redondeo half-up a 2 decimales (idéntico a r2() de templates/pos/pos.html)."""
+    return Decimal(valor).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def calcular_ticket_en_reversa(lineas, descuento_global=0):
+    """
+    Cálculo en reversa de un ticket POS cuyos precios YA INCLUYEN IVA e INC.
+    Misma fórmula que recalcTaxes() de templates/pos/pos.html, de modo que
+    Caja (JS) == PDF == CUFE == JSON Binapps.
+
+    lineas: iterable de dicts con cantidad, vlr_unitario (con impuestos), porc_descuento,
+            porc_iva, porc_inc y vlr_inc_fijo_unit (los dos últimos opcionales).
+    Retorna {'lineas': [...], 'tot_bruto', 'tot_descuento', 'tot_base', 'tot_iva', 'tot_inc',
+             'tot_pagar'} con Decimals a 2 decimales. Por línea: bruto, descuento, total_pagar,
+    base_neta, iva, inc, vlr_unit_neto; siempre base_neta + iva + inc == total_pagar.
+    """
+    lineas = list(lineas)
+    pre = []
+    for ln in lineas:
+        bruto = _r2(Decimal(ln['cantidad']) * Decimal(ln['vlr_unitario']))
+        propio = _r2(bruto * Decimal(ln.get('porc_descuento') or 0) / Decimal('100'))
+        pre.append((bruto, propio, max(CERO, _r2(bruto - propio))))
+
+    suma_neto = _r2(sum((p[2] for p in pre), CERO))
+    global_dto = min(max(_r2(descuento_global or 0), CERO), suma_neto)
+    ultima_pos = max((k for k, p in enumerate(pre) if p[2] > 0), default=-1)
+
+    resultado = []
+    asignado = CERO
+    for k, (ln, (bruto, propio, neto)) in enumerate(zip(lineas, pre)):
+        cuota = CERO
+        if suma_neto > 0 and neto > 0:
+            cuota = _r2(global_dto - asignado) if k == ultima_pos else _r2(global_dto * neto / suma_neto)
+            asignado = _r2(asignado + cuota)
+        pagar = max(CERO, _r2(neto - cuota))
+
+        cantidad = Decimal(ln['cantidad'])
+        inc_fijo = min(pagar, _r2(cantidad * Decimal(ln.get('vlr_inc_fijo_unit') or 0)))
+        saldo = _r2(pagar - inc_fijo)
+        p_iva = Decimal(ln.get('porc_iva') or 0) / Decimal('100')
+        p_inc = Decimal(ln.get('porc_inc') or 0) / Decimal('100')
+        base = _r2(saldo / (Decimal('1') + p_iva + p_inc))
+        iva = _r2(base * p_iva)
+        inc_pct = _r2(base * p_inc)
+        base = _r2(pagar - iva - inc_pct - inc_fijo)  # el residuo de redondeo (<= 0.01) va a la base
+        resultado.append({
+            'bruto': bruto, 'descuento': _r2(propio + cuota), 'total_pagar': pagar,
+            'base_neta': base, 'iva': iva, 'inc': _r2(inc_fijo + inc_pct),
+            'vlr_unit_neto': (base / cantidad) if cantidad else CERO,
+        })
+
+    def total(clave):
+        return _r2(sum((r[clave] for r in resultado), CERO))
+
+    return {
+        'lineas': resultado,
+        'tot_bruto': total('bruto'), 'tot_descuento': total('descuento'),
+        'tot_base': total('base_neta'), 'tot_iva': total('iva'), 'tot_inc': total('inc'),
+        'tot_pagar': total('total_pagar'),
+    }
+
+
+def _cargar_inc_fijo_articulos(ids_articulos):
+    """
+    {id_articulo: INC fijo por unidad} desde IN_ARTICULOS.IMPOCONSUMO (Oracle). El detalle POS
+    guardado en SQLite no conserva el INC, así que se consulta con la misma fuente del catálogo.
+    Si Oracle no responde retorna {} (se calcula sin INC fijo) y registra una advertencia.
+    """
+    ids = sorted({str(i) for i in ids_articulos if i})
+    if not ids:
+        return {}
+    try:
+        marcadores = ','.join(['%s'] * len(ids))
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT ID_ARTICULO, NVL(IMPOCONSUMO, 0) FROM IN_ARTICULOS WHERE ID_ARTICULO IN ({marcadores})",
+                ids,
+            )
+            return {str(r[0]): Decimal(str(r[1] or 0)) for r in cursor.fetchall()}
+    except Exception as exc:
+        logger.warning(f"POS: no se pudo leer IMPOCONSUMO de IN_ARTICULOS: {exc}")
+        return {}
+
+
+def _calcular_ticket(header, items):
+    """Aplica calcular_ticket_en_reversa a un ticket grabado (header + detalle SQLite)."""
+    inc_fijo = _cargar_inc_fijo_articulos(it.id_articulo for it in items)
+    lineas = [{
+        'cantidad': it.cantidad, 'vlr_unitario': it.vlr_unitario, 'porc_descuento': it.porc_descuento,
+        'porc_iva': it.porc_iva, 'porc_inc': CERO,
+        'vlr_inc_fijo_unit': inc_fijo.get(str(it.id_articulo), CERO),
+    } for it in items]
+    calculo = calcular_ticket_en_reversa(lineas, header.descuento_promocion)
+    if abs(calculo['tot_pagar'] - header.tot_ticket) > CENT:
+        logger.warning(
+            f"POS {header.ticket_id}: total recalculado {calculo['tot_pagar']} != tot_ticket grabado {header.tot_ticket}"
+        )
+    return calculo
+
+
+def _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero=None):
+    """
+    Construye (header_data, items_data, taxes_data) con las llaves de InvoicePayloadBuilder.
+    VLR_UNITARIO es el valor unitario NETO sin impuestos (base_neta / cantidad), por lo que
+    CANTIDAD * VLR_UNITARIO = base_neta y TaxExclusive + IVA + INC = PayableAmount.
+    `tercero` (obtener_tercero_pos) aporta los datos reales de CO_TERCEROS para CustomerInformation.
+    """
+    tercero = tercero or {}
+    nit_adq = tercero.get('nit') or header.id_tercero or CONSUMIDOR_FINAL
+    razon_social = tercero.get('razon_social') or header.nom_tercero
+    fecha = _fecha_bogota(header.fch_ticket)
+    id_safe = re.sub(r'[^A-Za-z0-9_-]', '_', header.ticket_id)
+    header_data = {
+        'ID_DOCUMENTO': id_safe,
+        'NUM_DOCUMENTO': header.ticket_id,
+        'FCH_DOCUMENTO': fecha.strftime('%Y-%m-%dT%H:%M:%S'),
+        'TOT_DOCUMENTO': float(calculo['tot_pagar']),
+        'TOT_MERCANCIA': float(calculo['tot_base']),
+        'PLAZO_PAGO': 0,
+        'REGIMEN': tercero.get('regimen') or '2',
+        'NUM_RESOLUCION': '',
+        'NIT_TERCERO': nit_adq,
+        'DIGITO_VERIFICACION': tercero.get('digito_verificacion', ''),
+        'RAZON_SOCIAL': razon_social,
+        'NOMBRE_COMERCIAL': tercero.get('nombre_comercial') or razon_social,
+        'EMAIL': tercero.get('email', ''),
+        'DIRECCION': tercero.get('direccion', ''),
+        'TELEFONO': tercero.get('telefono', ''),
+        'ID_MUNICIPIO_DIAN': tercero.get('id_municipio_dian', ''),
+        'DEPARTAMENTO_NOMBRE': tercero.get('departamento_nombre', ''),
+        'MUNICIPIO_NOMBRE': tercero.get('municipio_nombre', ''),
+        'CREADO_POR': empresa.get('nom_sistema', ''),
+        'VENDEDOR_NOMBRE_LARGO': '',
+    }
+    items_data = []
+    for it, c in zip(items, calculo['lineas']):
+        items_data.append({
+            'ID_ARTICULO': it.id_articulo,
+            'NOM_ARTICULO': it.nom_articulo,
+            'CANTIDAD': float(it.cantidad),
+            'VLR_UNITARIO': float(c['vlr_unit_neto']),
+            'VLR_IVA_LINEA': float(c['iva']),
+            'PORC_IVA': float(it.porc_iva),
+            'VLR_IMPOCONSUMO_LINEA': float(c['inc']),
+            'PORC_IMPOCONSUMO': 0.0,
+            'BASE_LINEA': float(c['base_neta']),
+        })
+    return header_data, items_data, {}
+
+
+def _armar_ticket_data(header, items, cufe, empresa, estado_dian, calculo, atendido_por='', tercero=None):
+    """
+    Diccionario para templates/plantilla_tiquete_pos_weasyprint.html.
+
+    V.UNIT y TOTAL se imprimen con impuestos incluidos (tal como se vende); base, IVA e INC
+    salen de calcular_ticket_en_reversa (la misma fuente del CUFE y del JSON DIAN).
+    Los valores se envían numéricos; el renderizador los redondea a cero decimales.
+    Caja = TS_CAJAS.COD_CAJA (empresa['cod_caja']); tercero = CO_TERCEROS (solo NIT y NOM_TERCERO).
+    """
+    tercero = tercero or {}
+    fecha = _fecha_bogota(header.fch_ticket)
+    turno = header.turno if header.turno_id else None
+
+    lineas = []
+    grupos = {}
+    for it, c in zip(items, calculo['lineas']):
+        lineas.append({
+            'cantidad': it.cantidad,
+            'referencia': it.referencia or it.id_articulo,
+            'nom_articulo': it.nom_articulo,
+            'vlr_unitario': it.vlr_unitario,
+            'vlr_total': c['bruto'],
+            'descuento': c['descuento'],
+            'porc_iva': it.porc_iva or CERO,
+        })
+        g = grupos.setdefault(it.porc_iva or CERO, {'base': CERO, 'iva': CERO, 'inc': CERO})
+        g['base'] += c['base_neta']
+        g['iva'] += c['iva']
+        g['inc'] += c['inc']
+
+    # Una fila por tarifa de IVA; el INC (si existe) se agrega como fila propia para que
+    # BASE + VLR IMPUESTO del TOTAL cuadre con el TOTAL A PAGAR.
+    impuestos = []
+    for porc, g in sorted(grupos.items()):
+        impuestos.append({'porc': porc, 'base': g['base'], 'valor': g['iva']})
+    tot_inc = calculo['tot_inc']
+    if tot_inc:
+        impuestos.append({'porc': CERO, 'tipo': 'INC', 'base': CERO, 'valor': tot_inc})
+
+    pagos = [
+        {'metodo': nombre, 'valor': valor}
+        for nombre, valor in (
+            ('Efectivo', header.pago_efectivo), ('Tarjeta', header.pago_tarjeta),
+            ('Transferencia', header.pago_transferencia), ('Puntos', header.pago_puntos),
+        ) if valor
+    ]
+    return {
+        **empresa,
+        'num_documento': header.ticket_id,
+        'fch_documento': fecha.strftime('%Y-%m-%d %H:%M:%S'),
+        'caja': empresa.get('cod_caja') or '',  # solo TS_CAJAS.COD_CAJA (nunca nombre/alias de la caja)
+        'atendido_por': atendido_por or (turno.usuario if turno else ''),
+        'nom_tercero': tercero.get('nom_tercero') or header.nom_tercero,
+        'nit_tercero': tercero.get('nit') or header.id_tercero or CONSUMIDOR_FINAL,
+        'items': lineas,
+        'tot_items': len(lineas),
+        'tot_mercancia': calculo['tot_bruto'],
+        'tot_descuento': calculo['tot_descuento'],
+        'total_descuentos': calculo['tot_descuento'],
+        'tot_documento': calculo['tot_pagar'],
+        'impuestos': impuestos,
+        'pagos': pagos,
+        'cambio': header.cambio if header.pago_efectivo else CERO,
+        'cufe': cufe,
+        'estado_dian': estado_dian,
+        'fecha_documento_raw': fecha,
+    }
+
+
+def _nombre_atendido_por(request, header):
+    """Nombre del cajero tal como se muestra en el menú principal (base.html): sesión usuario_nombre / pos_user.nombre."""
+    pos_user = request.session.get('pos_user') or {}
+    nombre = request.session.get('usuario_nombre') or pos_user.get('nombre')
+    if nombre:
+        return str(nombre).strip()
+    return header.turno.usuario if header.turno_id else ''
+
+
+def _ruta_relativa_pdf(pdf_path):
+    """Ruta del PDF relativa a MEDIA_ROOT/BASE_DIR (no se expone la ruta absoluta del servidor)."""
+    base = str(getattr(settings, 'MEDIA_ROOT', '') or '').strip() or str(settings.BASE_DIR)
+    try:
+        return Path(pdf_path).resolve().relative_to(Path(base).resolve()).as_posix()
+    except Exception:
+        return os.path.basename(pdf_path)
+
+
+def _procesar_tiquete_pos(request, header, empresa, es_nuevo=True):
+    """
+    Post-grabación de un tiquete POS: CUFE local, JSON DIAN real en disco, encolado DIAN
+    y PDF térmico. El tiquete ya está grabado en SQLite; NADA de lo que ocurre aquí
+    puede propagar una excepción ni bloquear la caja.
+
+    es_nuevo=False (reintento de sincronización de un ticket ya grabado): solo se
+    recalculan CUFE y PDF; no se vuelve a escribir JSON ni a encolar.
+    """
+    prefijo = request.session.get('prefijo_numeracion')
+    resultado = {
+        'ticket_id': header.ticket_id, 'cufe': '', 'pdf_nombre': None, 'pdf_ruta': None,
+        'estado_dian': 'PENDIENTE_CIERRE_Z', 'payload_guardado': False,
+    }
+    items = []
+    try:
+        header.refresh_from_db()
+        items = list(header.items.order_by('id'))
+        calculo = _calcular_ticket(header, items)
+    except Exception as exc:
+        logger.error(f"POS {header.ticket_id}: no se pudo leer el tiquete grabado: {exc}")
+        resultado['estado_dian'] = 'ERROR_LECTURA'
+        return resultado
+
+    # Adquirente real desde CO_TERCEROS (NIT/ID del ticket; respaldo 222222222222). No lanza excepciones.
+    from impresion.document_renderer import obtener_tercero_pos
+    tercero = obtener_tercero_pos(header.id_tercero or CONSUMIDOR_FINAL)
+
+    # 1. CUFE local (SHA-384). Siempre disponible, sin red.
+    try:
+        from facturacion.dian_async import calcular_cufe_local, get_dian_cufe_config
+        cfg = get_dian_cufe_config()
+        fecha = _fecha_bogota(header.fch_ticket)
+        resultado['cufe'] = calcular_cufe_local(
+            num_fac=header.ticket_id,
+            fecha=fecha.strftime('%Y-%m-%d'),
+            hora=fecha.strftime('%H:%M:%S-05:00'),
+            val_fac=calculo['tot_base'], val_iva=calculo['tot_iva'], val_inc=calculo['tot_inc'], val_ica=0,
+            val_tot=calculo['tot_pagar'],
+            nit_ofe=_nit_sin_dv(empresa.get('nit_emp')),
+            num_adq=tercero.get('nit') or header.id_tercero or CONSUMIDOR_FINAL,
+            clave_tecnica=cfg['clave_tecnica'], tipo_ambiente=cfg['tipo_ambiente'],
+        )
+    except Exception as exc:
+        logger.error(f"POS {header.ticket_id}: error calculando CUFE local: {exc}")
+
+    # 2. JSON real (dry_run=False) escrito en logs/fel_payloads + 3. encolado DIAN
+    if es_nuevo:
+        payload = None
+        try:
+            from services.payload_builder import InvoicePayloadBuilder
+            header_data, items_data, taxes_data = _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero)
+            payload = InvoicePayloadBuilder.build_invoice_payload(header_data, items_data, taxes_data)
+            resultado['payload_guardado'] = True
+        except Exception as exc:
+            logger.error(f"POS {header.ticket_id}: no se pudo generar el JSON DIAN: {exc}")
+            resultado['estado_dian'] = 'ERROR_PAYLOAD'
+
+        # La transmisión por tiquete es opt-in: el Cierre Z ya consolida y transmite
+        # un documento maestro (ver pos_consolidator); transmitir ambos duplicaría la venta.
+        if payload is not None and getattr(settings, 'POS_DIAN_TRANSMIT_ON_SYNC',
+                                           os.getenv('POS_DIAN_TRANSMIT_ON_SYNC', '').lower() in ('1', 'true', 'yes')):
+            try:
+                from facturacion.dian_async import encolar_transmision_pos
+                resultado['task_id'] = str(encolar_transmision_pos(header.ticket_id, payload))
+                resultado['estado_dian'] = 'ENCOLADO'
+            except Exception as exc:
+                logger.error(f"POS {header.ticket_id}: no se pudo encolar la transmisión DIAN: {exc}")
+                resultado['estado_dian'] = 'PENDIENTE_CIERRE_Z'
+
+    # 4. PDF térmico
+    try:
+        from impresion.document_renderer import render_pos_ticket_to_pdf, obtener_datos_emisor_pos
+        caja_id = header.turno.caja_id if header.turno_id else ''
+        # Emisor, resolución DIAN y responsabilidades tributarias: misma fuente Oracle que la factura masiva.
+        emisor = obtener_datos_emisor_pos(caja_id)
+        empresa_pdf = {**empresa, **{k: v for k, v in emisor.items() if v}}
+        ticket_data = _armar_ticket_data(
+            header, items, resultado['cufe'], empresa_pdf, resultado['estado_dian'], calculo,
+            atendido_por=_nombre_atendido_por(request, header), tercero=tercero,
+        )
+        pdf_path = render_pos_ticket_to_pdf(ticket_data, prefijo_numeracion=prefijo)
+        resultado['pdf_nombre'] = os.path.basename(pdf_path)
+        resultado['pdf_ruta'] = _ruta_relativa_pdf(pdf_path)
+    except Exception as exc:
+        logger.error(f"POS {header.ticket_id}: no se pudo generar el PDF térmico: {exc}")
+
+    return resultado
 
 
 @pos_role_required(*ROLES_APERTURA)
@@ -41,7 +474,8 @@ def api_catalog(request):
         NVL(a.CODIGO_BARRAS, '') AS CODIGO_BARRAS,
         NVL(a.VLR_REPOSICION, 0) AS PRECIO,
         a.ID_GRAVAMEN,
-        NVL(g.PORC_GRAVAMEN, 0) AS PORC_GRAVAMEN
+        NVL(g.PORC_GRAVAMEN, 0) AS PORC_GRAVAMEN,
+        NVL(a.IMPOCONSUMO, 0) AS VLR_INC_FIJO_UNIT
     FROM IN_ARTICULOS a
     LEFT JOIN IN_GRAVAMENES g ON a.ID_GRAVAMEN = g.ID_GRAVAMEN
     WHERE NVL(a.ACTIVO_INACTIVO, 'A') = 'A'
@@ -56,6 +490,9 @@ def api_catalog(request):
             for item in catalog:
                 item['precio'] = float(item['precio'])
                 item['porc_gravamen'] = float(item['porc_gravamen'])
+                # IN_ARTICULOS.IMPOCONSUMO es un valor fijo por unidad (COP); no existe INC porcentual.
+                item['vlr_inc_fijo_unit'] = float(item['vlr_inc_fijo_unit'])
+                item['porc_impoconsumo'] = 0.0
 
         return JsonResponse({'status': 'success', 'catalog': catalog, 'count': len(catalog)})
     except Exception as e:
@@ -195,13 +632,18 @@ def api_sync_tickets(request):
             }, status=400)
 
         synced_ids = []
+        tickets_resultado = []
+        empresa_ctx = _datos_empresa(request) if tickets_data else {}
         for t_data in tickets_data:
             ticket_id = t_data.get('ticket_id')
             if not ticket_id:
                 continue
 
-            if PosTicketHeader.objects.filter(ticket_id=ticket_id).exists():
+            existente = PosTicketHeader.objects.filter(ticket_id=ticket_id).first()
+            if existente:
                 synced_ids.append(ticket_id)
+                # Reintento de sync: se devuelve de nuevo CUFE/PDF sin duplicar JSON ni transmisión.
+                tickets_resultado.append(_procesar_tiquete_pos(request, existente, empresa_ctx, es_nuevo=False))
                 continue
 
             id_tercero = t_data.get('id_tercero', '222222222222')
@@ -213,7 +655,7 @@ def api_sync_tickets(request):
                 turno=turno,
                 id_tercero=id_tercero,
                 nom_tercero=t_data.get('nom_tercero', 'VENTAS MASIVAS (CONSUMIDOR FINAL)'),
-                fch_ticket=t_data.get('fch_ticket', timezone.now()),
+                fch_ticket=_parsear_fecha_ticket(t_data.get('fch_ticket')),
                 tot_mercancia=Decimal(str(t_data.get('tot_mercancia', 0))),
                 tot_iva=Decimal(str(t_data.get('tot_iva', 0))),
                 tot_ticket=Decimal(str(t_data.get('tot_ticket', 0))),
@@ -243,6 +685,18 @@ def api_sync_tickets(request):
                     tot_linea=Decimal(str(item_data.get('tot_linea', 0)))
                 )
 
+            # Normaliza base/IVA con la fórmula en reversa del servidor (la misma del JS, del CUFE y
+            # del JSON DIAN); corrige también tickets encolados offline con la fórmula anterior.
+            detalle = list(header.items.order_by('id'))
+            calculo = _calcular_ticket(header, detalle)
+            header.tot_mercancia = calculo['tot_base']
+            header.tot_iva = calculo['tot_iva']
+            header.save(update_fields=['tot_mercancia', 'tot_iva'])
+            for det, c in zip(detalle, calculo['lineas']):
+                if det.vlr_iva != c['iva']:
+                    det.vlr_iva = c['iva']
+                    det.save(update_fields=['vlr_iva'])
+
             # Actualizar Fidelización Puntos Cliente (Earn)
             if id_tercero != '222222222222' and puntos_ganados > 0:
                 puntos_obj, _ = PosPuntosCliente.objects.get_or_create(id_tercero=id_tercero)
@@ -251,10 +705,12 @@ def api_sync_tickets(request):
                 puntos_obj.save()
 
             synced_ids.append(ticket_id)
+            tickets_resultado.append(_procesar_tiquete_pos(request, header, empresa_ctx, es_nuevo=True))
 
         return JsonResponse({
             'status': 'success',
             'synced_ids': synced_ids,
+            'tickets': tickets_resultado,
             'message': f'{len(synced_ids)} tickets sincronizados correctamente.'
         })
     except Exception as e:

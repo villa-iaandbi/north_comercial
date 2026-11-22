@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Tiquete POS {{ num_documento }}</title>
+<style>
+    @page { size: 80mm auto; margin: 4mm; }
+    * { box-sizing: border-box; }
+    body {
+        width: 72mm;
+        margin: 0;
+        padding: 0;
+        font-family: "DejaVu Sans Mono", "Courier New", monospace;
+        font-size: 8pt;
+        line-height: 1.25;
+        color: #000;
+    }
+    .center { text-align: center; }
+    .right { text-align: right; }
+    .bold { font-weight: bold; }
+    .upper { text-transform: uppercase; }
+    .small { font-size: 7pt; }
+    .sep { border-top: 1px dashed #000; margin: 2mm 0; height: 0; }
+    .empresa-nombre { font-size: 10pt; font-weight: bold; text-transform: uppercase; }
+    .titulo { font-size: 8.5pt; font-weight: bold; margin: 1mm 0; }
+    .num-doc { font-size: 10pt; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { padding: 0.4mm 0; vertical-align: top; }
+    th { border-bottom: 1px solid #000; font-size: 7.5pt; text-align: left; }
+    td.num, th.num { text-align: right; }
+    .items th, .items td { font-size: 7.5pt; white-space: nowrap; overflow: hidden; }
+    .items td.cod { text-align: center; font-weight: bold; }
+    .items td.desc { font-size: 6.2pt; padding-left: 0; padding-right: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+    .items td.dto { font-size: 7pt; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .items tr { page-break-inside: avoid; }
+    .items td, .items tbody tr { border: 0; }
+    .items td.cod { padding-left: 1mm; }
+    .items td.dto { padding-left: 0; }
+    .caja-linea { white-space: pre-wrap; text-align: left; }
+    .totales td { font-weight: bold; border-top: 1px solid #000; }
+    .kv td:first-child { width: 28mm; font-weight: bold; }
+    .total-box { border-top: 1px solid #000; border-bottom: 1px solid #000; margin: 1.5mm 0; padding: 1mm 0; }
+    .total-box td { font-size: 10pt; font-weight: bold; }
+    .cufe {
+        font-size: 6pt;
+        word-break: break-all;
+        overflow-wrap: anywhere;
+        text-align: left;
+    }
+    .qr { text-align: center; margin-top: 2mm; }
+    .qr img { width: 32mm; height: 32mm; }
+    .legal { font-size: 6.5pt; text-align: justify; margin-top: 1mm; }
+</style>
+</head>
+<body>
+
+    <!-- Encabezado de empresa -->
+    <div class="center">
+        <div class="empresa-nombre">{{ nom_sistema }}</div>
+        {% if nit_emp %}<div>NIT: {{ nit_emp }}</div>{% endif %}
+        {% if dir_emp %}<div>{{ dir_emp }}{% if municipio_emp %} - {{ municipio_emp }}{% endif %}</div>{% endif %}
+        {% if tels_emp %}<div>Tel: {{ tels_emp }}</div>{% endif %}
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="center">
+        <div class="titulo">FACTURA ELECTRÓNICA DE VENTA POS</div>
+        <div class="num-doc">No. {{ num_documento }}</div>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- Datos de la factura y del adquirente -->
+    <table class="kv">
+        <tr><td>Fecha:</td><td>{{ fch_documento }}</td></tr>
+        <tr><td>CLIENTE:</td><td>{{ nom_tercero|default:"CONSUMIDOR FINAL" }}</td></tr>
+        <tr><td>NIT/CC:</td><td>{{ nit_tercero|default:"222222222222" }}</td></tr>
+    </table>
+
+    <div class="sep"></div>
+
+    <!-- Detalle de ítems: sin separadores; el código de gravamen cierra la línea (sin título) -->
+    <table class="items">
+        <colgroup>
+            <col style="width: 10mm;">
+            <col style="width: 22mm;">
+            <col style="width: 15mm;">
+            <col style="width: 20mm;">
+            <col style="width: 5mm;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>CANT</th>
+                <th>REF</th>
+                <th class="num">V.UNIT</th>
+                <th class="num">TOTAL</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr class="l1">
+                <td>{{ item.cantidad }}</td>
+                <td>{{ item.referencia }}</td>
+                <td class="num">{{ item.vlr_unitario }}</td>
+                <td class="num">{{ item.vlr_total }}</td>
+                <td class="cod">{{ item.cod }}</td>
+            </tr>
+            <tr class="l2">
+                <td class="desc" colspan="5">{{ item.nom_articulo }}</td>
+            </tr>
+            {% if item.descuento %}
+            <tr class="l3">
+                <td class="dto" colspan="5">Descuento (-) {{ item.descuento }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="sep"></div>
+
+    <!-- Totales: Subtotal y Descuentos solo si hay descuentos -->
+    <table>
+        {% if tot_items %}<tr><td>Total ítems:</td><td class="right">{{ tot_items }}</td></tr>{% endif %}
+        {% if total_descuentos > 0 %}
+        <tr><td>Subtotal:</td><td class="right">{{ tot_mercancia }}</td></tr>
+        <tr><td>Descuentos:</td><td class="right">(-) {{ tot_descuento }}</td></tr>
+        {% endif %}
+    </table>
+    <div class="total-box">
+        <table>
+            <tr><td>TOTAL A PAGAR</td><td class="right">{{ tot_documento }}</td></tr>
+        </table>
+    </div>
+
+    <!-- Medios de pago (antes de los impuestos) -->
+    <div class="bold">MEDIOS DE PAGO</div>
+    <table>
+        <tr><td colspan="2">Forma de pago : CONTADO</td></tr>
+        {% for pago in pagos %}
+        <tr>
+            <td>{{ pago.metodo }}</td>
+            <td class="right">{{ pago.valor }}</td>
+        </tr>
+        {% endfor %}
+        {% if cambio %}<tr><td>Cambio</td><td class="right">{{ cambio }}</td></tr>{% endif %}
+    </table>
+    <div class="sep"></div>
+
+    <!-- Discriminación de impuestos -->
+    {% if impuestos %}
+    <div class="bold">RESUMEN DE IMPUESTOS</div>
+    <table class="imp">
+        <thead>
+            <tr>
+                <th>TARIFA</th>
+                <th class="num">BASE</th>
+                <th class="num">VLR IMPUESTO</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for imp in impuestos %}
+            <tr>
+                <td>{{ imp.tarifa }}</td>
+                <td class="num">{{ imp.base }}</td>
+                <td class="num">{{ imp.valor }}</td>
+            </tr>
+            {% endfor %}
+            {% if impuestos_total %}
+            <tr class="totales">
+                <td>TOTAL</td>
+                <td class="num">{{ impuestos_total.base }}</td>
+                <td class="num">{{ impuestos_total.valor }}</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+    <div class="sep"></div>
+    {% endif %}
+
+    <!-- Resolución DIAN (CO_DOC_CONSECUTIVOS.OBSER), caja / cajero y responsabilidades tributarias -->
+    {% if resolucion %}<div class="legal" style="text-align: left;">{{ resolucion }}</div>{% endif %}
+    {% if caja or atendido_por %}
+    <div class="legal bold caja-linea">Caja: {{ caja }}  Atendido por : {{ atendido_por }}</div>
+    {% endif %}
+    {% if contribuyente %}<div class="legal upper" style="text-align: left;">{{ contribuyente|linebreaksbr }}</div>{% endif %}
+    {% if texto_legal %}<div class="legal">{{ texto_legal }}</div>{% endif %}
+    {% if texto_pie %}<div class="legal center">{{ texto_pie }}</div>{% endif %}
+
+    <div class="sep"></div>
+
+    <!-- CUFE y QR -->
+    {% if cufe %}
+    <div class="bold small">CUFE:</div>
+    <div class="cufe">{{ cufe }}</div>
+    {% endif %}
+
+    {% if qr_base64 %}
+    <div class="qr">
+        <img src="data:image/svg+xml;base64,{{ qr_base64 }}" alt="Código QR DIAN">
+    </div>
+    {% endif %}
+
+    <div class="center small" style="margin-top: 2mm;">
+        {% if nom_software %}Software: {{ nom_software }}{% endif %}
+        {% if desarrollador_software %} - {{ desarrollador_software }}{% endif %}
+        {% if nit_desarrollador %} NIT {{ nit_desarrollador }}{% endif %}
+    </div>
+    <div class="center small">¡Gracias por su compra!</div>
+
+</body>
+</html>
