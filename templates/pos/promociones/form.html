@@ -88,7 +88,7 @@
                     <label for="id_monto_minimo" class="mb-1 block text-xs font-semibold text-gray-600">Monto mínimo de compra ($)</label>
                     <input type="number" id="id_monto_minimo" name="monto_minimo" min="0" step="100" x-model="montoMinimo"
                         class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-right text-sm text-gray-900 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
-                    <p class="mt-1 text-xs text-gray-500">Compra mínima del carrito para activar la promoción ($0 = sin mínimo).</p>
+                    <p class="mt-1 text-xs text-gray-500">Se evalúa sobre el subtotal de los artículos cubiertos por la promoción, no sobre el carrito completo ($0 = sin mínimo).</p>
                 </div>
             </div>
         </div>
@@ -389,7 +389,7 @@
 
                     let texto = `${partes.join(', ')}, ${alcance}: ${beneficio}.`;
                     const minimo = parseFloat(this.montoMinimo);
-                    if (minimo > 0) texto += ` Requiere compra mínima de $${fmtNum(minimo)}.`;
+                    if (minimo > 0) texto += ` Requiere una compra mínima de $${fmtNum(minimo)} en los artículos cubiertos.`;
                     texto += ` Prioridad ${this.prioridad === '' ? 0 : this.prioridad}; los descuentos no se acumulan.`;
                     if (!this.activo) texto += ' (Quedará inactiva.)';
                     return texto;

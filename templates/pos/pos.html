@@ -913,7 +913,6 @@ function posApp() {
 
             const promos = [...this.promociones].sort((a, b) => Number(b.prioridad || 0) - Number(a.prioridad || 0));
             const bruto = (item) => Number(item.cantidad || 0) * Number(item.vlr_unitario || 0);
-            const subtotalCarrito = this.cart.reduce((sum, item) => sum + (item.es_regalo ? 0 : bruto(item)), 0);
             const lineasBloqueadas = new Set();   // índices del carrito que ya recibieron una promoción
             const descLinea = this.cart.map(() => 0);   // descuento (COP) asignado a cada línea del carrito
 
@@ -924,9 +923,6 @@ function posApp() {
                 // Días de la semana (vacío = todos)
                 const dias = String(promo.dias_semana || '').split(',').map(d => d.trim()).filter(Boolean);
                 if (dias.length > 0 && !dias.includes(diaHoy)) continue;
-
-                // Monto mínimo sobre el carrito completo
-                if (subtotalCarrito < Number(promo.monto_minimo || 0)) continue;
 
                 // Líneas elegibles: no regalo, no bloqueadas y dentro del alcance
                 const valores = new Set((promo.alcance_valores || []).map(v => String(v)));
@@ -947,6 +943,11 @@ function posApp() {
                 if (elegibles.length === 0) continue;
 
                 const subtotalElegible = elegibles.reduce((sum, idx) => sum + bruto(this.cart[idx]), 0);
+
+                // Monto mínimo sobre el subtotal de las líneas elegibles de ESTA promoción
+                // (con alcance TODA_TIENDA equivale al carrito completo)
+                if (subtotalElegible < Number(promo.monto_minimo || 0)) continue;
+
                 const asignado = new Map();   // idx -> descuento de ESTA promoción para esa línea
 
                 if (promo.tipo_beneficio === 'DESCUENTO_PORC') {
