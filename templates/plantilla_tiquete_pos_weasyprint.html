@@ -112,7 +112,9 @@
             </tr>
             {% if item.descuento %}
             <tr class="l3">
-                <td class="dto" colspan="5">Descuento (-) {{ item.descuento }}</td>
+                <td class="dto" colspan="3" style="text-align: right;">Descuento (-)</td>
+                <td class="dto num">{{ item.descuento }}</td>
+                <td class="cod"></td>
             </tr>
             {% endif %}
             {% endfor %}

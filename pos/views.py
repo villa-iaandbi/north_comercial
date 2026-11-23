@@ -232,23 +232,25 @@ def _actualizar_consecutivo_caja(id_caja, consecutivo_num):
 
 
 def _datos_empresa(request):
-    """Datos de la empresa para el encabezado/CUFE. Nunca lanza excepciones."""
+    """
+    Datos de la empresa para el encabezado/CUFE. Nunca lanza excepciones.
+    Usa _fetch_empresa_data (TRIM(ID_SISTEMA) con fallback a '1' y a la primera fila de SG_SISTEMAS),
+    de modo que NIT, dirección y responsabilidades tributarias no se pierdan por un id de sesión
+    que no coincide.
+    """
     id_sistema = _id_sistema_sesion(request)
     datos = {
         'nom_sistema': request.session.get('nom_empresa') or '',
-        'nit_emp': '', 'dir_emp': '', 'municipio_emp': '', 'tels_emp': '',
+        'nit_emp': '', 'dir_emp': '', 'municipio_emp': '', 'tels_emp': '', 'contribuyente': '',
     }
     try:
+        from impresion.document_renderer import _fetch_empresa_data
         with get_oracle_connection().cursor() as cursor:
-            cursor.execute(
-                "SELECT NOM_SISTEMA, NIT, DIRECCION FROM SG_SISTEMAS WHERE ID_SISTEMA = %s",
-                [id_sistema],
-            )
-            row = cursor.fetchone()
-        if row:
-            datos['nom_sistema'] = row[0] or datos['nom_sistema']
-            datos['nit_emp'] = str(row[1] or '')
-            datos['dir_emp'] = row[2] or ''
+            emp = _fetch_empresa_data(cursor, id_sistema)
+        datos['nom_sistema'] = emp.get('nom_empresa') or datos['nom_sistema']
+        datos['nit_emp'] = str(emp.get('nit') or '')
+        datos['dir_emp'] = emp.get('dir') or ''
+        datos['contribuyente'] = emp.get('obser1') or ''
     except Exception as exc:
         logger.warning(f"POS: no se pudieron leer los datos de empresa en Oracle: {exc}")
     return datos
@@ -275,20 +277,27 @@ def calcular_ticket_en_reversa(lineas, descuento_global=0):
     Caja (JS) == PDF == CUFE == JSON Binapps.
 
     lineas: iterable de dicts con cantidad, vlr_unitario (con impuestos), porc_descuento,
-            porc_iva, porc_inc y vlr_inc_fijo_unit (los dos últimos opcionales).
+            descuento_valor (COP exacto de la línea; opcional), porc_iva, porc_inc y
+            vlr_inc_fijo_unit (los tres últimos opcionales).
+    Descuentos:
+      - Si alguna línea trae descuento_valor > 0, cada línea recibe EXACTAMENTE el suyo (topado a su bruto)
+        y se calcula su propio IVA/INC; el descuento_global se ignora (no se prorratea a líneas con 0).
+      - Solo si NINGUNA línea trae descuento_valor se prorratea descuento_global entre las líneas (respaldo).
     Retorna {'lineas': [...], 'tot_bruto', 'tot_descuento', 'tot_base', 'tot_iva', 'tot_inc',
              'tot_pagar'} con Decimals a 2 decimales. Por línea: bruto, descuento, total_pagar,
     base_neta, iva, inc, vlr_unit_neto; siempre base_neta + iva + inc == total_pagar.
     """
     lineas = list(lineas)
+    hay_desc_item = any(_r2(ln.get('descuento_valor') or 0) > 0 for ln in lineas)
     pre = []
     for ln in lineas:
         bruto = _r2(Decimal(ln['cantidad']) * Decimal(ln['vlr_unitario']))
         propio = _r2(bruto * Decimal(ln.get('porc_descuento') or 0) / Decimal('100'))
+        propio = min(bruto, _r2(propio + max(CERO, _r2(ln.get('descuento_valor') or 0))))
         pre.append((bruto, propio, max(CERO, _r2(bruto - propio))))
 
     suma_neto = _r2(sum((p[2] for p in pre), CERO))
-    global_dto = min(max(_r2(descuento_global or 0), CERO), suma_neto)
+    global_dto = CERO if hay_desc_item else min(max(_r2(descuento_global or 0), CERO), suma_neto)
     ultima_pos = max((k for k, p in enumerate(pre) if p[2] > 0), default=-1)
 
     resultado = []
@@ -353,6 +362,7 @@ def _calcular_ticket(header, items):
     inc_fijo = _cargar_inc_fijo_articulos(it.id_articulo for it in items)
     lineas = [{
         'cantidad': it.cantidad, 'vlr_unitario': it.vlr_unitario, 'porc_descuento': it.porc_descuento,
+        'descuento_valor': it.descuento_valor,
         'porc_iva': it.porc_iva, 'porc_inc': CERO,
         'vlr_inc_fijo_unit': inc_fijo.get(str(it.id_articulo), CERO),
     } for it in items]
@@ -439,7 +449,8 @@ def _armar_ticket_data(header, items, cufe, empresa, estado_dian, calculo, atend
             'nom_articulo': it.nom_articulo,
             'vlr_unitario': it.vlr_unitario,
             'vlr_total': c['bruto'],
-            'descuento': c['descuento'],
+            # Solo líneas con descuento real imprimen "Descuento (-)"; el resto va en 0 (la plantilla no lo muestra)
+            'descuento': c['descuento'] if c['descuento'] > 0 else CERO,
             'porc_iva': it.porc_iva or CERO,
         })
         g = grupos.setdefault(it.porc_iva or CERO, {'base': CERO, 'iva': CERO, 'inc': CERO})
@@ -902,6 +913,7 @@ def api_sync_tickets(request):
                     cantidad=Decimal(str(item_data.get('cantidad', 1))),
                     vlr_unitario=Decimal(str(item_data.get('vlr_unitario', 0))),
                     porc_descuento=Decimal(str(item_data.get('porc_descuento', 0))),
+                    descuento_valor=Decimal(str(item_data.get('descuento_valor') or 0)),
                     porc_iva=Decimal(str(item_data.get('porc_iva', 0))),
                     vlr_iva=Decimal(str(item_data.get('vlr_iva', 0))),
                     tot_linea=Decimal(str(item_data.get('tot_linea', 0)))

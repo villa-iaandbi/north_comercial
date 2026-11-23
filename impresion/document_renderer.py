@@ -67,16 +67,50 @@ def build_qr_base64(datos_fac, cufe):
 import re
 
 
+def _resolver_id_sistema(cursor, id_sistema='1'):
+    """
+    ID_SISTEMA efectivo de SG_SISTEMAS. Orden: TRIM(ID_SISTEMA) = <id de sesión>; si no hay fila,
+    TRIM(ID_SISTEMA) = '1'; si tampoco, la primera fila por ID_SISTEMA. Devuelve el ID_SISTEMA tal
+    cual está grabado (sin TRIM) o '' si la tabla está vacía. Así nunca se pierden NIT, dirección,
+    teléfonos ni responsabilidades tributarias por un id de sesión que no coincide.
+    """
+    pedido = str(id_sistema or '1').strip() or '1'
+    candidatos = [pedido] if pedido == '1' else [pedido, '1']
+    for candidato in candidatos:
+        cursor.execute("SELECT ID_SISTEMA FROM SG_SISTEMAS WHERE TRIM(ID_SISTEMA) = %s", [candidato])
+        fila = cursor.fetchone()
+        if fila:
+            if candidato != pedido:
+                logger.warning(f"POS: SG_SISTEMAS sin fila para ID_SISTEMA '{pedido}'; se usa '{candidato}'.")
+            return fila[0]
+    cursor.execute(
+        "SELECT ID_SISTEMA FROM (SELECT ID_SISTEMA FROM SG_SISTEMAS ORDER BY ID_SISTEMA) WHERE ROWNUM <= 1"
+    )
+    fila = cursor.fetchone()
+    if fila:
+        logger.warning(f"POS: SG_SISTEMAS sin fila para ID_SISTEMA '{pedido}' ni '1'; se usa '{fila[0]}'.")
+        return fila[0]
+    return ''
+
+
 def _fetch_empresa_data(cursor, id_sistema='1'):
     """
     Datos del emisor (SG_SISTEMAS, por defecto id='1'). Misma consulta para la factura masiva
     (_build_context) y para el tiquete POS (obtener_datos_emisor_pos).
+    Filtra con TRIM(ID_SISTEMA) y, si el id pedido no existe, cae a '1' y luego a la primera fila.
+    Incluye 'id_sistema_real' (el ID_SISTEMA efectivamente leído).
     """
-    id_sistema = str(id_sistema or '1').strip() or '1'
+    id_real = _resolver_id_sistema(cursor, id_sistema)
+    vacio = {
+        'nom_empresa': "", 'nit': "", 'dir': "", 'email': "",
+        'obser1': "", 'obser2': "", 'logo_blob': None, 'id_sistema_real': id_real,
+    }
+    if id_real == '':
+        return vacio
     cursor.execute("""
         SELECT NOM_SISTEMA, NIT, DIRECCION, ESLOGAN, OBSER1, OBSER2, LOGO_1 
         FROM SG_SISTEMAS WHERE ID_SISTEMA = %s
-    """, [id_sistema])
+    """, [id_real])
     empresa_row = cursor.fetchone()
     if empresa_row:
         return {
@@ -86,12 +120,10 @@ def _fetch_empresa_data(cursor, id_sistema='1'):
             'email': empresa_row[3] or "",
             'obser1': empresa_row[4] or "",
             'obser2': empresa_row[5] or "",
-            'logo_blob': empresa_row[6]
+            'logo_blob': empresa_row[6],
+            'id_sistema_real': id_real,
         }
-    return {
-        'nom_empresa': "", 'nit': "", 'dir': "", 'email': "",
-        'obser1': "", 'obser2': "", 'logo_blob': None
-    }
+    return vacio
 
 
 def _resolver_caja_ts(caja_ref, filas):
@@ -204,10 +236,15 @@ def obtener_datos_emisor_pos(caja_id=None, id_sistema='1'):
 
             # Teléfono del emisor: columna opcional; la factura masiva espera la llave 'tels'.
             try:
-                cursor.execute("SELECT TELS FROM SG_SISTEMAS WHERE ID_SISTEMA = %s", [id_sistema])
+                cursor.execute(
+                    "SELECT TELS FROM SG_SISTEMAS WHERE ID_SISTEMA = %s",
+                    [emp.get('id_sistema_real') or id_sistema],
+                )
                 row = cursor.fetchone()
                 datos['tels_emp'] = (row[0] or '') if row else ''
-            except Exception:
+            except Exception as exc:
+                # SG_SISTEMAS no tiene columna TELS en este esquema (los teléfonos viajan dentro de DIRECCION).
+                logger.debug(f"POS: SG_SISTEMAS.TELS no disponible (id_sistema '{emp.get('id_sistema_real')}'): {exc}")
                 datos['tels_emp'] = ''
 
             caja_ref = str(caja_id or '').strip()
@@ -269,7 +306,7 @@ def obtener_datos_emisor_pos(caja_id=None, id_sistema='1'):
                 except Exception as exc:
                     print(f"POS: no se pudo obtener la caja/resolución DIAN de la caja {caja_ref}: {exc}")
     except Exception as exc:
-        print(f"POS: no se pudieron leer los datos del emisor en Oracle: {exc}")
+        logger.error(f"POS: no se pudieron leer los datos del emisor en Oracle: {exc}")
     return datos
 
 

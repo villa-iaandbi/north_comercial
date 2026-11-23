@@ -805,6 +805,7 @@ function posApp() {
                     cantidad: 1,
                     vlr_unitario: vlrUnitario,          // precio unitario con IVA/INC incluidos
                     porc_descuento: 0,
+                    descuento_valor: 0,                 // descuento de promoción (COP) de ESTA línea; 0 = sin promoción
                     porc_iva: porcIva,
                     porc_inc: item.porc_impoconsumo || 0,
                     vlr_inc_fijo_unit: item.vlr_inc_fijo_unit || 0,
@@ -848,13 +849,16 @@ function posApp() {
         //   (el residuo de redondeo, <= 0.01, se absorbe en la base para que base+iva+inc == pagar)
         recalcTaxes() {
             const lines = this.cart;
+            // Si alguna línea trae descuento_valor se aplica EXACTAMENTE sobre su propia línea y NO se
+            // prorratea nada. El prorrateo del descuento global es solo respaldo (sin descuento_valor).
+            const hayDescItem = lines.some(i => (i.descuento_valor || 0) > 0);
             const pre = lines.map(i => {
                 const bruto = this.r2(i.cantidad * i.vlr_unitario);
-                const propio = this.r2(bruto * (i.porc_descuento || 0) / 100);
+                const propio = Math.min(bruto, this.r2(this.r2(bruto * (i.porc_descuento || 0) / 100) + (i.descuento_valor || 0)));
                 return { bruto, propio, neto: Math.max(0, this.r2(bruto - propio)) };
             });
             const sumNeto = this.r2(pre.reduce((s, p) => s + p.neto, 0));
-            const global = Math.min(Math.max(this.descuentoPromocion || 0, 0), sumNeto);
+            const global = hayDescItem ? 0 : Math.min(Math.max(this.descuentoPromocion || 0, 0), sumNeto);
             let lastPos = -1;
             pre.forEach((p, k) => { if (p.neto > 0) lastPos = k; });
             let asignado = 0;
@@ -895,11 +899,12 @@ function posApp() {
         // Motor de promociones v2 (PrPromocion: dias_semana, monto_minimo, alcance, tipo_beneficio...).
         // Reglas: se evalúan por prioridad (mayor primero); NO son acumulables: una línea que ya recibió
         // descuento de una promoción queda bloqueada para las de menor prioridad.
-        // Salida: this.descuentoPromocion (COP entero, global del ticket) y this.promocionesAplicadas.
+        // Salida: item.descuento_valor (COP exacto por línea), this.descuentoPromocion (= suma de las líneas) y this.promocionesAplicadas.
         computePromotions() {
             this.descuentoPromocion = 0;
             this.promocionesAplicadas = [];
             this.cart = this.cart.filter(item => !item.es_regalo);
+            this.cart.forEach(item => { item.descuento_valor = 0; });
 
             if (this.cart.length === 0 || this.promociones.length === 0) return;
 
@@ -910,7 +915,7 @@ function posApp() {
             const bruto = (item) => Number(item.cantidad || 0) * Number(item.vlr_unitario || 0);
             const subtotalCarrito = this.cart.reduce((sum, item) => sum + (item.es_regalo ? 0 : bruto(item)), 0);
             const lineasBloqueadas = new Set();   // índices del carrito que ya recibieron una promoción
-            let totalDescuento = 0;
+            const descLinea = this.cart.map(() => 0);   // descuento (COP) asignado a cada línea del carrito
 
             for (const promo of promos) {
                 const valor = Number(promo.valor_beneficio || 0);
@@ -942,37 +947,58 @@ function posApp() {
                 if (elegibles.length === 0) continue;
 
                 const subtotalElegible = elegibles.reduce((sum, idx) => sum + bruto(this.cart[idx]), 0);
-                let desc = 0;
+                const asignado = new Map();   // idx -> descuento de ESTA promoción para esa línea
 
                 if (promo.tipo_beneficio === 'DESCUENTO_PORC') {
-                    desc = subtotalElegible * (valor / 100);
+                    elegibles.forEach(idx => asignado.set(idx, this.r2(bruto(this.cart[idx]) * (valor / 100))));
                 } else if (promo.tipo_beneficio === 'DESCUENTO_VALOR') {
-                    desc = Math.min(valor, subtotalElegible);
+                    // Valor fijo: se reparte SOLO entre las líneas elegibles, proporcional a su bruto
+                    const total = Math.min(valor, subtotalElegible);
+                    let acum = 0;
+                    elegibles.forEach((idx, k) => {
+                        const cuota = (k === elegibles.length - 1)
+                            ? this.r2(total - acum)
+                            : this.r2(total * bruto(this.cart[idx]) / subtotalElegible);
+                        acum = this.r2(acum + cuota);
+                        asignado.set(idx, cuota);
+                    });
                 } else if (promo.tipo_beneficio === 'N_ESIMA_UNIDAD') {
                     // Mix & Match: el descuento aplica a las unidades más baratas del alcance
-                    const precios = [];
+                    const unidadesAlcance = [];
                     for (const idx of elegibles) {
                         const it = this.cart[idx];
                         const unidades = Math.floor(Number(it.cantidad || 0));
-                        for (let u = 0; u < unidades; u++) precios.push(Number(it.vlr_unitario || 0));
+                        for (let u = 0; u < unidades; u++) unidadesAlcance.push({ idx, precio: Number(it.vlr_unitario || 0) });
                     }
-                    precios.sort((a, b) => a - b);
+                    unidadesAlcance.sort((a, b) => a.precio - b.precio);
                     const n = Math.max(2, parseInt(promo.cada_n_unidades || 2, 10));
-                    const veces = Math.floor(precios.length / n);
-                    if (veces > 0) {
-                        const sumaBaratas = precios.slice(0, veces).reduce((s, p) => s + p, 0);
-                        desc = sumaBaratas * (valor / 100);
-                    }
+                    const veces = Math.floor(unidadesAlcance.length / n);
+                    unidadesAlcance.slice(0, veces).forEach(u => {
+                        asignado.set(u.idx, this.r2((asignado.get(u.idx) || 0) + u.precio * (valor / 100)));
+                    });
                 }
 
-                if (desc > 0) {
-                    totalDescuento += desc;
+                // Solo las líneas que realmente reciben descuento quedan bloqueadas y marcadas
+                let huboDescuento = false;
+                asignado.forEach((monto, idx) => {
+                    if (monto > 0) {
+                        descLinea[idx] = this.r2(descLinea[idx] + monto);
+                        lineasBloqueadas.add(idx);
+                        huboDescuento = true;
+                    }
+                });
+                if (huboDescuento) {
                     this.promocionesAplicadas.push(promo.nom_promocion || promo.nombre || ('Promoción ' + promo.id_promocion));
-                    elegibles.forEach(idx => lineasBloqueadas.add(idx));
                 }
             }
 
-            this.descuentoPromocion = Math.round(totalDescuento);
+            // Descuento exacto por línea (nunca mayor que su bruto); el global es la suma de las líneas
+            let totalDescuento = 0;
+            this.cart.forEach((item, idx) => {
+                item.descuento_valor = Math.min(this.r2(descLinea[idx]), this.r2(bruto(item)));
+                totalDescuento = this.r2(totalDescuento + item.descuento_valor);
+            });
+            this.descuentoPromocion = totalDescuento;
         },
 
         get totMercancia() {

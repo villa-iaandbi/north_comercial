@@ -61,6 +61,8 @@ class PosTicketDetail(models.Model):
     cantidad = models.DecimalField(max_digits=12, decimal_places=2)
     vlr_unitario = models.DecimalField(max_digits=15, decimal_places=2)
     porc_descuento = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0'))
+    # Descuento de promoción en COP asignado a ESTA línea (0 = sin promoción). Valor exacto del POS.
+    descuento_valor = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0'))
     porc_iva = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0'))
     vlr_iva = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0'))
     tot_linea = models.DecimalField(max_digits=15, decimal_places=2)
