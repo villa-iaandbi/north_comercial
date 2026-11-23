@@ -256,17 +256,31 @@ class InvoicePayloadBuilder:
 
         # Separatar prefijo y consecutivo de NUM_DOCUMENTO (Ej: FES5675 -> FES + 5675)
         import re
-        raw_num_doc = header_data.get('NUM_DOCUMENTO', '')
+        raw_num_doc = str(header_data.get('NUM_DOCUMENTO', '') or '').strip()
+        explicit_prefix = str(header_data.get('PREFIJO', '') or '').strip()
         doc_prefix = "FES"
         doc_number = raw_num_doc
-        match = re.match(r'^([A-Za-z]+)(\d+)$', raw_num_doc)
-        if match:
-            doc_prefix = match.group(1)
-            doc_number = match.group(2)
+        if explicit_prefix:
+            # Prefijo informado (POS por caja, ej. PREFIJO='CJ01-', NUM_DOCUMENTO='CJ01-46' -> '46').
+            doc_prefix = explicit_prefix
+            if raw_num_doc.upper().startswith(explicit_prefix.upper()):
+                resto = raw_num_doc[len(explicit_prefix):].lstrip('-_ ')
+            else:
+                resto = raw_num_doc
+            if resto.isdigit():
+                doc_number = resto
+            else:
+                tail = re.search(r'(\d+)$', resto)
+                doc_number = tail.group(1) if tail else (resto or raw_num_doc)
         else:
-            doc_number = re.sub(r'\D', '', raw_num_doc)
-            if not doc_number:
-                doc_number = raw_num_doc
+            match = re.match(r'^([A-Za-z]+)(\d+)$', raw_num_doc)
+            if match:
+                doc_prefix = match.group(1)
+                doc_number = match.group(2)
+            else:
+                doc_number = re.sub(r'\D', '', raw_num_doc)
+                if not doc_number:
+                    doc_number = raw_num_doc
 
         # ENSAMBLAJE FINAL DEL PAYLOAD NATIVO
         payload = {
@@ -274,7 +288,7 @@ class InvoicePayloadBuilder:
                 "InvoiceNumber": doc_number,
                 "PreinvoiceNumber": doc_number,
                 "InvoiceAuthorizationPrefix": doc_prefix,
-                "InvoiceAuthorizationNumber": header_data.get('NUM_RESOLUCION', ''), # Ajustar si se cruza de maestro
+                "InvoiceAuthorizationNumber": str(header_data.get('NUM_RESOLUCION', '') or '').strip(), # Resolución DIAN (TS_CAJAS.NUM_RESOLUCION en POS)
                 "DaysOff": 0,
                 "Currency": "COP",
                 "ExchangeRate": 0,

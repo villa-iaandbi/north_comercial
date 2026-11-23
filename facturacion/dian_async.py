@@ -81,15 +81,17 @@ def calcular_cufe_local(num_fac, fecha, hora, val_fac, val_iva, val_inc, val_ica
     return hashlib.sha384(cadena.encode('utf-8')).hexdigest()
 
 
-def transmitir_payload_pos_binapps(ticket_id: str, payload: dict) -> dict:
+def transmitir_payload_pos_binapps(numero_ticket: str, payload: dict, tenant_id=None) -> dict:
     """
     Tarea Django-Q: transmite a Binapps el payload ya construido de un tiquete POS.
+    tenant_id (opcional): Tenant ID de Binapps resuelto antes de encolar; evita que el worker consulte Oracle.
     Nunca lanza excepciones (BinappsClient devuelve State '99' ante fallos de red).
     """
     from services.binapps_client import BinappsClient
+    ticket_id = numero_ticket
     logger.info(f"[DIAN Async][POS] Transmitiendo tiquete {ticket_id}")
     try:
-        response = BinappsClient(dry_run=False).transmit_document(payload, is_credit_note=False)
+        response = BinappsClient(dry_run=False, tenant_id=tenant_id).transmit_document(payload, is_credit_note=False)
     except Exception as exc:
         logger.error(f"[DIAN Async][POS] Error transmitiendo tiquete {ticket_id}: {exc}")
         return {'ticket_id': ticket_id, 'success': False, 'api_state': '99', 'error': str(exc)}
@@ -104,8 +106,10 @@ def transmitir_payload_pos_binapps(ticket_id: str, payload: dict) -> dict:
     }
 
 
-def encolar_transmision_pos(ticket_id: str, payload: dict) -> str:
+def encolar_transmision_pos(numero_ticket: str, payload: dict, tenant_id=None) -> str:
     """Encola (Django-Q) la transmisión de un tiquete POS; la caja no espera a Binapps."""
-    task_id = async_task('facturacion.dian_async.transmitir_payload_pos_binapps', ticket_id, payload)
-    logger.info(f"[DIAN Async][POS] Tiquete {ticket_id} encolado con Task ID: {task_id}")
+    task_id = async_task(
+        'facturacion.dian_async.transmitir_payload_pos_binapps', numero_ticket, payload, tenant_id=tenant_id
+    )
+    logger.info(f"[DIAN Async][POS] Tiquete {numero_ticket} encolado con Task ID: {task_id}")
     return task_id

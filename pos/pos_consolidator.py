@@ -8,7 +8,6 @@ from core.models import (
 )
 from pos.models import PosTurno, PosTicketHeader, PosTicketDetail
 from services.legacy_repository import get_system_parameter
-from facturacion.dian_async import encolar_transmision_dian
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ def consolidar_cierre_z(turno_id, id_sistema='1'):
     3. Inserta un ÚNICO registro consolidado por artículo en IN_MOV_INVENTARIOS (Kardex).
     4. Genera el comprobante contable maestro en CO_DOCUMENTO_ITEMS.
     5. Actualiza el turno a 'CERRADO'.
-    6. Orquesta la Transmisión Asíncrona a la DIAN en segundo plano vía Django-Q2.
+    La transmisión DIAN se hace ticket a ticket al sincronizar (pos.views); el Cierre Z solo consolida en el ERP.
     """
     id_sistema = str(id_sistema or '1').strip() or '1'
     turno = PosTurno.objects.get(pk=turno_id)
@@ -184,19 +183,13 @@ def consolidar_cierre_z(turno_id, id_sistema='1'):
     turno.id_documento_cierre = vID_DOC
     turno.save()
 
-    # 6. Orquestar la Transmisión Asíncrona a la DIAN mediante Django-Q2
+    # La transmisión DIAN ya no se encola aquí: se hace ticket a ticket (evita doble facturación).
     dian_task_id = None
-    if vID_DOC:
-        try:
-            dian_task_id = encolar_transmision_dian(vID_DOC)
-            logger.info(f"Transmisión asíncrona DIAN encolada para Cierre Z Doc '{vID_DOC}' con Task ID: {dian_task_id}")
-        except Exception as e:
-            logger.error(f"Fallo al encolar transmisión DIAN en Cierre Z para Doc '{vID_DOC}': {e}")
 
     logger.info(f"Cierre Z exitoso. Turno #{turno_id} -> Doc Oracle: {vID_DOC}")
     return {
         'status': 'success',
-        'message': f'Cierre Z procesado exitosamente. Documento maestro: {vID_DOC}. Transmisión DIAN encolada.',
+        'message': f'Cierre Z procesado exitosamente. Documento maestro: {vID_DOC}. Consolidado en ERP.',
         'id_documento': vID_DOC,
         'dian_task_id': dian_task_id,
         'tot_general': float(tot_general),

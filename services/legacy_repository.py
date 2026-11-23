@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from django.db import connection
+from core.tenant import get_oracle_connection
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ def calculate_dv(nit: str) -> str:
 def get_system_parameter(param_id: str, default_value: str = "") -> str:
     """Obtiene un parámetro de sistema desde Oracle SG_PARAMETROS"""
     try:
-        with connection.cursor() as cursor:
+        with get_oracle_connection().cursor() as cursor:
             cursor.execute("SELECT VLR_CHR FROM SG_PARAMETROS WHERE ID_PARAMETRO=%s", [param_id])
             row = cursor.fetchone()
             if row and row[0]:
@@ -131,7 +131,7 @@ def get_doors_invoice_data(id_documento: str) -> tuple[dict, list, dict]:
     GROUP BY CAMPO
     """
 
-    with connection.cursor() as cursor:
+    with get_oracle_connection().cursor() as cursor:
         # Extraer Header
         cursor.execute(header_sql, [id_documento])
         header_row = cursor.fetchone()

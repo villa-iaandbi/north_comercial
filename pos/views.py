@@ -364,14 +364,16 @@ def _calcular_ticket(header, items):
     return calculo
 
 
-def _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero=None):
+def _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero=None, emisor=None):
     """
     Construye (header_data, items_data, taxes_data) con las llaves de InvoicePayloadBuilder.
     VLR_UNITARIO es el valor unitario NETO sin impuestos (base_neta / cantidad), por lo que
     CANTIDAD * VLR_UNITARIO = base_neta y TaxExclusive + IVA + INC = PayableAmount.
     `tercero` (obtener_tercero_pos) aporta los datos reales de CO_TERCEROS para CustomerInformation.
+    `emisor` (obtener_datos_emisor_pos) aporta prefijo y resolución DIAN de TS_CAJAS.
     """
     tercero = tercero or {}
+    emisor = emisor or {}
     nit_adq = tercero.get('nit') or header.id_tercero or CONSUMIDOR_FINAL
     razon_social = tercero.get('razon_social') or header.nom_tercero
     fecha = _fecha_bogota(header.fch_ticket)
@@ -384,7 +386,8 @@ def _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero=None):
         'TOT_MERCANCIA': float(calculo['tot_base']),
         'PLAZO_PAGO': 0,
         'REGIMEN': tercero.get('regimen') or '2',
-        'NUM_RESOLUCION': '',
+        'PREFIJO': str(emisor.get('prefijo') or prefijo or '').strip(),
+        'NUM_RESOLUCION': str(emisor.get('num_resolucion') or '').strip(),
         'NIT_TERCERO': nit_adq,
         'DIGITO_VERIFICACION': tercero.get('digito_verificacion', ''),
         'RAZON_SOCIAL': razon_social,
@@ -501,6 +504,20 @@ def _ruta_relativa_pdf(pdf_path):
         return os.path.basename(pdf_path)
 
 
+def _binapps_tenant_id():
+    """
+    Tenant ID de Binapps, resuelto en el hilo HTTP (donde sí hay tenant Oracle activo) para que el
+    worker de Django-Q no consulte Oracle. SG_PARAMETROS.BAPP_TEN -> BINAPPS_TENANT_ID -> '1'.
+    """
+    try:
+        from services.legacy_repository import get_system_parameter
+        valor = str(get_system_parameter('BAPP_TEN', '') or '').strip()
+    except Exception as exc:
+        logger.warning(f"POS: no se pudo leer BAPP_TEN de Oracle: {exc}")
+        valor = ''
+    return valor or os.getenv('BINAPPS_TENANT_ID') or '1'
+
+
 def _procesar_tiquete_pos(request, header, empresa, es_nuevo=True):
     """
     Post-grabación de un tiquete POS: CUFE local, JSON DIAN real en disco, encolado DIAN
@@ -529,6 +546,16 @@ def _procesar_tiquete_pos(request, header, empresa, es_nuevo=True):
     from impresion.document_renderer import obtener_tercero_pos
     tercero = obtener_tercero_pos(header.id_tercero or CONSUMIDOR_FINAL)
 
+    # Emisor, resolución DIAN, prefijo y clave técnica de la caja (TS_CAJAS) + SG_SISTEMAS, una sola vez
+    # y ANTES del CUFE y del JSON. obtener_datos_emisor_pos nunca lanza excepciones.
+    emisor = {}
+    try:
+        from impresion.document_renderer import obtener_datos_emisor_pos
+        caja_id = header.turno.caja_id if header.turno_id else ''
+        emisor = obtener_datos_emisor_pos(caja_id, id_sistema=_id_sistema_sesion(request)) or {}
+    except Exception as exc:
+        logger.error(f"POS {header.numero_ticket}: no se pudieron leer los datos del emisor: {exc}")
+
     # 1. CUFE local (SHA-384). Siempre disponible, sin red.
     try:
         from facturacion.dian_async import calcular_cufe_local, get_dian_cufe_config
@@ -542,7 +569,9 @@ def _procesar_tiquete_pos(request, header, empresa, es_nuevo=True):
             val_tot=calculo['tot_pagar'],
             nit_ofe=_nit_sin_dv(empresa.get('nit_emp')),
             num_adq=tercero.get('nit') or header.id_tercero or CONSUMIDOR_FINAL,
-            clave_tecnica=cfg['clave_tecnica'], tipo_ambiente=cfg['tipo_ambiente'],
+            # Clave técnica de la caja (TS_CAJAS.CLAVE_TECNICA); DIAN_CLAVE_TECNICA del .env solo como respaldo.
+            clave_tecnica=emisor.get('clave_tecnica') or cfg['clave_tecnica'],
+            tipo_ambiente=cfg['tipo_ambiente'],
         )
     except Exception as exc:
         logger.error(f"POS {header.numero_ticket}: error calculando CUFE local: {exc}")
@@ -552,7 +581,9 @@ def _procesar_tiquete_pos(request, header, empresa, es_nuevo=True):
         payload = None
         try:
             from services.payload_builder import InvoicePayloadBuilder
-            header_data, items_data, taxes_data = _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero)
+            header_data, items_data, taxes_data = _armar_datos_dian(
+                header, items, prefijo, empresa, calculo, tercero, emisor=emisor
+            )
             payload = InvoicePayloadBuilder.build_invoice_payload(header_data, items_data, taxes_data)
             resultado['payload_guardado'] = True
         except Exception as exc:
@@ -565,7 +596,11 @@ def _procesar_tiquete_pos(request, header, empresa, es_nuevo=True):
                                            os.getenv('POS_DIAN_TRANSMIT_ON_SYNC', '').lower() in ('1', 'true', 'yes')):
             try:
                 from facturacion.dian_async import encolar_transmision_pos
-                resultado['task_id'] = str(encolar_transmision_pos(header.numero_ticket, payload))
+                # El tenant de Binapps se resuelve aquí (hilo HTTP con tenant Oracle activo), no en el worker.
+                binapps_tenant_id = _binapps_tenant_id()
+                resultado['task_id'] = str(
+                    encolar_transmision_pos(header.numero_ticket, payload, tenant_id=binapps_tenant_id)
+                )
                 resultado['estado_dian'] = 'ENCOLADO'
             except Exception as exc:
                 logger.error(f"POS {header.numero_ticket}: no se pudo encolar la transmisión DIAN: {exc}")
@@ -573,10 +608,8 @@ def _procesar_tiquete_pos(request, header, empresa, es_nuevo=True):
 
     # 4. PDF térmico
     try:
-        from impresion.document_renderer import render_pos_ticket_to_pdf, obtener_datos_emisor_pos
-        caja_id = header.turno.caja_id if header.turno_id else ''
-        # Emisor, resolución DIAN y responsabilidades tributarias: misma fuente Oracle que la factura masiva.
-        emisor = obtener_datos_emisor_pos(caja_id, id_sistema=_id_sistema_sesion(request))
+        from impresion.document_renderer import render_pos_ticket_to_pdf
+        # Emisor (ya leído arriba): resolución DIAN y responsabilidades tributarias, misma fuente Oracle que la factura masiva.
         empresa_pdf = {**empresa, **{k: v for k, v in emisor.items() if v}}
         ticket_data = _armar_ticket_data(
             header, items, resultado['cufe'], empresa_pdf, resultado['estado_dian'], calculo,

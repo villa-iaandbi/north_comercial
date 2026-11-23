@@ -14,8 +14,11 @@ class BinappsClient:
     Maneja autenticación OAuth2 con caché, control de timeouts y dry_run.
     """
     
-    def __init__(self, dry_run=False):
+    def __init__(self, dry_run=False, tenant_id=None):
         self.dry_run = dry_run
+        # Tenant de Binapps ya resuelto (p. ej. por la vista POS antes de encolar). Si viene informado,
+        # el worker de Django-Q no necesita consultar Oracle (SG_PARAMETROS.BAPP_TEN).
+        self.tenant_id = str(tenant_id).strip() if tenant_id is not None and str(tenant_id).strip() else None
         
         # Preferir settings de Django, si no, buscar en variables de entorno OS
         self.auth_url = getattr(settings, 'BINAPPS_AUTH_URL', os.getenv('BINAPPS_AUTH_URL'))
@@ -28,8 +31,11 @@ class BinappsClient:
 
     def _get_tenant_id(self):
         """
-        Retorna el Tenant ID configurado para la API de Binapps desde Oracle.
+        Retorna el Tenant ID configurado para la API de Binapps: el recibido en el constructor o,
+        si no se informó, SG_PARAMETROS.BAPP_TEN (Oracle) -> BINAPPS_TENANT_ID -> '1'.
         """
+        if self.tenant_id:
+            return self.tenant_id
         tenant_bd = get_system_parameter('BAPP_TEN', '')
         if tenant_bd:
             return tenant_bd
