@@ -70,6 +70,26 @@
 {% block content %}
 <div x-data="posApp()" x-init="initApp()" class="-m-6 md:-m-8 p-4 bg-gray-100 min-h-screen">
     
+    <!-- Encabezado: emblema, empresa y fecha/hora -->
+    <div class="bg-white border border-gray-200 rounded-lg px-4 py-3 mb-3 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center space-x-3">
+            <div class="w-11 h-11 rounded-xl bg-blue-700 flex items-center justify-center shadow">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-black text-gray-900 leading-tight uppercase">{{ request.session.nom_empresa|default:'North Comercial' }}</h1>
+                <p class="text-xs font-bold text-blue-700 uppercase tracking-wide">Punto de Venta</p>
+            </div>
+        </div>
+        <div class="text-right">
+            <p class="text-sm font-extrabold text-gray-900 capitalize" x-text="fechaHoy"></p>
+            <p class="text-xs font-semibold text-gray-600">
+                <template x-if="turno.caja_id"><span>Caja <span x-text="turno.caja_id"></span> · </span></template>
+                <span class="font-black" x-text="horaActual"></span>
+            </p>
+        </div>
+    </div>
+
     <!-- Barra Superior de Estado y Controles del Turno -->
     <div class="bg-gray-900 text-white rounded-lg p-4 mb-4 shadow-md flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center space-x-4">
@@ -85,13 +105,6 @@
                   :class="turno.abierto ? 'bg-blue-600 text-white' : 'bg-yellow-600 text-white'">
                 <span x-text="turno.abierto ? 'TURNO #' + turno.id_turno + ' (ABIERTO)' : 'CAJA CERRADA'"></span>
             </span>
-
-            <!-- Indicador Base Económica -->
-            <template x-if="turno.abierto">
-                <span class="text-sm font-semibold text-gray-300">
-                    Base: <span class="text-green-400 font-bold" x-text="formatCOP(turno.base_economica)"></span>
-                </span>
-            </template>
 
             <!-- Caja y próximo consecutivo -->
             <template x-if="numeracion && numeracion.prefijo">
@@ -127,11 +140,6 @@
             <button x-show="!turno.abierto" @click="showAperturaModal = true" class="btn-pos-success text-sm py-2">
                 + Apertura de Caja
             </button>
-
-            <!-- Botón Cierre Z -->
-            <button x-show="turno.abierto" @click="openCierreZModal()" class="btn-pos-warning text-sm py-2">
-                Cierre Z (Finalizar Turno)
-            </button>
         </div>
     </div>
 
@@ -152,7 +160,8 @@
             <!-- Buscador de artículos -->
             <div class="mb-4">
                 <div class="relative">
-                    <input type="text" x-model="searchQuery" @input="filterCatalog()"
+                    <input type="text" x-model="searchQuery" x-ref="searchInput" @input="filterCatalog()"
+                           @keydown.enter.prevent="handleSearchEnter()" autocomplete="off"
                            placeholder="🔍 Buscar por nombre, referencia o código de barras..."
                            class="w-full text-lg p-3 pl-10 border-2 border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 font-semibold bg-gray-50 text-gray-900">
                 </div>
@@ -242,16 +251,22 @@
                                     </template>
                                 </div>
                                 <p class="text-xs text-gray-500 font-semibold" x-text="formatCOP(item.vlr_unitario) + ' c/u'"></p>
+                                <template x-if="item.descuento_linea > 0">
+                                    <p class="text-[11px] text-purple-700 font-bold" x-text="'Desc. -' + formatCOP(item.descuento_linea)"></p>
+                                </template>
                             </div>
                             <!-- Controles de Cantidad -->
                             <div class="flex items-center space-x-1">
                                 <button @click="updateQty(index, -1)" :disabled="item.es_regalo" class="w-7 h-7 bg-red-100 hover:bg-red-200 text-red-700 font-black rounded flex items-center justify-center text-base disabled:opacity-30">-</button>
-                                <span class="w-8 text-center font-black text-sm text-gray-900" x-text="item.cantidad"></span>
+                                <input type="text" inputmode="decimal" :value="fmtQty(item.cantidad)" :disabled="item.es_regalo"
+                                       @change="setQty(index, $event.target.value); $event.target.value = fmtQty(cart[index] ? cart[index].cantidad : 0)"
+                                       @keydown.enter.prevent="$event.target.blur()"
+                                       class="w-16 text-center font-black text-sm text-gray-900 border border-gray-300 rounded py-0.5 focus:outline-none focus:border-blue-600 disabled:bg-gray-100">
                                 <button @click="updateQty(index, 1)" :disabled="item.es_regalo" class="w-7 h-7 bg-green-100 hover:bg-green-200 text-green-700 font-black rounded flex items-center justify-center text-base disabled:opacity-30">+</button>
                             </div>
                             <!-- Subtotal y Eliminar -->
                             <div class="w-28 text-right pl-2">
-                                <span class="block text-sm font-black text-gray-900" x-text="formatCOP(item.tot_linea)"></span>
+                                <span class="block text-sm font-black text-gray-900" x-text="formatCOP(item.neto_linea)"></span>
                                 <button @click="removeFromCart(index)" class="text-xs text-red-600 hover:underline font-bold">Quitar</button>
                             </div>
                         </div>
@@ -283,7 +298,7 @@
                 </template>
                 <div class="flex justify-between text-xs font-semibold text-gray-400">
                     <span>Retenciones (Exención POS):</span>
-                    <span>$0.00</span>
+                    <span>$0</span>
                 </div>
                 <div class="flex justify-between text-xl font-black text-green-400 border-t border-gray-700 pt-2 mt-1">
                     <span>TOTAL:</span>
@@ -361,19 +376,41 @@
                 <!-- Efectivo -->
                 <div class="flex items-center justify-between">
                     <label class="text-sm font-extrabold text-gray-800 uppercase w-36">💵 Efectivo:</label>
-                    <input type="number" step="100" min="0" x-model.number="pagoEfectivo"
+                    <input type="number" step="1" min="0" x-model.number="pagoEfectivo" x-ref="efectivoInput" placeholder="0"
                            class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
+                </div>
+                <!-- Botones rápidos de efectivo -->
+                <div class="flex flex-wrap justify-end gap-1.5 -mt-1">
+                    <button type="button" @click="setEfectivoExacto()" class="px-2.5 py-1 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-black uppercase">Exacto</button>
+                    <template x-for="b in [5000, 10000, 20000, 50000, 100000]" :key="b">
+                        <button type="button" @click="pagoEfectivo = b" class="px-2.5 py-1 rounded bg-gray-200 hover:bg-gray-300 text-gray-800 text-xs font-bold" x-text="formatCOP(b)"></button>
+                    </template>
+                    <button type="button" @click="pagoEfectivo = ''" class="px-2.5 py-1 rounded bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold">Borrar</button>
                 </div>
                 <!-- Tarjeta -->
                 <div class="flex items-center justify-between">
                     <label class="text-sm font-extrabold text-gray-800 uppercase w-36">💳 Tarjeta:</label>
-                    <input type="number" step="100" min="0" x-model.number="pagoTarjeta"
+                    <input type="number" step="1" min="0" x-model.number="pagoTarjeta"
                            class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
+                </div>
+                <!-- Datos del datáfono (TEF) -->
+                <div x-show="(pagoTarjeta || 0) > 0" style="display:none" class="bg-white border border-blue-200 rounded-lg p-2.5 space-y-1.5">
+                    <p class="text-[11px] font-extrabold text-blue-700 uppercase tracking-wide">Datáfono (TEF)</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="text" maxlength="50" x-model="tefAprobacion" placeholder="N.º aprobación"
+                               class="text-sm p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                        <input type="text" maxlength="50" x-model="tefFranquicia" placeholder="Franquicia (VISA, MC...)"
+                               class="text-sm p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                        <input type="text" inputmode="numeric" maxlength="4" x-model="tefUltimos4" placeholder="Últimos 4 dígitos"
+                               class="text-sm p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                        <input type="text" maxlength="50" x-model="tefRecibo" placeholder="N.º recibo"
+                               class="text-sm p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                    </div>
                 </div>
                 <!-- Transferencia -->
                 <div class="flex items-center justify-between">
                     <label class="text-sm font-extrabold text-gray-800 uppercase w-36">📲 Transferencia:</label>
-                    <input type="number" step="100" min="0" x-model.number="pagoTransferencia"
+                    <input type="number" step="1" min="0" x-model.number="pagoTransferencia"
                            class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
                 </div>
 
@@ -390,7 +427,7 @@
                             </template>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <input type="number" step="100" min="0" x-model.number="pagoPuntos" :disabled="!isOnline || cliente.id_tercero === '222222222222'"
+                            <input type="number" step="1" min="0" x-model.number="pagoPuntos" :disabled="!isOnline || cliente.id_tercero === '222222222222'"
                                    class="w-36 text-lg font-bold p-2 border-2 border-purple-300 rounded text-right focus:border-purple-600 focus:outline-none disabled:bg-gray-200 disabled:cursor-not-allowed">
                             <button @click="redimirPuntos()" :disabled="!isOnline || cliente.id_tercero === '222222222222'"
                                     class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-black text-xs px-2.5 py-2.5 rounded uppercase">
@@ -503,8 +540,8 @@
                                 <div class="space-y-1">
                                     <template x-for="it in lastIssuedTicket.items" :key="it.id_articulo">
                                         <div class="flex justify-between text-[11px]">
-                                            <span x-text="it.cantidad + 'x ' + it.nom_articulo"></span>
-                                            <span x-text="formatCOP(it.tot_linea)"></span>
+                                            <span x-text="fmtQty(it.cantidad) + 'x ' + it.nom_articulo"></span>
+                                            <span x-text="formatCOP(it.neto_linea != null ? it.neto_linea : it.tot_linea)"></span>
                                         </div>
                                     </template>
                                 </div>
@@ -560,6 +597,8 @@ function posApp() {
         unsyncedCount: 0,
         lastIssuedTicket: null,
         lastIssuedDocId: null,
+        fechaHoy: '',
+        horaActual: '',
         
         // Modales
         showAperturaModal: false,
@@ -570,12 +609,25 @@ function posApp() {
         
         // Form inputs
         aperturaBase: 100000,
-        pagoEfectivo: 0,
+        pagoEfectivo: '',
         pagoTarjeta: 0,
+        tefAprobacion: '',
+        tefFranquicia: '',
+        tefUltimos4: '',
+        tefRecibo: '',
+        tefRespuestaRaw: '',   // JSON/texto crudo del puente local del datáfono (cuando se conecte)
         pagoTransferencia: 0,
         pagoPuntos: 0,
 
+        actualizarReloj() {
+            const d = new Date();
+            this.fechaHoy = d.toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+            this.horaActual = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+        },
+
         async initApp() {
+            this.actualizarReloj();
+            setInterval(() => this.actualizarReloj(), 15000);
             window.addEventListener('online', () => { this.isOnline = true; this.triggerSync(); this.fetchPuntosSaldo(); });
             window.addEventListener('offline', () => { this.isOnline = false; });
             
@@ -783,6 +835,25 @@ function posApp() {
             ).slice(0, 40);
         },
 
+        // Enter en el buscador: coincidencia exacta (código de barras, código o referencia) => +1 unidad.
+        handleSearchEnter() {
+            const q = this.searchQuery.trim().toLowerCase();
+            if (!q) return;
+            const norm = (v) => (v === null || v === undefined) ? '' : String(v).trim().toLowerCase();
+            const exacto = this.catalog.find(it =>
+                norm(it.codigo_barras) === q || norm(it.referencia) === q || norm(it.id_articulo) === q
+            );
+            if (!exacto) return;   // sin coincidencia exacta: se mantiene el filtrado normal
+            this.addToCart(exacto);
+            this.limpiarBusqueda();
+        },
+
+        limpiarBusqueda() {
+            this.searchQuery = '';
+            this.filterCatalog();   // sin texto: lista por defecto (primeros artículos), sin resultados de la búsqueda previa
+            this.$nextTick(() => { if (this.$refs.searchInput) this.$refs.searchInput.focus(); });
+        },
+
         addToCart(item) {
             if (!this.turno.abierto) {
                 alert('Debes realizar la Apertura de Caja antes de facturar.');
@@ -790,7 +861,7 @@ function posApp() {
             }
             const index = this.cart.findIndex(c => c.id_articulo === item.id_articulo && !c.es_regalo);
             if (index > -1) {
-                this.cart[index].cantidad += 1;
+                this.cart[index].cantidad = this.rQty(this.cart[index].cantidad + 1);
                 this.recalcCartLine(index);
             } else {
                 const vlrUnitario = item.precio;
@@ -813,16 +884,49 @@ function posApp() {
                     vlr_inc: 0,
                     base_neta: 0,
                     descuento_linea: 0,
-                    tot_linea: vlrUnitario,             // bruto = cantidad * vlr_unitario
+                    tot_linea: Math.round(vlrUnitario), // bruto = cantidad * vlr_unitario (entero)
+                    neto_linea: Math.round(vlrUnitario),// bruto - descuento (entero)
                     es_regalo: false
                 });
             }
             this.evaluatePromotions();
         },
 
+        // Cantidad: hasta 3 decimales
+        rQty(x) {
+            return Math.round(Number(x) * 1000) / 1000;
+        },
+
+        // Acepta punto o coma decimal ("1,250" / "1.250" / "0.45")
+        parseQty(str) {
+            const n = parseFloat(String(str).trim().replace(',', '.'));
+            return isFinite(n) ? this.rQty(n) : NaN;
+        },
+
+        fmtQty(q) {
+            const n = this.rQty(q);
+            if (!isFinite(n)) return '0';
+            if (Number.isInteger(n)) return String(n);
+            return n.toLocaleString('es-CO', { minimumFractionDigits: 3, maximumFractionDigits: 3, useGrouping: false });
+        },
+
+        setQty(index, raw) {
+            const item = this.cart[index];
+            if (!item || item.es_regalo) return;
+            const q = this.parseQty(raw);
+            if (isNaN(q)) return;               // entrada inválida: se conserva la cantidad anterior
+            if (q <= 0) {
+                this.removeFromCart(index);
+                return;
+            }
+            item.cantidad = q;
+            this.recalcCartLine(index);
+            this.evaluatePromotions();
+        },
+
         updateQty(index, delta) {
             if (this.cart[index].es_regalo) return;
-            this.cart[index].cantidad += delta;
+            this.cart[index].cantidad = this.rQty(this.cart[index].cantidad + delta);
             if (this.cart[index].cantidad <= 0) {
                 this.removeFromCart(index);
             } else {
@@ -833,7 +937,7 @@ function posApp() {
 
         recalcCartLine(index) {
             const item = this.cart[index];
-            item.tot_linea = this.r2(item.cantidad * item.vlr_unitario);
+            item.tot_linea = Math.round(item.cantidad * item.vlr_unitario);
         },
 
         // Redondeo half-up a 2 decimales (igual a Decimal ROUND_HALF_UP de pos/views.py)
@@ -853,11 +957,12 @@ function posApp() {
             // prorratea nada. El prorrateo del descuento global es solo respaldo (sin descuento_valor).
             const hayDescItem = lines.some(i => (i.descuento_valor || 0) > 0);
             const pre = lines.map(i => {
-                const bruto = this.r2(i.cantidad * i.vlr_unitario);
-                const propio = Math.min(bruto, this.r2(this.r2(bruto * (i.porc_descuento || 0) / 100) + (i.descuento_valor || 0)));
-                return { bruto, propio, neto: Math.max(0, this.r2(bruto - propio)) };
+                // Pesos enteros: bruto y descuento de línea se redondean al peso => neto entero exacto
+                const bruto = Math.round(i.cantidad * i.vlr_unitario);
+                const propio = Math.min(bruto, Math.round(bruto * (i.porc_descuento || 0) / 100) + Math.round(i.descuento_valor || 0));
+                return { bruto, propio, neto: Math.max(0, bruto - propio) };
             });
-            const sumNeto = this.r2(pre.reduce((s, p) => s + p.neto, 0));
+            const sumNeto = pre.reduce((s, p) => s + p.neto, 0);
             const global = hayDescItem ? 0 : Math.min(Math.max(this.descuentoPromocion || 0, 0), sumNeto);
             let lastPos = -1;
             pre.forEach((p, k) => { if (p.neto > 0) lastPos = k; });
@@ -866,10 +971,10 @@ function posApp() {
                 const p = pre[k];
                 let cuota = 0;
                 if (sumNeto > 0 && p.neto > 0) {
-                    cuota = (k === lastPos) ? this.r2(global - asignado) : this.r2(global * p.neto / sumNeto);
-                    asignado = this.r2(asignado + cuota);
+                    cuota = (k === lastPos) ? Math.round(global - asignado) : Math.round(global * p.neto / sumNeto);
+                    asignado = asignado + cuota;
                 }
-                const pagar = Math.max(0, this.r2(p.neto - cuota));
+                const pagar = Math.max(0, p.neto - cuota);
                 const incFijo = Math.min(pagar, this.r2(item.cantidad * (item.vlr_inc_fijo_unit || 0)));
                 const saldo = this.r2(pagar - incFijo);
                 const pIva = (item.porc_iva || 0) / 100;
@@ -879,7 +984,8 @@ function posApp() {
                 const incPct = this.r2(base * pInc);
                 base = this.r2(pagar - iva - incPct - incFijo);
                 item.tot_linea = p.bruto;
-                item.descuento_linea = this.r2(p.propio + cuota);
+                item.descuento_linea = p.propio + cuota;
+                item.neto_linea = pagar;
                 item.base_neta = base;
                 item.vlr_iva = iva;
                 item.vlr_inc = this.r2(incFijo + incPct);
@@ -912,7 +1018,7 @@ function posApp() {
             const diaHoy = String((new Date().getDay() + 6) % 7);
 
             const promos = [...this.promociones].sort((a, b) => Number(b.prioridad || 0) - Number(a.prioridad || 0));
-            const bruto = (item) => Number(item.cantidad || 0) * Number(item.vlr_unitario || 0);
+            const bruto = (item) => Math.round(Number(item.cantidad || 0) * Number(item.vlr_unitario || 0));
             const lineasBloqueadas = new Set();   // índices del carrito que ya recibieron una promoción
             const descLinea = this.cart.map(() => 0);   // descuento (COP) asignado a cada línea del carrito
 
@@ -951,16 +1057,16 @@ function posApp() {
                 const asignado = new Map();   // idx -> descuento de ESTA promoción para esa línea
 
                 if (promo.tipo_beneficio === 'DESCUENTO_PORC') {
-                    elegibles.forEach(idx => asignado.set(idx, this.r2(bruto(this.cart[idx]) * (valor / 100))));
+                    elegibles.forEach(idx => asignado.set(idx, Math.round(bruto(this.cart[idx]) * (valor / 100))));
                 } else if (promo.tipo_beneficio === 'DESCUENTO_VALOR') {
                     // Valor fijo: se reparte SOLO entre las líneas elegibles, proporcional a su bruto
-                    const total = Math.min(valor, subtotalElegible);
+                    const total = Math.min(Math.round(valor), subtotalElegible);
                     let acum = 0;
                     elegibles.forEach((idx, k) => {
                         const cuota = (k === elegibles.length - 1)
-                            ? this.r2(total - acum)
-                            : this.r2(total * bruto(this.cart[idx]) / subtotalElegible);
-                        acum = this.r2(acum + cuota);
+                            ? Math.round(total - acum)
+                            : Math.round(total * bruto(this.cart[idx]) / subtotalElegible);
+                        acum = acum + cuota;
                         asignado.set(idx, cuota);
                     });
                 } else if (promo.tipo_beneficio === 'N_ESIMA_UNIDAD') {
@@ -975,7 +1081,7 @@ function posApp() {
                     const n = Math.max(2, parseInt(promo.cada_n_unidades || 2, 10));
                     const veces = Math.floor(unidadesAlcance.length / n);
                     unidadesAlcance.slice(0, veces).forEach(u => {
-                        asignado.set(u.idx, this.r2((asignado.get(u.idx) || 0) + u.precio * (valor / 100)));
+                        asignado.set(u.idx, (asignado.get(u.idx) || 0) + Math.round(u.precio * (valor / 100)));
                     });
                 }
 
@@ -983,7 +1089,7 @@ function posApp() {
                 let huboDescuento = false;
                 asignado.forEach((monto, idx) => {
                     if (monto > 0) {
-                        descLinea[idx] = this.r2(descLinea[idx] + monto);
+                        descLinea[idx] = descLinea[idx] + monto;
                         lineasBloqueadas.add(idx);
                         huboDescuento = true;
                     }
@@ -996,27 +1102,28 @@ function posApp() {
             // Descuento exacto por línea (nunca mayor que su bruto); el global es la suma de las líneas
             let totalDescuento = 0;
             this.cart.forEach((item, idx) => {
-                item.descuento_valor = Math.min(this.r2(descLinea[idx]), this.r2(bruto(item)));
-                totalDescuento = this.r2(totalDescuento + item.descuento_valor);
+                item.descuento_valor = Math.min(Math.round(descLinea[idx]), bruto(item));
+                totalDescuento = totalDescuento + item.descuento_valor;
             });
             this.descuentoPromocion = totalDescuento;
         },
 
-        get totMercancia() {
-            return this.r2(this.cart.reduce((sum, item) => sum + item.base_neta, 0));
+        // Total a pagar = suma de netos de línea (enteros). IVA e INC se muestran en pesos enteros y
+        // la mercancía es el residuo, de modo que Mercancía + IVA + INC == Total peso a peso.
+        get totTicket() {
+            return this.cart.reduce((sum, item) => sum + Math.round(item.neto_linea || 0), 0);
         },
 
         get totIVA() {
-            return this.r2(this.cart.reduce((sum, item) => sum + item.vlr_iva, 0));
+            return Math.round(this.cart.reduce((sum, item) => sum + item.vlr_iva, 0));
         },
 
         get totINC() {
-            return this.r2(this.cart.reduce((sum, item) => sum + item.vlr_inc, 0));
+            return Math.round(this.cart.reduce((sum, item) => sum + item.vlr_inc, 0));
         },
 
-        // Base neta + IVA + INC (el descuento ya está descontado de la base)
-        get totTicket() {
-            return this.r2(this.totMercancia + this.totIVA + this.totINC);
+        get totMercancia() {
+            return this.totTicket - this.totIVA - this.totINC;
         },
 
         get puntosGanados() {
@@ -1081,7 +1188,7 @@ function posApp() {
         },
 
         get totalPagado() {
-            return (this.pagoEfectivo || 0) + (this.pagoTarjeta || 0) + (this.pagoTransferencia || 0) + (this.pagoPuntos || 0);
+            return (Number(this.pagoEfectivo) || 0) + (Number(this.pagoTarjeta) || 0) + (Number(this.pagoTransferencia) || 0) + (Number(this.pagoPuntos) || 0);
         },
 
         get pendienteCobro() {
@@ -1095,12 +1202,27 @@ function posApp() {
         },
 
         openPaymentModal() {
-            const resto = Math.max(0, this.totTicket - (this.pagoPuntos || 0));
-            this.pagoEfectivo = resto;
+            this.pagoEfectivo = '';   // sin valor por defecto: el cajero digita lo recibido
             this.pagoTarjeta = 0;
             this.pagoTransferencia = 0;
+            this.resetTef();
             this.showPaymentModal = true;
             this.fetchPuntosSaldo();
+            this.$nextTick(() => { if (this.$refs.efectivoInput) this.$refs.efectivoInput.focus(); });
+        },
+
+        // Botón "Exacto": efectivo = lo que falta por cubrir (sin contar efectivo ya digitado)
+        setEfectivoExacto() {
+            const otros = (Number(this.pagoTarjeta) || 0) + (Number(this.pagoTransferencia) || 0) + (Number(this.pagoPuntos) || 0);
+            this.pagoEfectivo = Math.max(0, this.totTicket - otros);
+        },
+
+        resetTef() {
+            this.tefAprobacion = '';
+            this.tefFranquicia = '';
+            this.tefUltimos4 = '';
+            this.tefRecibo = '';
+            this.tefRespuestaRaw = '';
         },
 
         async confirmPayment() {
@@ -1133,6 +1255,7 @@ function posApp() {
 
             this.confirmandoPago = true;
             try {
+            const tefActivo = (Number(this.pagoTarjeta) || 0) > 0;
             const ticket = {
                 ticket_id: ticketId,
                 consecutivo_num: consecutivoNum,
@@ -1144,10 +1267,16 @@ function posApp() {
                 tot_inc: this.totINC,
                 tot_ticket: this.totTicket,
                 descuento_promocion: this.descuentoPromocion,
-                pago_efectivo: this.pagoEfectivo,
-                pago_tarjeta: this.pagoTarjeta,
-                pago_transferencia: this.pagoTransferencia,
-                pago_puntos: this.pagoPuntos,
+                pago_efectivo: Number(this.pagoEfectivo) || 0,
+                pago_tarjeta: Number(this.pagoTarjeta) || 0,
+                pago_transferencia: Number(this.pagoTransferencia) || 0,
+                pago_puntos: Number(this.pagoPuntos) || 0,
+                // Datáfono TEF (solo con pago por tarjeta)
+                tef_aprobacion: tefActivo ? String(this.tefAprobacion || '').trim() : '',
+                tef_franquicia: tefActivo ? String(this.tefFranquicia || '').trim() : '',
+                tef_ultimos4: tefActivo ? String(this.tefUltimos4 || '').replace(/\D/g, '').slice(-4) : '',
+                tef_recibo: tefActivo ? String(this.tefRecibo || '').trim() : '',
+                tef_respuesta_raw: tefActivo ? String(this.tefRespuestaRaw || '') : '',
                 puntos_ganados: this.puntosGanados,
                 puntos_redimidos_ticket: this.puntosRedimidosTicket,
                 cambio: this.cambioDevuelta,
@@ -1168,6 +1297,10 @@ function posApp() {
             this.descuentoPromocion = 0;
             this.promocionesAplicadas = [];
             this.pagoPuntos = 0;
+            this.pagoEfectivo = '';
+            this.pagoTarjeta = 0;
+            this.pagoTransferencia = 0;
+            this.resetTef();
             this.puntosRedimidosTicket = 0;
             this.showPaymentModal = false;
             this.cliente = { id_tercero: '222222222222', nom_tercero: 'VENTAS MASIVAS (CONSUMIDOR FINAL)' };
@@ -1179,6 +1312,8 @@ function posApp() {
 
             // Abrir Modal de Impresión / Descarga
             this.showReceiptModal = true;
+            // Listo para el siguiente cliente: buscador limpio y con foco
+            this.limpiarBusqueda();
             } finally {
                 this.confirmandoPago = false;
             }
@@ -1293,8 +1428,8 @@ function posApp() {
         },
 
         formatCOP(val) {
-            const num = parseFloat(val || 0);
-            return '$' + num.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const num = Math.round(parseFloat(val || 0)) || 0;
+            return '$' + num.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
         }
     };
 }
