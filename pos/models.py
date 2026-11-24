@@ -40,6 +40,12 @@ class PosTicketHeader(models.Model):
     puntos_ganados = models.IntegerField(default=0)
     puntos_redimidos_ticket = models.IntegerField(default=0)
     cambio = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0'))
+    # Respuesta del datáfono TEF (pago con tarjeta)
+    tef_aprobacion = models.CharField(max_length=50, blank=True, default='')
+    tef_franquicia = models.CharField(max_length=50, blank=True, default='')
+    tef_ultimos4 = models.CharField(max_length=10, blank=True, default='')
+    tef_recibo = models.CharField(max_length=50, blank=True, default='')
+    tef_respuesta_raw = models.TextField(blank=True, default='')
     sync_status = models.BooleanField(default=True)
     consolidado_cierre = models.BooleanField(default=False)
 
@@ -66,6 +72,8 @@ class PosTicketDetail(models.Model):
     porc_iva = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0'))
     vlr_iva = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0'))
     tot_linea = models.DecimalField(max_digits=15, decimal_places=2)
+    # Agrupación de artículos compuestos / anchetas
+    grupo_compuesto = models.CharField(max_length=120, blank=True, default='')
 
     def __str__(self):
         return f"{self.id_articulo} x {self.cantidad}"

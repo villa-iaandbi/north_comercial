@@ -374,13 +374,15 @@ def _calcular_ticket(header, items):
     return calculo
 
 
-def _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero=None, emisor=None):
+def _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero=None, emisor=None, atendido_por=''):
     """
     Construye (header_data, items_data, taxes_data) con las llaves de InvoicePayloadBuilder.
     VLR_UNITARIO es el valor unitario NETO sin impuestos (base_neta / cantidad), por lo que
     CANTIDAD * VLR_UNITARIO = base_neta y TaxExclusive + IVA + INC = PayableAmount.
     `tercero` (obtener_tercero_pos) aporta los datos reales de CO_TERCEROS para CustomerInformation.
-    `emisor` (obtener_datos_emisor_pos) aporta prefijo y resolución DIAN de TS_CAJAS.
+    `emisor` (obtener_datos_emisor_pos) aporta prefijo y resolución DIAN de TS_CAJAS y las
+    responsabilidades tributarias (contribuyente -> Note2). `atendido_por` es el cajero
+    (VENDEDOR_NOMBRE_LARGO -> SalesPerson / SalespersonName).
     """
     tercero = tercero or {}
     emisor = emisor or {}
@@ -409,7 +411,8 @@ def _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero=None, em
         'DEPARTAMENTO_NOMBRE': tercero.get('departamento_nombre', ''),
         'MUNICIPIO_NOMBRE': tercero.get('municipio_nombre', ''),
         'CREADO_POR': empresa.get('nom_sistema', ''),
-        'VENDEDOR_NOMBRE_LARGO': '',
+        'VENDEDOR_NOMBRE_LARGO': str(atendido_por or '').strip(),
+        'NOTE_2': str(emisor.get('contribuyente') or '').strip(),
     }
     items_data = []
     for it, c in zip(items, calculo['lineas']):
@@ -425,6 +428,16 @@ def _armar_datos_dian(header, items, prefijo, empresa, calculo, tercero=None, em
             'BASE_LINEA': float(c['base_neta']),
         })
     return header_data, items_data, {}
+
+
+def _texto_tef(valor, max_len=None):
+    """Valor opcional del JSON del ticket -> str ('' si falta). dict/list se serializan como JSON."""
+    if valor is None:
+        return ''
+    if isinstance(valor, (dict, list)):
+        valor = json.dumps(valor, ensure_ascii=False)
+    texto = str(valor).strip()
+    return texto[:max_len] if max_len else texto
 
 
 def _armar_ticket_data(header, items, cufe, empresa, estado_dian, calculo, atendido_por='', tercero=None):
@@ -593,7 +606,8 @@ def _procesar_tiquete_pos(request, header, empresa, es_nuevo=True):
         try:
             from services.payload_builder import InvoicePayloadBuilder
             header_data, items_data, taxes_data = _armar_datos_dian(
-                header, items, prefijo, empresa, calculo, tercero, emisor=emisor
+                header, items, prefijo, empresa, calculo, tercero, emisor=emisor,
+                atendido_por=_nombre_atendido_por(request, header),
             )
             payload = InvoicePayloadBuilder.build_invoice_payload(header_data, items_data, taxes_data)
             resultado['payload_guardado'] = True
@@ -899,6 +913,11 @@ def api_sync_tickets(request):
                 puntos_ganados=puntos_ganados,
                 puntos_redimidos_ticket=puntos_redimidos,
                 cambio=Decimal(str(t_data.get('cambio', 0))),
+                tef_aprobacion=_texto_tef(t_data.get('tef_aprobacion'), 50),
+                tef_franquicia=_texto_tef(t_data.get('tef_franquicia'), 50),
+                tef_ultimos4=_texto_tef(t_data.get('tef_ultimos4'), 10),
+                tef_recibo=_texto_tef(t_data.get('tef_recibo'), 50),
+                tef_respuesta_raw=_texto_tef(t_data.get('tef_respuesta_raw')),
                 sync_status=True,
                 consolidado_cierre=False
             )
@@ -916,7 +935,8 @@ def api_sync_tickets(request):
                     descuento_valor=Decimal(str(item_data.get('descuento_valor') or 0)),
                     porc_iva=Decimal(str(item_data.get('porc_iva', 0))),
                     vlr_iva=Decimal(str(item_data.get('vlr_iva', 0))),
-                    tot_linea=Decimal(str(item_data.get('tot_linea', 0)))
+                    tot_linea=Decimal(str(item_data.get('tot_linea', 0))),
+                    grupo_compuesto=_texto_tef(item_data.get('grupo_compuesto'), 120),
                 )
 
             # Normaliza base/IVA con la fórmula en reversa del servidor (la misma del JS, del CUFE y

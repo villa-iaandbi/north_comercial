@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 import datetime
@@ -31,6 +32,18 @@ class InvoicePayloadBuilder:
         """Devuelve el timestamp de la transacción en hora de Colombia (ISO 8601)"""
         now = datetime.datetime.now(BOGOTA_TZ)
         return now.strftime("%Y-%m-%dT%H:%M:%S")
+
+    @staticmethod
+    def _document_id_entero(id_documento):
+        """
+        DocumentID como entero, igual que el JSON real de Binapps: numérico ('4' -> 4) o con número
+        final ('CJ01-4' -> 4). Si no hay número final se conserva el valor original.
+        """
+        texto = str(id_documento if id_documento is not None else '').strip()
+        if texto.isdigit():
+            return int(texto)
+        cola = re.search(r'(\d+)$', texto)
+        return int(cola.group(1)) if cola else id_documento
 
     @staticmethod
     def _save_payload_locally(id_documento: str, payload_dict: dict):
@@ -200,8 +213,8 @@ class InvoicePayloadBuilder:
                 "TaxTributeCode": 0,
                 "TaxEvidenceIndicator": False,
                 "Percent": percent,
-                "TaxAmount": float(vals['amount']),
-                "TaxableAmount": float(vals['base']),
+                "TaxAmount": round(float(vals['amount']), 2),
+                "TaxableAmount": round(float(vals['base']), 2),
                 "TaxDetail": None
             })
 
@@ -226,8 +239,8 @@ class InvoicePayloadBuilder:
                 "TaxTributeCode": 1,
                 "TaxEvidenceIndicator": False,
                 "Percent": percent,
-                "TaxAmount": float(vals['amount']),
-                "TaxableAmount": float(vals['base']),
+                "TaxAmount": round(float(vals['amount']), 2),
+                "TaxableAmount": round(float(vals['base']), 2),
                 "TaxDetail": None
             })
 
@@ -241,8 +254,8 @@ class InvoicePayloadBuilder:
                     "TaxTributeCode": 5,
                     "TaxEvidenceIndicator": True,
                     "Percent": percent,
-                    "TaxAmount": amount,
-                    "TaxableAmount": base,
+                    "TaxAmount": round(amount, 2),
+                    "TaxableAmount": round(base, 2),
                     "TaxDetail": None
                 })
 
@@ -287,7 +300,7 @@ class InvoicePayloadBuilder:
             "InvoiceGeneralInformation": {
                 "InvoiceNumber": doc_number,
                 "PreinvoiceNumber": doc_number,
-                "InvoiceAuthorizationPrefix": doc_prefix,
+                "InvoiceAuthorizationPrefix": str(doc_prefix or '').strip().rstrip('-'),
                 "InvoiceAuthorizationNumber": str(header_data.get('NUM_RESOLUCION', '') or '').strip(), # Resolución DIAN (TS_CAJAS.NUM_RESOLUCION en POS)
                 "DaysOff": 0,
                 "Currency": "COP",
@@ -376,7 +389,7 @@ class InvoicePayloadBuilder:
             "Zone": header_data.get('ZONE', ''),
             "Weight": float(header_data.get('WEIGHT', 0.0) or 0.0),
             "DocumentName": "FACTURA ELECTRONICA DE VENTA",
-            "DocumentID": int(id_documento) if str(id_documento).isdigit() else id_documento,
+            "DocumentID": InvoicePayloadBuilder._document_id_entero(id_documento),
             "Note2": header_data.get('NOTE_2', ''),
             "Note3": header_data.get('NOTE_3', ''),
             "Note4": header_data.get('NOTE_4', ''),

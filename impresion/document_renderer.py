@@ -225,7 +225,8 @@ def obtener_datos_emisor_pos(caja_id=None, id_sistema='1'):
     datos = {'nom_sistema': '', 'nit_emp': '', 'dir_emp': '', 'tels_emp': '',
              'contribuyente': '', 'resolucion': '', 'cod_caja': '', 'prefijo_caja': '',
              'prefijo': '', 'num_resolucion': '', 'fch_expedicion': '', 'fch_vencimiento': '',
-             'rango_inicial': None, 'rango_final': None, 'clave_tecnica': ''}
+             'rango_inicial': None, 'rango_final': None, 'clave_tecnica': '',
+             'texto_encabezado': '', 'texto_footer': ''}
     try:
         with get_oracle_connection().cursor() as cursor:
             emp = _fetch_empresa_data(cursor, id_sistema)
@@ -246,6 +247,23 @@ def obtener_datos_emisor_pos(caja_id=None, id_sistema='1'):
                 # SG_SISTEMAS no tiene columna TELS en este esquema (los teléfonos viajan dentro de DIRECCION).
                 logger.debug(f"POS: SG_SISTEMAS.TELS no disponible (id_sistema '{emp.get('id_sistema_real')}'): {exc}")
                 datos['tels_emp'] = ''
+
+            # Textos configurables del tiquete: BAPP_TX7 (encabezado) y BAPP_TX8 (pie).
+            try:
+                id_sys_resuelto = emp.get('id_sistema_real') or id_sistema
+                cursor.execute(
+                    "SELECT SUBSTR(PARAMETRO_CAR('BAPP_TX7', SYSDATE, %s), 1, 500), "
+                    "SUBSTR(PARAMETRO_CAR('BAPP_TX8', SYSDATE, %s), 1, 500) FROM DUAL",
+                    (id_sys_resuelto, id_sys_resuelto),
+                )
+                fila_tx = cursor.fetchone()
+                if fila_tx:
+                    datos['texto_encabezado'] = str(fila_tx[0] or '').strip()
+                    datos['texto_footer'] = str(fila_tx[1] or '').strip()
+            except Exception as exc:
+                logger.warning(f"POS: no se pudieron leer BAPP_TX7/BAPP_TX8: {exc}")
+                datos['texto_encabezado'] = ''
+                datos['texto_footer'] = ''
 
             caja_ref = str(caja_id or '').strip()
             if caja_ref:
