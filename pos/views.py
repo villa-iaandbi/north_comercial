@@ -748,22 +748,24 @@ def api_catalog(request):
 
 def api_terceros(request):
     """
-    Buscador rápido de clientes en CO_TERCEROS para cambiar el NIT por defecto ('222222222222').
+    Buscador rápido de clientes en CO_TERCEROS (solo por NIT/identificación o por nombre).
+    COD_TERCERO es el NIT/cédula; ID_TERCERO es el código interno y NO participa en la búsqueda
+    (se devuelve únicamente porque el tiquete se graba con él).
     Utiliza ROWNUM <= 30 para estricta compatibilidad con Oracle 11g.
     """
     q = request.GET.get('q', '').strip().upper()
     if not q:
         query = """
         SELECT * FROM (
-            SELECT ID_TERCERO, NOM_TERCERO FROM CO_TERCEROS ORDER BY NOM_TERCERO
+            SELECT ID_TERCERO, NOM_TERCERO, COD_TERCERO FROM CO_TERCEROS ORDER BY NOM_TERCERO
         ) WHERE ROWNUM <= 30
         """
         params = []
     else:
         query = """
         SELECT * FROM (
-            SELECT ID_TERCERO, NOM_TERCERO FROM CO_TERCEROS 
-            WHERE UPPER(ID_TERCERO) LIKE %s OR UPPER(NOM_TERCERO) LIKE %s
+            SELECT ID_TERCERO, NOM_TERCERO, COD_TERCERO FROM CO_TERCEROS
+            WHERE UPPER(COD_TERCERO) LIKE %s OR UPPER(NOM_TERCERO) LIKE %s
             ORDER BY NOM_TERCERO
         ) WHERE ROWNUM <= 30
         """
@@ -774,12 +776,57 @@ def api_terceros(request):
         with get_oracle_connection().cursor() as cursor:
             cursor.execute(query, params)
             rows = cursor.fetchall()
-            terceros = [{'id_tercero': row[0], 'nom_tercero': row[1]} for row in rows]
+            terceros = [
+                {
+                    'id_tercero': row[0],
+                    'nom_tercero': row[1],
+                    'cod_tercero': (str(row[2]).strip() if row[2] is not None else '') or str(row[0]),
+                }
+                for row in rows
+            ]
 
         return JsonResponse({'status': 'success', 'terceros': terceros})
     except Exception as e:
         logger.error(f"Error en buscador de terceros POS: {e}")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+
+def _pdf_tiquete_response(request):
+    """
+    GET ?pdf=1&ticket_id=<id>: devuelve el PDF térmico de un tiquete ya sincronizado de la empresa en
+    sesión (reimpresión). Regenera CUFE/PDF con _procesar_tiquete_pos(es_nuevo=False): no duplica JSON ni DIAN.
+    """
+    from django.http import FileResponse
+    ticket_id = str(request.GET.get('ticket_id', '')).strip()
+    if not ticket_id:
+        return JsonResponse({'status': 'error', 'message': 'Falta ticket_id.'}, status=400)
+    header = PosTicketHeader.objects.filter(
+        ticket_id=_clave_tenant(_token_empresa_sesion(request), ticket_id),
+        token_empresa=_token_empresa_sesion(request),
+    ).first()
+    if not header:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'El tiquete aún no está sincronizado con el servidor; intente de nuevo en unos segundos.'
+        }, status=404)
+
+    resultado = _procesar_tiquete_pos(request, header, _datos_empresa(request), es_nuevo=False)
+    ruta = resultado.get('pdf_ruta')
+    if not ruta:
+        return JsonResponse({'status': 'error', 'message': 'No se pudo generar el PDF del tiquete.'}, status=500)
+
+    from impresion.document_renderer import _get_facturas_base_dir
+    base_media = Path(str(getattr(settings, 'MEDIA_ROOT', '') or '').strip() or str(settings.BASE_DIR)).resolve()
+    pdf_path = (base_media / ruta).resolve()
+    try:
+        pdf_path.relative_to(Path(_get_facturas_base_dir()).resolve())   # solo archivos bajo la carpeta de facturas
+    except ValueError:
+        return JsonResponse({'status': 'error', 'message': 'Ruta de PDF no permitida.'}, status=403)
+    if not pdf_path.is_file():
+        return JsonResponse({'status': 'error', 'message': 'El PDF del tiquete no se encuentra en el servidor.'}, status=404)
+    response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{pdf_path.name}"'
+    return response
 
 
 @csrf_exempt
@@ -876,7 +923,14 @@ def api_sync_tickets(request):
     """
     Endpoint para recibir y almacenar los tickets sincronizados desde IndexedDB.
     Acredita puntos acumulados al saldo del cliente en PosPuntosCliente.
+    GET con ?pdf=1&ticket_id=... sirve el PDF del tiquete para reimprimirlo.
     """
+    if request.method == 'GET' and request.GET.get('pdf'):
+        try:
+            return _pdf_tiquete_response(request)
+        except Exception as e:
+            logger.error(f"Error al servir PDF de tiquete POS: {e}")
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
 
