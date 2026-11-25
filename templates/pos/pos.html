@@ -125,6 +125,28 @@
         </div>
 
         <div class="flex items-center space-x-2">
+            <!-- Balanza serial (Web Serial API) -->
+            <div class="flex items-center space-x-1" x-show="balanza.soportada" style="display:none">
+                <button type="button" @click="balanza.conectada ? desconectarBalanza() : conectarBalanza()"
+                        :disabled="balanza.conectando"
+                        :title="balanza.conectada ? 'Desconectar balanza' : 'Conectar balanza serial (9600 baudios)'"
+                        class="font-bold px-3 py-2 rounded text-sm flex items-center shadow text-white disabled:opacity-50"
+                        :class="balanza.conectada ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-gray-700 hover:bg-gray-600'">
+                    ⚖️ <span class="ml-1" x-text="balanza.conectada ? 'Balanza ✕' : 'Balanza'"></span>
+                </button>
+                <button type="button" x-show="balanza.conectada" style="display:none" @click="aplicarPesoBalanza()"
+                        :disabled="balanza.peso === null"
+                        title="Aplicar este peso como cantidad del último ítem del carrito"
+                        class="px-3 py-2 rounded text-sm font-black bg-yellow-400 hover:bg-yellow-300 text-gray-900 disabled:opacity-50 shadow">
+                    <span x-text="balanza.peso === null ? '-- kg' : fmtQty(balanza.peso) + ' kg'"></span>
+                    <span class="ml-1 text-[10px] uppercase font-extrabold">Aplicar peso</span>
+                </button>
+            </div>
+            <span x-show="!balanza.soportada" style="display:none"
+                  title="Este navegador no soporta Web Serial API (use Chrome o Edge en HTTPS/localhost)"
+                  class="px-3 py-2 rounded text-sm font-bold bg-gray-700 text-gray-400 opacity-60 cursor-not-allowed">⚖️ Balanza</span>
+            <span x-show="balanza.error" style="display:none" class="text-xs font-bold text-red-300" x-text="balanza.error"></span>
+
             <!-- Botón Último Recibo / Factura -->
             <button x-show="lastIssuedTicket" @click="showReceiptModal = true" class="bg-indigo-700 hover:bg-indigo-600 text-white font-bold px-3 py-2 rounded text-sm flex items-center shadow">
                 📄 Última Factura
@@ -415,7 +437,27 @@
                 </div>
                 <!-- Datos del datáfono (TEF) -->
                 <div x-show="(pagoTarjeta || 0) > 0" style="display:none" class="bg-white border border-blue-200 rounded-lg p-2.5 space-y-1.5">
-                    <p class="text-[11px] font-extrabold text-blue-700 uppercase tracking-wide">Datáfono (TEF)</p>
+                    <div class="flex items-center justify-between gap-2">
+                        <p class="text-[11px] font-extrabold text-blue-700 uppercase tracking-wide">Datáfono (TEF)</p>
+                        <div class="flex items-center gap-1.5">
+                            <button type="button" @click="tefCfgAbierta = !tefCfgAbierta" title="Configurar URL del puente local"
+                                    class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold">⚙</button>
+                            <button type="button" @click="cobrarConDatafono()" :disabled="tefCobrando"
+                                    class="px-3 py-1.5 rounded bg-blue-700 hover:bg-blue-800 text-white text-xs font-black uppercase disabled:opacity-50">
+                                <span x-text="tefCobrando ? 'Esperando...' : 'Cobrar con Datáfono'"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div x-show="tefCfgAbierta" style="display:none" class="flex items-center gap-2">
+                        <label class="text-[11px] font-bold text-gray-600 whitespace-nowrap">URL puente:</label>
+                        <input type="text" x-model="tefUrl" @change="guardarTefUrl()" placeholder="http://127.0.0.1:8090/cobrar"
+                               class="flex-1 text-xs p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                    </div>
+                    <p x-show="tefEstado.mensaje" style="display:none" class="text-xs font-bold rounded px-2 py-1"
+                       :class="{'bg-blue-50 text-blue-800': tefEstado.tipo === 'espera',
+                                'bg-green-50 text-green-800': tefEstado.tipo === 'ok',
+                                'bg-red-50 text-red-700': tefEstado.tipo === 'error'}"
+                       x-text="tefEstado.mensaje"></p>
                     <div class="grid grid-cols-2 gap-2">
                         <input type="text" maxlength="50" x-model="tefAprobacion" placeholder="N.º aprobación"
                                class="text-sm p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
@@ -596,6 +638,9 @@
 </div>
 
 <script>
+// Estado no reactivo de la balanza (SerialPort/streams no deben pasar por el proxy de Alpine)
+const _serialBalanza = { port: null, reader: null, readableClosed: null, cerrando: false };
+
 function posApp() {
     return {
         isOnline: navigator.onLine,
@@ -639,6 +684,12 @@ function posApp() {
         tefUltimos4: '',
         tefRecibo: '',
         tefRespuestaRaw: '',   // JSON/texto crudo del puente local del datáfono (cuando se conecte)
+        tefUrl: (function () { try { return localStorage.getItem('pos_tef_url') || 'http://127.0.0.1:8090/cobrar'; } catch (e) { return 'http://127.0.0.1:8090/cobrar'; } })(),
+        tefCfgAbierta: false,
+        tefCobrando: false,
+        tefEstado: { tipo: '', mensaje: '' },
+        // Balanza serial (el puerto/lector viven fuera del estado reactivo: ver _serialBalanza)
+        balanza: { soportada: ('serial' in navigator), conectada: false, conectando: false, peso: null, error: '' },
         pagoTransferencia: 0,
         pagoPuntos: 0,
 
@@ -653,6 +704,14 @@ function posApp() {
             setInterval(() => this.actualizarReloj(), 15000);
             window.addEventListener('online', () => { this.isOnline = true; this.triggerSync(); this.fetchPuntosSaldo(); });
             window.addEventListener('offline', () => { this.isOnline = false; });
+            // Balanza: desconexión limpia al cerrar/recargar o al desenchufar el cable
+            window.addEventListener('beforeunload', () => { this.desconectarBalanza(); });
+            window.addEventListener('pagehide', () => { this.desconectarBalanza(); });
+            if (this.balanza.soportada) {
+                navigator.serial.addEventListener('disconnect', (ev) => {
+                    if (_serialBalanza.port && ev.target === _serialBalanza.port) this.desconectarBalanza();
+                });
+            }
             
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('/static/pos/sw.js').catch(err => console.error('SW Error:', err));
@@ -1297,6 +1356,151 @@ function posApp() {
             this.tefUltimos4 = '';
             this.tefRecibo = '';
             this.tefRespuestaRaw = '';
+            this.tefEstado = { tipo: '', mensaje: '' };
+        },
+
+        guardarTefUrl() {
+            this.tefUrl = String(this.tefUrl || '').trim() || 'http://127.0.0.1:8090/cobrar';
+            try { localStorage.setItem('pos_tef_url', this.tefUrl); } catch (e) { /* almacenamiento no disponible */ }
+        },
+
+        // Conector datáfono TEF (puente HTTP local). Si falla, la captura manual sigue disponible.
+        async cobrarConDatafono() {
+            if (this.tefCobrando) return;
+            const monto = Number(this.pagoTarjeta) || 0;
+            if (monto <= 0) {
+                this.tefEstado = { tipo: 'error', mensaje: 'Digite primero el valor a cobrar por tarjeta.' };
+                return;
+            }
+            this.guardarTefUrl();
+            const ticketId = (this.numeracion && this.numeracion.prefijo)
+                ? `${this.numeracion.prefijo}${this.siguienteConsecutivo}` : null;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 60000);
+            this.tefCobrando = true;
+            this.tefEstado = { tipo: 'espera', mensaje: 'Esperando respuesta del datáfono...' };
+            try {
+                const res = await fetch(this.tefUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ monto: monto, caja_id: this.turno.caja_id || null, ticket_id: ticketId }),
+                    signal: controller.signal
+                });
+                let data = null;
+                try { data = await res.json(); } catch (e) { data = null; }
+                if (!res.ok && !data) throw new Error('El puente respondió HTTP ' + res.status);
+                if (data && data.aprobado === true) {
+                    this.tefAprobacion = String(data.aprobacion ?? data.autorizacion ?? '').slice(0, 50);
+                    this.tefFranquicia = String(data.franquicia ?? '').slice(0, 50);
+                    this.tefUltimos4 = String(data.ultimos4 ?? data.ultimos_4 ?? '').replace(/\D/g, '').slice(-4);
+                    this.tefRecibo = String(data.recibo ?? '').slice(0, 50);
+                    this.tefRespuestaRaw = JSON.stringify(data);
+                    this.tefEstado = { tipo: 'ok', mensaje: 'Transacción aprobada por el datáfono.' };
+                } else {
+                    const motivo = data && (data.mensaje || data.message || data.error || data.motivo);
+                    this.tefEstado = { tipo: 'error', mensaje: 'Transacción rechazada' + (motivo ? ': ' + motivo : '') + '. Puede reintentar o digitar los datos manualmente.' };
+                }
+            } catch (e) {
+                const msg = e && e.name === 'AbortError'
+                    ? 'Tiempo de espera agotado (60 s) sin respuesta del datáfono.'
+                    : 'No se pudo conectar con el puente del datáfono (' + this.tefUrl + ').';
+                this.tefEstado = { tipo: 'error', mensaje: msg + ' Digite los datos manualmente como contingencia.' };
+            } finally {
+                clearTimeout(timer);
+                this.tefCobrando = false;
+            }
+        },
+
+        // Conector balanza serial (Web Serial API)
+        // Extrae el último valor numérico de una trama: "ST,GS,+  0.450kg", "0.450", "  1,250 kg"
+        parsePesoTrama(texto) {
+            const m = String(texto || '').match(/\d+(?:[.,]\d+)?/g);
+            if (!m) return null;
+            const n = parseFloat(m[m.length - 1].replace(',', '.'));
+            return isFinite(n) ? Math.round(n * 1000) / 1000 : null;
+        },
+
+        async conectarBalanza() {
+            if (!this.balanza.soportada || this.balanza.conectada || this.balanza.conectando) return;
+            this.balanza.error = '';
+            this.balanza.conectando = true;
+            const st = _serialBalanza;
+            try {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                st.port = port;
+                st.cerrando = false;
+                this.balanza.conectada = true;
+                this.balanza.peso = null;
+                const decoder = new TextDecoderStream();
+                st.readableClosed = port.readable.pipeTo(decoder.writable).catch(() => {});
+                st.reader = decoder.readable.getReader();
+                this.leerBalanza(st.reader);
+            } catch (e) {
+                if (e && e.name !== 'NotFoundError') this.balanza.error = 'Balanza: ' + (e.message || e);
+                await this.desconectarBalanza();
+            } finally {
+                this.balanza.conectando = false;
+            }
+        },
+
+        async leerBalanza(reader) {
+            const st = _serialBalanza;
+            let buffer = '';
+            let timer = null;
+            const procesar = (texto) => {
+                const peso = this.parsePesoTrama(texto);
+                if (peso !== null) this.balanza.peso = peso;
+            };
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    if (!value) continue;
+                    buffer += value;
+                    const partes = buffer.split(/[\r\n]+/);
+                    buffer = partes.pop();
+                    partes.forEach(procesar);
+                    if (buffer.length > 64) buffer = '';
+                    clearTimeout(timer);
+                    // Balanzas sin terminador de línea: se procesa lo acumulado tras una breve pausa
+                    if (buffer) timer = setTimeout(() => { procesar(buffer); buffer = ''; }, 150);
+                }
+            } catch (e) {
+                if (!st.cerrando) this.balanza.error = 'Balanza desconectada: ' + (e.message || e);
+            } finally {
+                clearTimeout(timer);
+                if (!st.cerrando && st.reader === reader) await this.desconectarBalanza();
+            }
+        },
+
+        async desconectarBalanza() {
+            const st = _serialBalanza;
+            if (st.cerrando) return;
+            st.cerrando = true;
+            try {
+                if (st.reader) { try { await st.reader.cancel(); } catch (e) {} try { st.reader.releaseLock(); } catch (e) {} }
+                if (st.readableClosed) { try { await st.readableClosed; } catch (e) {} }
+                if (st.port) { try { await st.port.close(); } catch (e) {} }
+            } finally {
+                st.port = null; st.reader = null; st.readableClosed = null;
+                this.balanza.conectada = false;
+                this.balanza.peso = null;
+                st.cerrando = false;
+            }
+        },
+
+        // Asigna el peso actual como cantidad del último ítem del carrito (ignora líneas de regalo)
+        aplicarPesoBalanza() {
+            const peso = this.balanza.peso;
+            if (peso === null || !(peso > 0)) { this.balanza.error = 'Sin lectura de peso válida.'; return; }
+            let idx = -1;
+            for (let k = this.cart.length - 1; k >= 0; k--) {
+                if (!this.cart[k].es_regalo) { idx = k; break; }
+            }
+            if (idx < 0) { this.balanza.error = 'El carrito está vacío.'; return; }
+            this.balanza.error = '';
+            this.setQty(idx, String(Math.round(peso * 1000) / 1000));
         },
 
         async confirmPayment() {
