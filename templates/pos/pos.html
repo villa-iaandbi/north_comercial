@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}Punto de Venta (POS) - North Comercial{% endblock %}
-{% block page_title %}Caja Registradora POS (Offline-First, Promociones & DIAN){% endblock %}
+{% block page_title %}{% endblock %}
 
 {# El POS requiere el 100% del ancho: sidebar colapsado por defecto #}
 {% block sidebar_collapsed %}true{% endblock %}
@@ -11,6 +11,10 @@
 <script src="{% static 'pos/pos_db.js' %}"></script>
 <script src="{% static 'pos/sw.js' %}"></script>
 <style>
+    /* POS a pantalla completa: se oculta la barra de título global (el POS trae su propia barra compacta) */
+    body > div > div > header { display: none !important; }
+    body > div > div > main { padding: 0 !important; overflow: hidden !important; }
+    .pos-fkey { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .btn-pos-primary {
         background-color: #1d4ed8;
         color: #ffffff;
@@ -68,106 +72,90 @@
 {% endblock %}
 
 {% block content %}
-<div x-data="posApp()" x-init="initApp()" class="-m-6 md:-m-8 p-4 bg-gray-100 min-h-screen">
-    
-    <!-- Encabezado: emblema, empresa y fecha/hora -->
-    <div class="bg-white border border-gray-200 rounded-lg px-4 py-3 mb-3 shadow-sm flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center space-x-3">
-            <div class="w-11 h-11 rounded-xl bg-blue-700 flex items-center justify-center shadow">
-                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-            </div>
-            <div>
-                <h1 class="text-xl font-black text-gray-900 leading-tight uppercase">{{ request.session.nom_empresa|default:'North Comercial' }}</h1>
-                <p class="text-xs font-bold text-blue-700 uppercase tracking-wide">Punto de Venta</p>
-            </div>
-        </div>
-        <div class="text-right">
-            <p class="text-sm font-extrabold text-gray-900 capitalize" x-text="fechaHoy"></p>
-            <p class="text-xs font-semibold text-gray-600">
-                <template x-if="turno.caja_id"><span>Caja <span x-text="turno.caja_id"></span> · </span></template>
-                <span class="font-black" x-text="horaActual"></span>
-            </p>
-        </div>
-    </div>
+<div x-data="posApp()" x-init="initApp()" class="h-screen flex flex-col gap-2 p-2 bg-gray-100 overflow-y-auto lg:overflow-hidden">
 
-    <!-- Barra Superior de Estado y Controles del Turno -->
-    <div class="bg-gray-900 text-white rounded-lg p-4 mb-4 shadow-md flex flex-wrap items-center justify-between gap-4">
-        <div class="flex items-center space-x-4">
-            <!-- Indicador Red -->
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide"
-                  :class="isOnline ? 'bg-green-600 text-white' : 'bg-red-600 text-white'">
-                <span class="w-2.5 h-2.5 rounded-full mr-2" :class="isOnline ? 'bg-green-300 animate-pulse' : 'bg-red-300'"></span>
-                <span x-text="isOnline ? 'EN LÍNEA (ONLINE)' : 'SIN RED (OFFLINE)'"></span>
+    <!-- Barra superior única y compacta -->
+    <div class="bg-gray-900 text-white rounded-lg px-3 py-1.5 shadow-md flex flex-wrap items-center justify-between gap-x-3 gap-y-1 shrink-0">
+        <div class="flex flex-wrap items-center gap-2 min-w-0">
+            <button type="button" title="Menú lateral"
+                    @click="(window.innerWidth >= 1024) ? (desktopSidebarCollapsed = !desktopSidebarCollapsed) : (sidebarOpen = true)"
+                    class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-lg font-black leading-none">☰</button>
+            <h1 class="text-sm font-black uppercase tracking-wide truncate max-w-[14rem]">{{ request.session.nom_empresa|default:'North Comercial' }}</h1>
+
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-extrabold uppercase"
+                  :class="isOnline ? 'bg-green-600' : 'bg-red-600'">
+                <span class="w-2 h-2 rounded-full mr-1.5" :class="isOnline ? 'bg-green-300 animate-pulse' : 'bg-red-300'"></span>
+                <span x-text="isOnline ? 'EN LÍNEA' : 'SIN RED'"></span>
             </span>
-
-            <!-- Indicador Turno -->
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide"
-                  :class="turno.abierto ? 'bg-blue-600 text-white' : 'bg-yellow-600 text-white'">
-                <span x-text="turno.abierto ? 'TURNO #' + turno.id_turno + ' (ABIERTO)' : 'CAJA CERRADA'"></span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-extrabold uppercase"
+                  :class="turno.abierto ? 'bg-blue-600' : 'bg-yellow-600'">
+                <span x-text="turno.abierto ? 'TURNO #' + turno.id_turno : 'CAJA CERRADA'"></span>
             </span>
-
-            <!-- Caja y próximo consecutivo -->
             <template x-if="numeracion && numeracion.prefijo">
-                <span class="text-sm font-semibold text-gray-300">
-                    Caja <span x-text="turno.caja_id"></span> · Próx: <span class="text-yellow-300 font-bold" x-text="numeracion.prefijo + siguienteConsecutivo"></span>
-                </span>
+                <span class="text-[11px] font-semibold text-gray-300">Próx: <span class="text-yellow-300 font-black" x-text="numeracion.prefijo + siguienteConsecutivo"></span></span>
             </template>
-
-            <!-- Counter Tickets Pendientes de Sync -->
-            <span x-show="unsyncedCount > 0" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-orange-600 text-white animate-bounce">
-                Sync Pendiente: <span class="ml-1 text-sm font-black" x-text="unsyncedCount"></span>
+            <span x-show="unsyncedCount > 0" style="display:none" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-orange-600">
+                Pend: <span class="ml-1 font-black" x-text="unsyncedCount"></span>
             </span>
-
-            <!-- Puntos Ganados Previstos -->
-            <span x-show="puntosGanados > 0" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-purple-600 text-white">
-                🎁 Puntos Venta: +<span x-text="puntosGanados"></span> pts
+            <span x-show="puntosGanados > 0" style="display:none" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-purple-600">
+                🎁 +<span x-text="puntosGanados"></span> pts
             </span>
         </div>
 
-        <div class="flex items-center space-x-2">
+        <div class="flex flex-wrap items-center gap-1.5">
             <!-- Balanza serial (Web Serial API) -->
-            <div class="flex items-center space-x-1" x-show="balanza.soportada" style="display:none">
+            <div class="flex items-center gap-1" x-show="balanza.soportada" style="display:none">
                 <button type="button" @click="balanza.conectada ? desconectarBalanza() : conectarBalanza()"
                         :disabled="balanza.conectando"
                         :title="balanza.conectada ? 'Desconectar balanza' : 'Conectar balanza serial (9600 baudios)'"
-                        class="font-bold px-3 py-2 rounded text-sm flex items-center shadow text-white disabled:opacity-50"
+                        class="font-bold px-2 py-1 rounded text-xs flex items-center text-white disabled:opacity-50"
                         :class="balanza.conectada ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-gray-700 hover:bg-gray-600'">
                     ⚖️ <span class="ml-1" x-text="balanza.conectada ? 'Balanza ✕' : 'Balanza'"></span>
                 </button>
                 <button type="button" x-show="balanza.conectada" style="display:none" @click="aplicarPesoBalanza()"
                         :disabled="balanza.peso === null"
-                        title="Aplicar este peso como cantidad del último ítem del carrito"
-                        class="px-3 py-2 rounded text-sm font-black bg-yellow-400 hover:bg-yellow-300 text-gray-900 disabled:opacity-50 shadow">
+                        title="Aplicar este peso como cantidad de la línea activa del carrito"
+                        class="px-2 py-1 rounded text-xs font-black bg-yellow-400 hover:bg-yellow-300 text-gray-900 disabled:opacity-50">
                     <span x-text="balanza.peso === null ? '-- kg' : fmtQty(balanza.peso) + ' kg'"></span>
-                    <span class="ml-1 text-[10px] uppercase font-extrabold">Aplicar peso</span>
+                    <span class="ml-1 text-[10px] uppercase font-extrabold">Aplicar</span>
                 </button>
             </div>
             <span x-show="!balanza.soportada" style="display:none"
                   title="Este navegador no soporta Web Serial API (use Chrome o Edge en HTTPS/localhost)"
-                  class="px-3 py-2 rounded text-sm font-bold bg-gray-700 text-gray-400 opacity-60 cursor-not-allowed">⚖️ Balanza</span>
-            <span x-show="balanza.error" style="display:none" class="text-xs font-bold text-red-300" x-text="balanza.error"></span>
+                  class="px-2 py-1 rounded text-xs font-bold bg-gray-700 text-gray-400 opacity-60 cursor-not-allowed">⚖️ Balanza</span>
+            <span x-show="balanza.error" style="display:none" class="text-[11px] font-bold text-red-300" x-text="balanza.error"></span>
 
-            <!-- Botón Último Recibo / Factura -->
-            <button x-show="lastIssuedTicket" @click="showReceiptModal = true" class="bg-indigo-700 hover:bg-indigo-600 text-white font-bold px-3 py-2 rounded text-sm flex items-center shadow">
-                📄 Última Factura
-            </button>
+            <button x-show="lastIssuedTicket" style="display:none" @click="showReceiptModal = true" class="bg-indigo-700 hover:bg-indigo-600 font-bold px-2 py-1 rounded text-xs">📄 Última</button>
 
-            <!-- Botón Sync Catálogo & Promociones -->
-            <button @click="syncCatalogAndPromos()" class="bg-gray-700 hover:bg-gray-600 text-white font-bold px-3 py-2 rounded text-sm flex items-center">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                Sync Datos & Promos
+            <button type="button" @click="syncCatalogAndPromos()" title="Sincronizar catálogo y promociones"
+                    class="bg-gray-700 hover:bg-gray-600 font-bold px-2 py-1 rounded text-xs flex items-center">
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Sync
             </button>
+            <button type="button" @click="abrirConfigTeclas()" title="Configurar teclas de función"
+                    class="bg-gray-700 hover:bg-gray-600 font-bold px-2 py-1 rounded text-xs">⌨ Teclas (F1-F12)</button>
+            <button x-show="!turno.abierto" style="display:none" @click="showAperturaModal = true" class="btn-pos-success text-xs py-1 px-3">+ Apertura de Caja</button>
 
-            <!-- Botón Apertura de Caja -->
-            <button x-show="!turno.abierto" @click="showAperturaModal = true" class="btn-pos-success text-sm py-2">
-                + Apertura de Caja
-            </button>
+            <!-- Fecha, reloj, caja y cajero -->
+            <div class="relative text-right leading-tight pl-3 ml-1 border-l border-gray-700" x-data="{ userOpen: false }">
+                <p class="text-[11px] font-extrabold capitalize" x-text="fechaHoy"></p>
+                <p class="text-[11px] font-semibold text-gray-300">
+                    <span class="font-black text-white" x-text="horaActual"></span>
+                    <template x-if="turno.caja_id"><span> · Caja <span x-text="turno.caja_id"></span></span></template>
+                    {% firstof request.session.usuario_nombre request.session.pos_user.nombre as nombre_cajero %}
+                    · <button type="button" @click="userOpen = !userOpen" class="font-bold underline decoration-dotted">{% if nombre_cajero %}{{ nombre_cajero }}{% elif request.user.is_authenticated %}{{ request.user.username }}{% else %}Cajero{% endif %}</button>
+                </p>
+                <div x-show="userOpen" @click.away="userOpen = false" style="display:none"
+                     class="absolute right-0 mt-1 w-40 py-1 bg-white rounded shadow-lg z-30 border border-gray-200 text-left">
+                    <a href="{% url 'logout' %}" class="block px-3 py-1.5 text-sm text-red-600 hover:bg-gray-100">Cerrar sesión</a>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Alerta de resolución DIAN / folios -->
     <div x-show="alertaResolucion" style="display:none"
-         class="mb-4 rounded-lg border-l-4 px-4 py-2 text-sm font-semibold shadow-sm"
+         class="rounded-lg border-l-4 px-3 py-1 text-xs font-semibold shadow-sm shrink-0"
          :class="alertaResolucion && alertaResolucion.nivel === 'rojo'
                  ? 'bg-red-100 border-red-600 text-red-800'
                  : 'bg-yellow-100 border-yellow-500 text-yellow-800'">
@@ -175,12 +163,12 @@
     </div>
 
     <!-- Grid Principal POS -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+    <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-2">
         
         <!-- PANEL IZQUIERDO: Catálogo y Búsqueda de Productos (7 Cols) -->
-        <div class="lg:col-span-7 bg-white rounded-lg p-4 shadow-sm border border-gray-200 flex flex-col h-[calc(100vh-12rem)]">
+        <div class="lg:col-span-7 bg-white rounded-lg p-3 shadow-sm border border-gray-200 flex flex-col min-h-0 h-[70vh] lg:h-auto">
             <!-- Buscador de artículos -->
-            <div class="mb-4">
+            <div class="mb-3 shrink-0">
                 <div class="relative">
                     <input type="text" x-model="searchQuery" x-ref="searchInput" @input="filterCatalog()"
                            @keydown.enter.prevent="handleSearchEnter()" autocomplete="off"
@@ -189,10 +177,26 @@
                 </div>
             </div>
 
-            <!-- Listado Grid de Artículos -->
-            <div class="flex-1 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <!-- Panel de reposo: sin texto de búsqueda no se muestran artículos -->
+            <div x-show="!searchQuery.trim()" style="display:none" class="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-4">
+                <p class="text-5xl mb-2">⌨️</p>
+                <p class="text-lg font-black text-gray-700 uppercase tracking-wide">Listo para vender</p>
+                <p class="text-sm text-gray-500 mb-4">Escanee un código o escriba para buscar un artículo. Teclas de función activas:</p>
+                <div class="grid grid-cols-2 gap-2 w-full max-w-xl">
+                    <template x-for="f in fkeyResumen" :key="f.id">
+                        <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-left">
+                            <span class="pos-fkey inline-block min-w-[2.75rem] text-center bg-gray-900 text-white font-black text-sm rounded px-2 py-1" x-text="f.tecla"></span>
+                            <span class="text-sm font-bold text-gray-800" x-text="f.nombre"></span>
+                        </div>
+                    </template>
+                </div>
+                <button type="button" @click="abrirConfigTeclas()" class="mt-4 text-xs font-bold text-blue-700 underline">Configurar teclas de función</button>
+            </div>
+
+            <!-- Resultados de búsqueda (tarjetas de tamaño fijo, alineadas arriba) -->
+            <div x-show="searchQuery.trim()" style="display:none" class="flex-1 min-h-0 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
                 <template x-for="item in filteredCatalog" :key="item.id_articulo">
-                    <div class="bg-gray-50 border-2 border-gray-200 hover:border-blue-500 rounded-lg p-3 flex flex-col justify-between transition-colors shadow-sm">
+                    <div class="bg-gray-50 border-2 border-gray-200 hover:border-blue-500 rounded-lg p-3 flex flex-col justify-between transition-colors shadow-sm min-h-[125px] max-h-[145px] overflow-hidden">
                         <div>
                             <div class="flex justify-between items-start">
                                 <span class="text-xs font-bold text-gray-500 uppercase tracking-wider" x-text="item.referencia || item.id_articulo"></span>
@@ -200,7 +204,7 @@
                             </div>
                             <h4 class="text-base font-bold text-gray-900 line-clamp-2 mt-1" x-text="item.nom_articulo"></h4>
                         </div>
-                        <div class="mt-3 flex items-center justify-between">
+                        <div class="mt-2 flex items-center justify-between">
                             <span class="text-xl font-black text-blue-900" x-text="formatCOP(item.precio)"></span>
                             <button @click="addToCart(item)" :disabled="!turno.abierto"
                                     class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold px-4 py-2 rounded-lg text-sm transition-transform active:scale-95 shadow">
@@ -219,10 +223,10 @@
         </div>
 
         <!-- PANEL DERECHO: Carrito, Cliente, Promociones y Cobro (5 Cols) -->
-        <div class="lg:col-span-5 bg-white rounded-lg p-4 shadow-sm border border-gray-200 flex flex-col h-[calc(100vh-12rem)]">
+        <div class="lg:col-span-5 bg-white rounded-lg p-3 shadow-sm border border-gray-200 flex flex-col min-h-0 h-[90vh] lg:h-auto">
             
             <!-- Cabecera de Cliente y Saldo de Puntos -->
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2 flex items-center justify-between">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-2 flex items-center justify-between shrink-0">
                 <div>
                     <span class="text-xs font-extrabold text-blue-600 uppercase tracking-wide">Cliente Factura:</span>
                     <p class="text-sm font-bold text-gray-900" x-text="cliente.id_tercero + ' - ' + cliente.nom_tercero"></p>
@@ -232,8 +236,8 @@
                         </p>
                     </template>
                 </div>
-                <button @click="showClienteModal = true" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded uppercase shadow">
-                    Cambiar
+                <button @click="abrirCliente()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded uppercase shadow">
+                    Cambiar <span class="pos-fkey opacity-80" x-text="teclaDe('cliente')"></span>
                 </button>
             </div>
 
@@ -260,9 +264,9 @@
             </template>
 
             <!-- Tabla de Ítems en el Carrito -->
-            <div class="flex-1 overflow-y-auto border-t border-b border-gray-200 py-2">
+            <div class="flex-1 min-h-0 overflow-y-auto border-t border-b border-gray-200 py-2" x-ref="cartList">
                 <template x-if="cart.length === 0">
-                    <div class="text-center py-16 text-gray-400">
+                    <div class="text-center py-10 text-gray-400">
                         <svg class="w-12 h-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                         <p class="font-bold text-gray-500">Carrito de Venta Vacío</p>
                         <p class="text-xs">Selecciona productos del catálogo para comenzar.</p>
@@ -282,8 +286,10 @@
                                         x-text="grupoDestino === item.grupo_compuesto ? 'Elija el artículo… (cancelar)' : '+ Sustituto'"></button>
                             </div>
                         </template>
-                        <div class="bg-gray-50 p-2.5 rounded-lg border border-gray-200 flex items-center justify-between"
-                             :class="item.es_regalo ? 'bg-purple-50 border-purple-300' : (item.grupo_compuesto ? 'border-l-4 border-l-amber-400 ml-2' : '')">
+                        <div class="bg-gray-50 p-2.5 rounded-lg border border-gray-200 flex items-center justify-between cursor-pointer"
+                             :data-line="index" @click="cartSel = index"
+                             :class="[item.es_regalo ? 'bg-purple-50 border-purple-300' : (item.grupo_compuesto ? 'border-l-4 border-l-amber-400 ml-2' : ''),
+                                      (cart.length && index === lineaActivaIdx) ? 'ring-2 ring-blue-500 bg-blue-50' : '']">
                             <div class="flex-1 pr-2">
                                 <div class="flex items-center">
                                     <p class="text-sm font-bold text-gray-800 leading-tight" x-text="item.nom_articulo"></p>
@@ -291,7 +297,7 @@
                                         <span class="ml-2 bg-purple-600 text-white font-black text-[10px] px-1.5 py-0.5 rounded">REGALO</span>
                                     </template>
                                 </div>
-                                <p class="text-xs text-gray-500 font-semibold" x-text="formatCOP(item.vlr_unitario) + ' c/u'"></p>
+                                <p class="text-sm text-gray-500 font-semibold" x-text="formatCOP(item.vlr_unitario) + ' c/u'"></p>
                                 <template x-if="item.descuento_linea > 0">
                                     <p class="text-[11px] text-purple-700 font-bold" x-text="'Desc. -' + formatCOP(item.descuento_linea)"></p>
                                 </template>
@@ -301,13 +307,14 @@
                                 <button @click="updateQty(index, -1)" :disabled="item.es_regalo" class="w-7 h-7 bg-red-100 hover:bg-red-200 text-red-700 font-black rounded flex items-center justify-center text-base disabled:opacity-30">-</button>
                                 <input type="text" inputmode="decimal" :value="fmtQty(item.cantidad)" :disabled="item.es_regalo"
                                        @change="setQty(index, $event.target.value); $event.target.value = fmtQty(cart[index] ? cart[index].cantidad : 0)"
-                                       @keydown.enter.prevent="$event.target.blur()"
+                                       :data-qty-line="index"
+                                       @keydown.enter.prevent="$event.target.blur(); focusBuscador()"
                                        class="w-16 text-center font-black text-sm text-gray-900 border border-gray-300 rounded py-0.5 focus:outline-none focus:border-blue-600 disabled:bg-gray-100">
                                 <button @click="updateQty(index, 1)" :disabled="item.es_regalo" class="w-7 h-7 bg-green-100 hover:bg-green-200 text-green-700 font-black rounded flex items-center justify-center text-base disabled:opacity-30">+</button>
                             </div>
                             <!-- Subtotal y Eliminar -->
                             <div class="w-28 text-right pl-2">
-                                <span class="block text-sm font-black text-gray-900" x-text="formatCOP(item.neto_linea)"></span>
+                                <span class="block text-lg font-bold text-gray-900" x-text="formatCOP(item.neto_linea)"></span>
                                 <button @click="removeFromCart(index)" class="text-xs text-red-600 hover:underline font-bold">Quitar</button>
                             </div>
                         </div>
@@ -317,32 +324,28 @@
             </div>
 
             <!-- Resumen Financiero del Ticket -->
-            <div class="bg-gray-900 text-white rounded-lg p-3 mt-3 shadow-inner space-y-1.5">
-                <div class="flex justify-between text-xs font-semibold text-gray-300">
+            <div class="bg-gray-900 text-white rounded-lg px-3 py-2 mt-2 shadow-inner space-y-0.5 shrink-0">
+                <div class="flex justify-between text-base font-semibold text-gray-300">
                     <span>Subtotal Mercancía:</span>
                     <span x-text="formatCOP(totMercancia)"></span>
                 </div>
-                <div class="flex justify-between text-xs font-semibold text-gray-300">
+                <div class="flex justify-between text-base font-semibold text-gray-300">
                     <span>IVA Generado:</span>
                     <span x-text="formatCOP(totIVA)"></span>
                 </div>
                 <template x-if="totINC > 0">
-                    <div class="flex justify-between text-xs font-semibold text-gray-300">
+                    <div class="flex justify-between text-base font-semibold text-gray-300">
                         <span>Impoconsumo (INC):</span>
                         <span x-text="formatCOP(totINC)"></span>
                     </div>
                 </template>
                 <template x-if="descuentoPromocion > 0">
-                    <div class="flex justify-between text-xs font-bold text-purple-400">
+                    <div class="flex justify-between text-sm font-bold text-purple-400">
                         <span>Descuento Promoción (ya incluido):</span>
                         <span x-text="'-' + formatCOP(descuentoPromocion)"></span>
                     </div>
                 </template>
-                <div class="flex justify-between text-xs font-semibold text-gray-400">
-                    <span>Retenciones (Exención POS):</span>
-                    <span>$0</span>
-                </div>
-                <div class="flex justify-between text-xl font-black text-green-400 border-t border-gray-700 pt-2 mt-1">
+                <div class="flex justify-between items-center text-3xl font-extrabold text-green-400 border-t border-gray-700 pt-1 mt-1">
                     <span>TOTAL:</span>
                     <span x-text="formatCOP(totTicket)"></span>
                 </div>
@@ -350,8 +353,8 @@
 
             <!-- Botón Cobrar Ticket -->
             <button @click="openPaymentModal()" :disabled="cart.length === 0 || !turno.abierto"
-                    class="btn-pos-success w-full mt-3 py-3 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                💳 COBRAR TICKET (<span x-text="formatCOP(totTicket)"></span>)
+                    class="btn-pos-success w-full mt-2 py-2.5 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+                💳 COBRAR TICKET (<span x-text="formatCOP(totTicket)"></span>) <span class="pos-fkey text-sm opacity-80" x-text="teclaDe('cobrar')"></span>
             </button>
         </div>
     </div>
@@ -381,11 +384,15 @@
     <div x-show="showClienteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
         <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border-2 border-gray-300">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-gray-900">🔍 Buscar Cliente (CO_TERCEROS)</h3>
+                <div>
+                    <h3 class="text-xl font-bold text-gray-900">🔍 Buscar Cliente (CO_TERCEROS)</h3>
+                    <p class="text-[11px] text-gray-500 font-semibold">Enter: primer resultado (o Consumidor Final si está vacío) · <span class="pos-fkey" x-text="teclaDe('cliente')"></span> de nuevo: Consumidor Final · Esc: cerrar</p>
+                </div>
                 <button @click="showClienteModal = false" class="text-gray-500 hover:text-black font-black text-xl">&times;</button>
             </div>
             
-            <input type="text" x-model="clienteQuery" @input.debounce.300ms="searchTerceros()"
+            <input type="text" x-model="clienteQuery" x-ref="clienteInput" @input.debounce.300ms="searchTerceros()"
+                   @keydown.enter.prevent="enterCliente()"
                    placeholder="Ingrese NIT o Nombre del cliente..."
                    class="w-full text-base p-2.5 border-2 border-blue-400 rounded-lg mb-3">
 
@@ -424,15 +431,15 @@
                 <!-- Botones rápidos de efectivo -->
                 <div class="flex flex-wrap justify-end gap-1.5 -mt-1">
                     <button type="button" @click="setEfectivoExacto()" class="px-2.5 py-1 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-black uppercase">Exacto</button>
-                    <template x-for="b in [5000, 10000, 20000, 50000, 100000]" :key="b">
-                        <button type="button" @click="pagoEfectivo = b" class="px-2.5 py-1 rounded bg-gray-200 hover:bg-gray-300 text-gray-800 text-xs font-bold" x-text="formatCOP(b)"></button>
+                    <template x-for="b in [2000, 5000, 10000, 20000, 50000, 100000]" :key="b">
+                        <button type="button" @click="sumarEfectivo(b)" title="Suma al efectivo recibido" class="px-2.5 py-1 rounded bg-gray-200 hover:bg-gray-300 text-gray-800 text-xs font-bold" x-text="formatCOP(b)"></button>
                     </template>
                     <button type="button" @click="pagoEfectivo = ''" class="px-2.5 py-1 rounded bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold">Borrar</button>
                 </div>
                 <!-- Tarjeta -->
                 <div class="flex items-center justify-between">
                     <label class="text-sm font-extrabold text-gray-800 uppercase w-36">💳 Tarjeta:</label>
-                    <input type="number" step="1" min="0" x-model.number="pagoTarjeta"
+                    <input type="number" step="1" min="0" x-model.number="pagoTarjeta" x-ref="tarjetaInput" @focus="prefillTarjeta()"
                            class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
                 </div>
                 <!-- Datos del datáfono (TEF) -->
@@ -444,7 +451,7 @@
                                     class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold">⚙</button>
                             <button type="button" @click="cobrarConDatafono()" :disabled="tefCobrando"
                                     class="px-3 py-1.5 rounded bg-blue-700 hover:bg-blue-800 text-white text-xs font-black uppercase disabled:opacity-50">
-                                <span x-text="tefCobrando ? 'Esperando...' : 'Cobrar con Datáfono'"></span>
+                                <span x-text="tefCobrando ? 'Esperando...' : 'Cobrar con Datáfono'"></span> <span class="pos-fkey opacity-70" x-text="teclaDe('datafono')"></span>
                             </button>
                         </div>
                     </div>
@@ -518,15 +525,48 @@
 
             <div class="flex space-x-3">
                 <button @click="showPaymentModal = false" class="w-1/3 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg text-base">
-                    Cancelar
+                    Cancelar <span class="text-xs opacity-80">(Esc)</span>
                 </button>
                 <button @click="confirmPayment()" :disabled="totalPagado < totTicket"
                         class="w-2/3 btn-pos-success py-3 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-lg">
-                    ✅ FINALIZAR Y EMITIR
+                    ✅ FINALIZAR Y EMITIR <span class="text-xs opacity-80">(Enter)</span>
                 </button>
             </div>
         </div>
     </div>
+
+    <!-- MODAL: CONFIGURAR TECLAS DE FUNCIÓN -->
+    <div x-show="showFkeysModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-5 border-2 border-gray-300">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-xl font-black text-gray-900">⌨ Configurar Teclas de Función</h3>
+                <button type="button" @click="showFkeysModal = false" class="text-gray-500 hover:text-black font-black text-xl">&times;</button>
+            </div>
+            <p class="text-xs text-gray-500 mb-3">Asigne una tecla F1–F12 a cada acción. No se puede repetir una tecla. En el cobro: <b>Enter</b> confirma y <b>Esc</b> cierra. En el carrito: <b>↑ / ↓</b> selecciona línea y <b>Supr</b> la quita.</p>
+            <div class="space-y-1.5 mb-3">
+                <template x-for="a in FKEY_ACCIONES" :key="a.id">
+                    <div class="flex items-center justify-between gap-3">
+                        <label class="text-sm font-bold text-gray-800" x-text="a.nombre"></label>
+                        <select x-model="fkeysDraft[a.id]" class="pos-fkey w-24 border-2 border-gray-300 rounded p-1 font-black text-sm focus:border-blue-600 focus:outline-none"
+                                :class="fkeyDuplicada(a.id) ? 'border-red-500 bg-red-50' : ''">
+                            <template x-for="k in FKEY_TECLAS" :key="k"><option :value="k" x-text="k"></option></template>
+                        </select>
+                    </div>
+                </template>
+            </div>
+            <p x-show="fkeysError" style="display:none" class="text-xs font-bold text-red-600 mb-2" x-text="fkeysError"></p>
+            <div class="flex gap-2">
+                <button type="button" @click="restaurarFkeys()" class="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-bold">Restaurar valores</button>
+                <button type="button" @click="showFkeysModal = false" class="flex-1 px-3 py-2 rounded bg-gray-500 hover:bg-gray-600 text-white text-sm font-bold">Cancelar</button>
+                <button type="button" @click="guardarFkeys()" class="flex-1 px-3 py-2 rounded bg-blue-700 hover:bg-blue-800 text-white text-sm font-black">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aviso breve de teclas de función -->
+    <div x-show="toast" style="display:none" x-transition
+         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-gray-900 text-white text-sm font-bold px-4 py-2 rounded-lg shadow-lg"
+         x-text="toast"></div>
 
     <!-- MODAL 4: CIERRE Z (CONSOLIDACIÓN) -->
     <div x-show="showCierreZModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
@@ -641,6 +681,46 @@
 // Estado no reactivo de la balanza (SerialPort/streams no deben pasar por el proxy de Alpine)
 const _serialBalanza = { port: null, reader: null, readableClosed: null, cerrando: false };
 
+// Catálogo cerrado de acciones del POS asignables a teclas de función
+const FKEY_ACCIONES = [
+    { id: 'buscar',          nombre: 'Buscar artículo',                 def: 'F2' },
+    { id: 'cantidad',        nombre: 'Cantidad de la línea activa',     def: 'F3' },
+    { id: 'eliminar',        nombre: 'Eliminar línea activa',           def: 'F4' },
+    { id: 'cliente',         nombre: 'Cliente (buscar / Consumidor Final)', def: 'F6' },
+    { id: 'peso',            nombre: 'Aplicar peso de balanza',         def: 'F7' },
+    { id: 'cobrar',          nombre: 'Cobrar ticket',                   def: 'F8' },
+    { id: 'efectivo_exacto', nombre: 'Pago rápido: efectivo exacto',    def: 'F9' },
+    { id: 'datafono',        nombre: 'Cobrar con datáfono',             def: 'F10' }
+];
+const FKEY_TECLAS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
+const FKEY_STORAGE = 'pos_fkeys_config';
+
+function fkeysPorDefecto() {
+    const m = {};
+    FKEY_ACCIONES.forEach(a => { m[a.id] = a.def; });
+    return m;
+}
+
+// Lee la configuración guardada; si es inválida (clave desconocida, tecla fuera de F1-F12 o repetida) usa los valores por defecto.
+function cargarFkeys() {
+    const def = fkeysPorDefecto();
+    try {
+        const raw = JSON.parse(localStorage.getItem(FKEY_STORAGE) || 'null');
+        if (!raw || typeof raw !== 'object') return def;
+        const out = {};
+        const usadas = new Set();
+        for (const a of FKEY_ACCIONES) {
+            const k = raw[a.id];
+            if (!FKEY_TECLAS.includes(k) || usadas.has(k)) return def;
+            out[a.id] = k;
+            usadas.add(k);
+        }
+        return out;
+    } catch (e) {
+        return def;
+    }
+}
+
 function posApp() {
     return {
         isOnline: navigator.onLine,
@@ -690,6 +770,16 @@ function posApp() {
         tefEstado: { tipo: '', mensaje: '' },
         // Balanza serial (el puerto/lector viven fuera del estado reactivo: ver _serialBalanza)
         balanza: { soportada: ('serial' in navigator), conectada: false, conectando: false, peso: null, error: '' },
+        // Teclas de función y navegación sin mouse
+        FKEY_ACCIONES: FKEY_ACCIONES,
+        FKEY_TECLAS: FKEY_TECLAS,
+        fkeys: cargarFkeys(),
+        fkeysDraft: {},
+        fkeysError: '',
+        showFkeysModal: false,
+        cartSel: -1,            // línea seleccionada con flechas/clic (-1 = última línea no regalo)
+        toast: '',
+        _toastTimer: null,
         pagoTransferencia: 0,
         pagoPuntos: 0,
 
@@ -704,6 +794,9 @@ function posApp() {
             setInterval(() => this.actualizarReloj(), 15000);
             window.addEventListener('online', () => { this.isOnline = true; this.triggerSync(); this.fetchPuntosSaldo(); });
             window.addEventListener('offline', () => { this.isOnline = false; });
+            // Teclas de función / navegación sin mouse
+            window.addEventListener('keydown', (e) => this.onKeydown(e));
+            this.$watch('cart.length', (n, o) => { if (n > o) this.cartSel = -1; });
             // Balanza: desconexión limpia al cerrar/recargar o al desenchufar el cable
             window.addEventListener('beforeunload', () => { this.desconectarBalanza(); });
             window.addEventListener('pagehide', () => { this.desconectarBalanza(); });
@@ -722,6 +815,7 @@ function posApp() {
             await this.loadLocalCatalog();
             await this.loadLocalPromociones();
             await this.updateUnsyncedCount();
+            this.focusBuscador();
             
             if (this.isOnline) {
                 this.triggerSync();
@@ -909,7 +1003,7 @@ function posApp() {
         filterCatalog() {
             const q = this.searchQuery.trim().toLowerCase();
             if (!q) {
-                this.filteredCatalog = this.catalog.slice(0, 40);
+                this.filteredCatalog = [];   // sin texto: no se muestran tarjetas (panel de reposo con teclas de función)
                 return;
             }
             this.filteredCatalog = this.catalog.filter(item => 
@@ -934,7 +1028,7 @@ function posApp() {
 
         limpiarBusqueda() {
             this.searchQuery = '';
-            this.filterCatalog();   // sin texto: lista por defecto (primeros artículos), sin resultados de la búsqueda previa
+            this.filterCatalog();   // sin texto: panel de reposo (sin tarjetas)
             this.$nextTick(() => { if (this.$refs.searchInput) this.$refs.searchInput.focus(); });
         },
 
@@ -1350,6 +1444,238 @@ function posApp() {
             this.pagoEfectivo = Math.max(0, this.totTicket - otros);
         },
 
+        // Billetes acumulativos: cada botón SUMA al efectivo recibido
+        sumarEfectivo(valor) {
+            this.pagoEfectivo = (Number(this.pagoEfectivo) || 0) + valor;
+        },
+
+        // Tarjeta vacía/0: se prellena con el saldo pendiente (total - efectivo recibido y demás medios ya digitados)
+        prefillTarjeta() {
+            if ((Number(this.pagoTarjeta) || 0) > 0) return;
+            const otros = (Number(this.pagoEfectivo) || 0) + (Number(this.pagoTransferencia) || 0) + (Number(this.pagoPuntos) || 0);
+            const saldo = Math.max(0, this.totTicket - otros);
+            if (saldo > 0) this.pagoTarjeta = saldo;
+        },
+
+        // ---------------- Teclas de función y navegación sin mouse ----------------
+        teclaDe(id) { return this.fkeys[id] || ''; },
+
+        get fkeyResumen() {
+            const num = (t) => parseInt(String(t).slice(1), 10);
+            return this.FKEY_ACCIONES
+                .map(a => ({ id: a.id, nombre: a.nombre, tecla: this.fkeys[a.id] }))
+                .sort((x, y) => num(x.tecla) - num(y.tecla));
+        },
+
+        get lineaActivaIdx() {
+            const n = this.cart.length;
+            if (!n) return -1;
+            if (this.cartSel >= 0 && this.cartSel < n) return this.cartSel;
+            for (let k = n - 1; k >= 0; k--) { if (!this.cart[k].es_regalo) return k; }
+            return n - 1;
+        },
+
+        get hayModalAbierto() {
+            return this.showAperturaModal || this.showClienteModal || this.showPaymentModal ||
+                   this.showCierreZModal || this.showReceiptModal || this.showFkeysModal;
+        },
+
+        notificar(msg) {
+            this.toast = msg;
+            clearTimeout(this._toastTimer);
+            this._toastTimer = setTimeout(() => { this.toast = ''; }, 2500);
+        },
+
+        focusBuscador(seleccionar) {
+            this.$nextTick(() => {
+                const el = this.$refs.searchInput;
+                if (el) { el.focus(); if (seleccionar) el.select(); }
+            });
+        },
+
+        abrirConfigTeclas() {
+            this.fkeysDraft = { ...this.fkeys };
+            this.fkeysError = '';
+            this.showFkeysModal = true;
+        },
+
+        fkeyDuplicada(id) {
+            const k = this.fkeysDraft[id];
+            return !!k && this.FKEY_ACCIONES.filter(a => this.fkeysDraft[a.id] === k).length > 1;
+        },
+
+        guardarFkeys() {
+            const usadas = {};
+            for (const a of this.FKEY_ACCIONES) {
+                const k = this.fkeysDraft[a.id];
+                if (!this.FKEY_TECLAS.includes(k)) { this.fkeysError = `Tecla inválida para "${a.nombre}".`; return; }
+                if (usadas[k]) { this.fkeysError = `La tecla ${k} está asignada a dos acciones ("${usadas[k]}" y "${a.nombre}").`; return; }
+                usadas[k] = a.nombre;
+            }
+            this.fkeys = { ...this.fkeysDraft };
+            try { localStorage.setItem(FKEY_STORAGE, JSON.stringify(this.fkeys)); } catch (e) { /* almacenamiento no disponible */ }
+            this.fkeysError = '';
+            this.showFkeysModal = false;
+            this.notificar('Teclas de función guardadas.');
+            this.focusBuscador();
+        },
+
+        restaurarFkeys() {
+            this.fkeys = fkeysPorDefecto();
+            this.fkeysDraft = { ...this.fkeys };
+            this.fkeysError = '';
+            try { localStorage.removeItem(FKEY_STORAGE); } catch (e) { /* almacenamiento no disponible */ }
+            this.notificar('Teclas restauradas a los valores por defecto.');
+        },
+
+        abrirCliente() {
+            this.clienteQuery = '';
+            this.tercerosResults = [];
+            this.showClienteModal = true;
+            this.$nextTick(() => { if (this.$refs.clienteInput) this.$refs.clienteInput.focus(); });
+        },
+
+        seleccionarConsumidorFinal() {
+            this.selectCliente({ id_tercero: '222222222222', nom_tercero: 'VENTAS MASIVAS (CONSUMIDOR FINAL)' });
+        },
+
+        enterCliente() {
+            if (!this.clienteQuery.trim()) { this.seleccionarConsumidorFinal(); return; }
+            if (this.tercerosResults.length > 0) { this.selectCliente(this.tercerosResults[0]); return; }
+            this.searchTerceros();
+        },
+
+        puedeCobrar() {
+            if (!this.turno.abierto) { this.notificar('La caja está cerrada: abra turno para vender.'); return false; }
+            if (this.cart.length === 0) { this.notificar('El carrito está vacío.'); return false; }
+            return true;
+        },
+
+        moverSeleccion(delta) {
+            const n = this.cart.length;
+            if (!n) return;
+            const actual = this.lineaActivaIdx;
+            this.cartSel = Math.min(n - 1, Math.max(0, actual + delta));
+            this.$nextTick(() => {
+                const lista = this.$refs.cartList;
+                const el = lista && lista.querySelector('[data-line="' + this.cartSel + '"]');
+                if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+            });
+        },
+
+        eliminarLineaActiva() {
+            const idx = this.lineaActivaIdx;
+            if (idx < 0) { this.notificar('El carrito está vacío.'); return; }
+            const item = this.cart[idx];
+            if (item.es_regalo) { this.notificar('Las líneas de regalo las gestiona la promoción.'); return; }
+            const nombre = item.nom_articulo;
+            const explicita = this.cartSel >= 0;
+            this.removeFromCart(idx);
+            if (!explicita || this.cartSel >= this.cart.length) this.cartSel = -1;
+            this.notificar('Línea eliminada: ' + nombre);
+        },
+
+        ejecutarAccionFkey(id) {
+            switch (id) {
+                case 'buscar':
+                    this.focusBuscador(true);
+                    break;
+                case 'cantidad': {
+                    const idx = this.lineaActivaIdx;
+                    if (idx < 0) { this.notificar('El carrito está vacío.'); break; }
+                    if (this.cart[idx].es_regalo) { this.notificar('La cantidad de un regalo no se edita.'); break; }
+                    const el = document.querySelector('[data-qty-line="' + idx + '"]');
+                    if (el) { el.focus(); el.select(); }
+                    break;
+                }
+                case 'eliminar':
+                    this.eliminarLineaActiva();
+                    break;
+                case 'cliente':
+                    this.abrirCliente();
+                    break;
+                case 'peso':
+                    this.aplicarPesoBalanza();
+                    if (this.balanza.error) this.notificar(this.balanza.error);
+                    break;
+                case 'cobrar':
+                    if (this.puedeCobrar()) this.openPaymentModal();
+                    break;
+                case 'efectivo_exacto':
+                    if (!this.puedeCobrar()) break;
+                    this.openPaymentModal();
+                    this.setEfectivoExacto();
+                    break;
+                case 'datafono':
+                    if (!this.showPaymentModal) {
+                        if (!this.puedeCobrar()) break;
+                        this.openPaymentModal();
+                    }
+                    this.prefillTarjeta();
+                    this.cobrarConDatafono();
+                    break;
+            }
+        },
+
+        manejarFkey(tecla) {
+            if (this.showFkeysModal || this.showAperturaModal || this.showCierreZModal || this.showReceiptModal) return;
+            const accion = this.FKEY_ACCIONES.find(a => this.fkeys[a.id] === tecla);
+            if (!accion) return;
+            if (this.showPaymentModal && !['datafono', 'efectivo_exacto'].includes(accion.id)) return;
+            if (this.showClienteModal) {
+                if (accion.id === 'cliente') this.seleccionarConsumidorFinal();   // segunda pulsación: Consumidor Final
+                return;
+            }
+            this.ejecutarAccionFkey(accion.id);
+        },
+
+        cerrarModalActivo() {
+            if (this.showFkeysModal) { this.showFkeysModal = false; }
+            else if (this.showPaymentModal) { this.showPaymentModal = false; }
+            else if (this.showClienteModal) { this.showClienteModal = false; }
+            else if (this.showReceiptModal) { this.showReceiptModal = false; }
+            else if (this.showCierreZModal) { this.showCierreZModal = false; }
+            else return false;
+            this.focusBuscador();
+            return true;
+        },
+
+        onKeydown(e) {
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            // F1-F12: se interceptan siempre (evita ayuda/recarga/pantalla completa del navegador)
+            if (/^F([1-9]|1[0-2])$/.test(e.key) && !e.shiftKey) {
+                e.preventDefault();
+                if (!e.repeat) this.manejarFkey(e.key);
+                return;
+            }
+            if (e.key === 'Escape') {
+                if (this.cerrarModalActivo()) e.preventDefault();
+                return;
+            }
+            if (e.key === 'Enter' && this.showPaymentModal) {
+                if (e.target && e.target.tagName === 'BUTTON') return;   // un botón enfocado conserva su acción
+                e.preventDefault();
+                if (e.repeat || this.confirmandoPago || this.tefCobrando) return;
+                if (this.totalPagado >= this.totTicket) this.confirmPayment();
+                else this.notificar('El pago no cubre el total: faltan ' + this.formatCOP(this.pendienteCobro));
+                return;
+            }
+            if (this.hayModalAbierto) return;
+            // Navegación del carrito: solo con el foco libre o en el buscador vacío
+            const t = e.target;
+            const libre = !t || t === document.body || (t === this.$refs.searchInput && !this.searchQuery.trim());
+            if (!libre) return;
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                if (!this.cart.length) return;
+                e.preventDefault();
+                this.moverSeleccion(e.key === 'ArrowUp' ? -1 : 1);
+            } else if (e.key === 'Delete') {
+                if (!this.cart.length) return;
+                e.preventDefault();
+                this.eliminarLineaActiva();
+            }
+        },
+
         resetTef() {
             this.tefAprobacion = '';
             this.tefFranquicia = '';
@@ -1494,11 +1820,9 @@ function posApp() {
         aplicarPesoBalanza() {
             const peso = this.balanza.peso;
             if (peso === null || !(peso > 0)) { this.balanza.error = 'Sin lectura de peso válida.'; return; }
-            let idx = -1;
-            for (let k = this.cart.length - 1; k >= 0; k--) {
-                if (!this.cart[k].es_regalo) { idx = k; break; }
-            }
+            const idx = this.lineaActivaIdx;
             if (idx < 0) { this.balanza.error = 'El carrito está vacío.'; return; }
+            if (this.cart[idx].es_regalo) { this.balanza.error = 'La línea activa es un regalo.'; return; }
             this.balanza.error = '';
             this.setQty(idx, String(Math.round(peso * 1000) / 1000));
         },
@@ -1638,6 +1962,7 @@ function posApp() {
         selectCliente(tercero) {
             this.cliente = tercero;
             this.showClienteModal = false;
+            this.focusBuscador();
             this.pagoPuntos = 0;
             this.fetchPuntosSaldo();
             this.evaluatePromotions();
