@@ -229,6 +229,14 @@
                 </div>
             </template>
 
+            <!-- Aviso: próximo artículo se asigna a un grupo -->
+            <template x-if="grupoDestino">
+                <div class="bg-amber-100 border border-amber-400 text-amber-900 rounded px-2 py-1 mb-1 text-xs font-bold flex items-center justify-between">
+                    <span x-text="'El próximo artículo se agregará a: ' + grupoDestino"></span>
+                    <button @click="grupoDestino = ''" class="underline">Cancelar</button>
+                </div>
+            </template>
+
             <!-- Tabla de Ítems en el Carrito -->
             <div class="flex-1 overflow-y-auto border-t border-b border-gray-200 py-2">
                 <template x-if="cart.length === 0">
@@ -240,9 +248,20 @@
                 </template>
 
                 <div class="space-y-2">
-                    <template x-for="(item, index) in cart" :key="item.id_articulo">
+                    <template x-for="(item, index) in cart" :key="item.line_id || index">
+                      <div>
+                        <!-- Encabezado de grupo (Ancheta / compuesto) -->
+                        <template x-if="item.grupo_compuesto && (index === 0 || cart[index - 1].grupo_compuesto !== item.grupo_compuesto)">
+                            <div class="flex items-center justify-between bg-amber-50 border border-amber-300 text-amber-900 rounded px-2 py-1 mb-1 mt-1">
+                                <span class="text-xs font-extrabold uppercase tracking-wide" x-text="'Ancheta: ' + item.grupo_compuesto"></span>
+                                <button @click="toggleGrupoDestino(item.grupo_compuesto)"
+                                        class="text-[11px] font-bold px-2 py-0.5 rounded border"
+                                        :class="grupoDestino === item.grupo_compuesto ? 'bg-amber-600 text-white border-amber-700' : 'bg-white text-amber-800 border-amber-400 hover:bg-amber-100'"
+                                        x-text="grupoDestino === item.grupo_compuesto ? 'Elija el artículo… (cancelar)' : '+ Sustituto'"></button>
+                            </div>
+                        </template>
                         <div class="bg-gray-50 p-2.5 rounded-lg border border-gray-200 flex items-center justify-between"
-                             :class="item.es_regalo ? 'bg-purple-50 border-purple-300' : ''">
+                             :class="item.es_regalo ? 'bg-purple-50 border-purple-300' : (item.grupo_compuesto ? 'border-l-4 border-l-amber-400 ml-2' : '')">
                             <div class="flex-1 pr-2">
                                 <div class="flex items-center">
                                     <p class="text-sm font-bold text-gray-800 leading-tight" x-text="item.nom_articulo"></p>
@@ -270,6 +289,7 @@
                                 <button @click="removeFromCart(index)" class="text-xs text-red-600 hover:underline font-bold">Quitar</button>
                             </div>
                         </div>
+                      </div>
                     </template>
                 </div>
             </div>
@@ -538,7 +558,7 @@
                                 <p>Cliente: <span x-text="lastIssuedTicket.nom_tercero"></span></p>
                                 <p class="border-b my-1.5"></p>
                                 <div class="space-y-1">
-                                    <template x-for="it in lastIssuedTicket.items" :key="it.id_articulo">
+                                    <template x-for="(it, ix) in lastIssuedTicket.items" :key="ix">
                                         <div class="flex justify-between text-[11px]">
                                             <span x-text="fmtQty(it.cantidad) + 'x ' + it.nom_articulo"></span>
                                             <span x-text="formatCOP(it.neto_linea != null ? it.neto_linea : it.tot_linea)"></span>
@@ -588,6 +608,9 @@ function posApp() {
         promocionesAplicadas: [],
         descuentoPromocion: 0,
         searchQuery: '',
+        articlesMap: {},       // id_articulo (texto) -> artículo del catálogo local
+        grupoDestino: '',      // si no es vacío, el próximo artículo se asigna a ese grupo (sustituto)
+        lineSeq: 0,
         cart: [],
         cliente: { id_tercero: '222222222222', nom_tercero: 'VENTAS MASIVAS (CONSUMIDOR FINAL)' },
         puntosCliente: { saldo: 0, valor_cop: 0 },
@@ -770,6 +793,7 @@ function posApp() {
 
         async loadLocalCatalog() {
             this.catalog = await window.posDB.getCatalog();
+            this.buildArticlesMap();
             if (this.catalog.length === 0 && this.isOnline) {
                 await this.syncCatalog();
             } else {
@@ -784,6 +808,7 @@ function posApp() {
                 const data = await res.json();
                 if (data.status === 'success') {
                     this.catalog = data.catalog;
+                    this.buildArticlesMap();
                     await window.posDB.saveCatalog(this.catalog);
                     this.filterCatalog();
                 }
@@ -854,40 +879,88 @@ function posApp() {
             this.$nextTick(() => { if (this.$refs.searchInput) this.$refs.searchInput.focus(); });
         },
 
+        buildArticlesMap() {
+            const map = {};
+            (this.catalog || []).forEach(a => { map[String(a.id_articulo).trim()] = a; });
+            this.articlesMap = map;
+        },
+
+        toggleGrupoDestino(grupo) {
+            this.grupoDestino = (this.grupoDestino === grupo) ? '' : grupo;
+        },
+
+        // Inserta (o acumula) una línea de artículo. Si tiene grupo, queda contigua a las demás líneas del grupo.
+        agregarLinea(item, cantidad, grupo) {
+            grupo = grupo || '';
+            const index = this.cart.findIndex(c =>
+                c.id_articulo === item.id_articulo && !c.es_regalo && (c.grupo_compuesto || '') === grupo);
+            if (index > -1) {
+                this.cart[index].cantidad = this.rQty(this.cart[index].cantidad + cantidad);
+                this.recalcCartLine(index);
+                return;
+            }
+            const vlrUnitario = item.precio;
+            const linea = {
+                line_id: ++this.lineSeq,
+                id_articulo: item.id_articulo,
+                referencia: item.referencia,
+                nom_articulo: item.nom_articulo,
+                id_grupo: String(item.id_grupo || ''),   // para cruzar promociones por Grupo/Línea
+                id_linea: String(item.id_linea || ''),
+                grupo_compuesto: grupo,                  // Ancheta/compuesto al que pertenece ('' = línea normal)
+                cantidad: this.rQty(cantidad),
+                vlr_unitario: vlrUnitario,          // precio unitario con IVA/INC incluidos
+                porc_descuento: 0,
+                descuento_valor: 0,                 // descuento de promoción (COP) de ESTA línea; 0 = sin promoción
+                porc_iva: item.porc_gravamen || 0,
+                porc_inc: item.porc_impoconsumo || 0,
+                vlr_inc_fijo_unit: item.vlr_inc_fijo_unit || 0,
+                vlr_iva: 0,
+                vlr_inc: 0,
+                base_neta: 0,
+                descuento_linea: 0,
+                tot_linea: Math.round(this.rQty(cantidad) * vlrUnitario), // bruto (entero)
+                neto_linea: Math.round(this.rQty(cantidad) * vlrUnitario),// bruto - descuento (entero)
+                es_regalo: false
+            };
+            let pos = this.cart.length;
+            if (grupo) {
+                for (let k = this.cart.length - 1; k >= 0; k--) {
+                    if ((this.cart[k].grupo_compuesto || '') === grupo) { pos = k + 1; break; }
+                }
+            }
+            this.cart.splice(pos, 0, linea);
+        },
+
+        // Artículo compuesto/ancheta: se despliegan sus componentes como líneas editables.
+        agregarCompuesto(padre) {
+            const grupo = padre.nom_articulo;
+            const faltantes = [];
+            let agregados = 0;
+            (padre.componentes || []).forEach(comp => {
+                const art = this.articlesMap[String(comp.id_articulo).trim()];
+                if (!art) { faltantes.push(comp.id_articulo); return; }
+                const cant = Number(comp.cantidad) > 0 ? Number(comp.cantidad) : 1;
+                this.agregarLinea(art, cant, grupo);
+                agregados++;
+            });
+            if (faltantes.length) {
+                alert(`Ancheta "${grupo}": ${faltantes.length} componente(s) no están en el catálogo activo `
+                    + `y no se agregaron: ${faltantes.join(', ')}.` + (agregados ? '' : '\nNo se agregó ninguna línea.'));
+            }
+        },
+
         addToCart(item) {
             if (!this.turno.abierto) {
                 alert('Debes realizar la Apertura de Caja antes de facturar.');
                 return;
             }
-            const index = this.cart.findIndex(c => c.id_articulo === item.id_articulo && !c.es_regalo);
-            if (index > -1) {
-                this.cart[index].cantidad = this.rQty(this.cart[index].cantidad + 1);
-                this.recalcCartLine(index);
+            if (item.es_compuesto === true && Array.isArray(item.componentes) && item.componentes.length > 0) {
+                this.agregarCompuesto(item);
             } else {
-                const vlrUnitario = item.precio;
-                const porcIva = item.porc_gravamen || 0;
-
-                this.cart.push({
-                    id_articulo: item.id_articulo,
-                    referencia: item.referencia,
-                    nom_articulo: item.nom_articulo,
-                    id_grupo: String(item.id_grupo || ''),   // para cruzar promociones por Grupo/Línea
-                    id_linea: String(item.id_linea || ''),
-                    cantidad: 1,
-                    vlr_unitario: vlrUnitario,          // precio unitario con IVA/INC incluidos
-                    porc_descuento: 0,
-                    descuento_valor: 0,                 // descuento de promoción (COP) de ESTA línea; 0 = sin promoción
-                    porc_iva: porcIva,
-                    porc_inc: item.porc_impoconsumo || 0,
-                    vlr_inc_fijo_unit: item.vlr_inc_fijo_unit || 0,
-                    vlr_iva: 0,
-                    vlr_inc: 0,
-                    base_neta: 0,
-                    descuento_linea: 0,
-                    tot_linea: Math.round(vlrUnitario), // bruto = cantidad * vlr_unitario (entero)
-                    neto_linea: Math.round(vlrUnitario),// bruto - descuento (entero)
-                    es_regalo: false
-                });
+                // Sustituto: si hay un grupo destino activo, la línea se asigna a ese grupo (una sola vez)
+                this.agregarLinea(item, 1, this.grupoDestino);
+                this.grupoDestino = '';
             }
             this.evaluatePromotions();
         },
@@ -994,6 +1067,7 @@ function posApp() {
 
         removeFromCart(index) {
             this.cart.splice(index, 1);
+            if (this.cart.length === 0) this.grupoDestino = '';
             this.evaluatePromotions();
         },
 
@@ -1280,7 +1354,7 @@ function posApp() {
                 puntos_ganados: this.puntosGanados,
                 puntos_redimidos_ticket: this.puntosRedimidosTicket,
                 cambio: this.cambioDevuelta,
-                items: JSON.parse(JSON.stringify(this.cart))
+                items: JSON.parse(JSON.stringify(this.cart)).map(it => ({ ...it, grupo_compuesto: it.grupo_compuesto || '' }))
             };
 
             await window.posDB.saveTicket(ticket);
@@ -1294,6 +1368,7 @@ function posApp() {
             
             // Limpiar estado
             this.cart = [];
+            this.grupoDestino = '';
             this.descuentoPromocion = 0;
             this.promocionesAplicadas = [];
             this.pagoPuntos = 0;

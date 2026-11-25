@@ -102,6 +102,11 @@
         </thead>
         <tbody>
             {% for item in items %}
+            {% ifchanged item.grupo_compuesto %}{% if item.grupo_compuesto %}
+            <tr class="lg">
+                <td colspan="5" style="font-weight: bold; text-transform: uppercase; padding-top: 1.5mm; white-space: normal;">ANCHETA: {{ item.grupo_compuesto }}</td>
+            </tr>
+            {% endif %}{% endifchanged %}
             <tr class="l1">
                 <td>{{ item.cantidad }}</td>
                 <td>{{ item.referencia }}</td>

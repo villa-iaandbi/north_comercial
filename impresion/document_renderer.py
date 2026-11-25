@@ -929,6 +929,7 @@ def _preparar_datos_tiquete(data):
             'cod': codigos[clave],
             'nom_articulo': _limpiar_descripcion(it.get('nom_articulo')),
             'descuento': _fmt_money(it.get('descuento')) if _to_decimal(it.get('descuento')) > 0 else '',
+            'grupo_compuesto': str(it.get('grupo_compuesto') or '').strip(),
         })
     data['items'] = items
 

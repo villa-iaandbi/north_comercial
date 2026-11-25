@@ -270,6 +270,11 @@ def _r2(valor):
     return Decimal(valor).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+def _r0(valor):
+    """Redondeo half-up al peso entero (idéntico a Math.round de templates/pos/pos.html)."""
+    return Decimal(valor).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+
+
 def calcular_ticket_en_reversa(lineas, descuento_global=0):
     """
     Cálculo en reversa de un ticket POS cuyos precios YA INCLUYEN IVA e INC.
@@ -288,12 +293,13 @@ def calcular_ticket_en_reversa(lineas, descuento_global=0):
     base_neta, iva, inc, vlr_unit_neto; siempre base_neta + iva + inc == total_pagar.
     """
     lineas = list(lineas)
-    hay_desc_item = any(_r2(ln.get('descuento_valor') or 0) > 0 for ln in lineas)
+    hay_desc_item = any(_r0(ln.get('descuento_valor') or 0) > 0 for ln in lineas)
     pre = []
     for ln in lineas:
-        bruto = _r2(Decimal(ln['cantidad']) * Decimal(ln['vlr_unitario']))
-        propio = _r2(bruto * Decimal(ln.get('porc_descuento') or 0) / Decimal('100'))
-        propio = min(bruto, _r2(propio + max(CERO, _r2(ln.get('descuento_valor') or 0))))
+        # Bruto y descuento de línea al peso entero: coincide peso a peso con el POS (cantidades fraccionadas)
+        bruto = _r0(Decimal(ln['cantidad']) * Decimal(ln['vlr_unitario']))
+        propio = _r0(bruto * Decimal(ln.get('porc_descuento') or 0) / Decimal('100'))
+        propio = min(bruto, _r0(propio + max(CERO, _r0(ln.get('descuento_valor') or 0))))
         pre.append((bruto, propio, max(CERO, _r2(bruto - propio))))
 
     suma_neto = _r2(sum((p[2] for p in pre), CERO))
@@ -465,6 +471,7 @@ def _armar_ticket_data(header, items, cufe, empresa, estado_dian, calculo, atend
             # Solo líneas con descuento real imprimen "Descuento (-)"; el resto va en 0 (la plantilla no lo muestra)
             'descuento': c['descuento'] if c['descuento'] > 0 else CERO,
             'porc_iva': it.porc_iva or CERO,
+            'grupo_compuesto': (it.grupo_compuesto or '').strip(),
         })
         g = grupos.setdefault(it.porc_iva or CERO, {'base': CERO, 'iva': CERO, 'inc': CERO})
         g['base'] += c['base_neta']
@@ -661,6 +668,30 @@ def pos_home(request):
     return render(request, 'pos/pos.html', context)
 
 
+def _cargar_recetas_compuestos():
+    """
+    {id_articulo_terminado: [{'id_articulo': mat_prima, 'cantidad': float}]} desde
+    IN_TRANSF_COMPONENTE_ITEMS. Si la tabla no existe en el esquema retorna {} (el POS vende el padre).
+    """
+    recetas = {}
+    try:
+        with get_oracle_connection().cursor() as cursor:
+            cursor.execute(
+                "SELECT TRIM(ID_ARTICULO_TERMINADO), TRIM(ID_ARTICULO_MAT_PRIMA), CANTIDAD "
+                "FROM IN_TRANSF_COMPONENTE_ITEMS"
+            )
+            for terminado, mat_prima, cantidad in cursor.fetchall():
+                if not terminado or not mat_prima:
+                    continue
+                recetas.setdefault(str(terminado).strip(), []).append(
+                    {'id_articulo': str(mat_prima).strip(), 'cantidad': float(cantidad or 0)}
+                )
+    except Exception as exc:
+        logger.warning(f"POS: no se pudieron leer recetas de IN_TRANSF_COMPONENTE_ITEMS: {exc}")
+        return {}
+    return recetas
+
+
 def api_catalog(request):
     """
     Descarga el catálogo maestro (IN_ARTICULOS + IN_GRAVAMENES).
@@ -677,7 +708,9 @@ def api_catalog(request):
         NVL(g.PORC_GRAVAMEN, 0) AS PORC_GRAVAMEN,
         NVL(a.IMPOCONSUMO, 0) AS VLR_INC_FIJO_UNIT,
         a.ID_GRUPO,
-        a.ID_LINEA
+        a.ID_LINEA,
+        NVL(TRIM(a.SIONO_SERIE), 'N') AS SIONO_SERIE,
+        NVL(TRIM(a.SIONO_TRANSFORMACION), 'N') AS SIONO_TRANSFORMACION
     FROM IN_ARTICULOS a
     LEFT JOIN IN_GRAVAMENES g ON a.ID_GRAVAMEN = g.ID_GRAVAMEN
     WHERE NVL(a.ACTIVO_INACTIVO, 'A') = 'A'
@@ -688,16 +721,24 @@ def api_catalog(request):
             rows = cursor.fetchall()
             columns = [col[0].lower() for col in cursor.description]
             catalog = [dict(zip(columns, row)) for row in rows]
-            
-            for item in catalog:
-                item['precio'] = float(item['precio'])
-                item['porc_gravamen'] = float(item['porc_gravamen'])
-                # IN_ARTICULOS.IMPOCONSUMO es un valor fijo por unidad (COP); no existe INC porcentual.
-                item['vlr_inc_fijo_unit'] = float(item['vlr_inc_fijo_unit'])
-                item['porc_impoconsumo'] = 0.0
-                # Para cruzar promociones por Grupo/Línea en el POS offline (siempre texto; '' si es nulo).
-                item['id_grupo'] = str(item.get('id_grupo') or '').strip()
-                item['id_linea'] = str(item.get('id_linea') or '').strip()
+
+        recetas = _cargar_recetas_compuestos()
+        for item in catalog:
+            es_comp = (str(item.pop('siono_transformacion', 'N') or 'N').strip().upper() == 'S'
+                       or str(item.pop('siono_serie', 'N') or 'N').strip().upper() == 'S')
+            item['es_compuesto'] = bool(es_comp)
+            if es_comp:
+                item['componentes'] = recetas.get(str(item['id_articulo']).strip(), [])
+
+        for item in catalog:
+            item['precio'] = float(item['precio'])
+            item['porc_gravamen'] = float(item['porc_gravamen'])
+            # IN_ARTICULOS.IMPOCONSUMO es un valor fijo por unidad (COP); no existe INC porcentual.
+            item['vlr_inc_fijo_unit'] = float(item['vlr_inc_fijo_unit'])
+            item['porc_impoconsumo'] = 0.0
+            # Para cruzar promociones por Grupo/Línea en el POS offline (siempre texto; '' si es nulo).
+            item['id_grupo'] = str(item.get('id_grupo') or '').strip()
+            item['id_linea'] = str(item.get('id_linea') or '').strip()
 
         return JsonResponse({'status': 'success', 'catalog': catalog, 'count': len(catalog)})
     except Exception as e:
