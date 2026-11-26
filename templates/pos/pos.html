@@ -173,10 +173,9 @@
             <div class="mb-3 shrink-0">
                 <div class="relative">
                     <input type="text" x-model="searchQuery" x-ref="searchInput" @input="filterCatalog()"
-                           @keydown="onSearchKeydown($event)"
-                           @keydown.enter.prevent="handleSearchEnter()" autocomplete="off"
+                           @keydown="onSearchKeydown($event)" autocomplete="off"
                            placeholder="🔍 Buscar por nombre, referencia o código de barras..."
-                           class="w-full text-lg p-3 pl-10 border-2 border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 font-semibold bg-gray-50 text-gray-900">
+                           class="w-full text-lg p-3 pl-10 border-2 border-blue-500 rounded-lg focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400 font-semibold bg-gray-50 text-gray-900">
                 </div>
             </div>
 
@@ -197,19 +196,19 @@
             </div>
 
             <!-- Resultados de búsqueda (tarjetas de tamaño fijo, alineadas arriba) -->
-            <div x-show="searchQuery.trim()" style="display:none" class="flex-1 min-h-0 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+            <div x-show="searchQuery.trim()" x-ref="resultsGrid" style="display:none" class="flex-1 min-h-0 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
                 <template x-for="(item, i) in filteredCatalog" :key="item.id_articulo">
-                    <div :data-search-idx="i" :class="i === selectedSearchIndex ? 'ring-4 ring-blue-500 border-blue-500' : 'border-gray-200'" class="bg-gray-50 border-2 hover:border-blue-500 rounded-lg p-3 flex flex-col justify-between transition-colors shadow-sm min-h-[125px] max-h-[145px] overflow-hidden">
+                    <div :data-search-index="i" tabindex="-1" @mousedown.prevent :class="i === selectedSearchIndex ? 'border-yellow-400 ring-2 ring-yellow-400 bg-slate-800' : 'border-gray-200 bg-gray-50'" class="border-2 hover:border-yellow-400 rounded-lg p-3 flex flex-col justify-between transition-colors shadow-sm min-h-[125px] max-h-[145px] overflow-hidden">
                         <div>
                             <div class="flex justify-between items-start">
-                                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider" x-text="item.referencia || item.id_articulo"></span>
+                                <span class="text-xs font-bold uppercase tracking-wider" :class="i === selectedSearchIndex ? 'text-gray-300' : 'text-gray-500'" x-text="item.referencia || item.id_articulo"></span>
                                 <span class="text-xs font-extrabold px-2 py-0.5 rounded" :class="item.porc_gravamen > 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-700'" x-text="item.porc_gravamen > 0 ? 'IVA ' + item.porc_gravamen + '%' : 'EXENTO'"></span>
                             </div>
-                            <h4 class="text-base font-bold text-gray-900 line-clamp-2 mt-1" x-text="item.nom_articulo"></h4>
+                            <h4 class="text-base font-bold line-clamp-2 mt-1" :class="i === selectedSearchIndex ? 'text-white' : 'text-gray-900'" x-text="item.nom_articulo"></h4>
                         </div>
                         <div class="mt-2 flex items-center justify-between">
-                            <span class="text-xl font-black text-blue-900" x-text="formatCOP(item.precio)"></span>
-                            <button @click="addToCart(item)" :disabled="!turno.abierto"
+                            <span class="text-xl font-black" :class="i === selectedSearchIndex ? 'text-yellow-300' : 'text-blue-900'" x-text="formatCOP(item.precio)"></span>
+                            <button type="button" tabindex="-1" @mousedown.prevent @click="addToCart(item)" :disabled="!turno.abierto"
                                     class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold px-4 py-2 rounded-lg text-sm transition-transform active:scale-95 shadow">
                                 + AGREGAR
                             </button>
@@ -292,7 +291,7 @@
                         <div class="p-2.5 rounded-lg border border-gray-200 flex items-center justify-between cursor-pointer"
                              :data-line="index" :data-line-id="item.line_id" @click="activeLineId = item.line_id"
                              :class="[item.es_regalo ? 'bg-purple-50 border-purple-300' : (item.grupo_compuesto ? 'border-l-4 border-l-amber-400 ml-2' : ''),
-                                      (index === lineaActivaIdx) ? 'ring-2 ring-blue-500 bg-blue-50' : (item.es_regalo ? '' : 'bg-gray-50')]">
+                                      (index === lineaActivaIdx) ? 'border-yellow-400 ring-2 ring-yellow-400 bg-yellow-50' : (item.es_regalo ? '' : 'bg-gray-50')]">
                             <div class="flex-1 pr-2">
                                 <div class="flex items-center">
                                     <p class="text-sm font-bold text-gray-800 leading-tight" x-text="item.nom_articulo"></p>
@@ -311,7 +310,7 @@
                                    :data-qty-line="index"
                                    @focus="activeLineId = item.line_id"
                                    @keydown.enter.prevent="$event.target.blur(); focusBuscador()"
-                                   class="w-20 text-right font-bold text-base text-gray-900 border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:border-blue-600 disabled:bg-gray-100">
+                                   class="w-20 text-right font-bold text-base text-gray-900 border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400 disabled:bg-gray-100">
                             <!-- Subtotal y Eliminar -->
                             <div class="w-28 text-right pl-2">
                                 <span class="block text-lg font-bold text-gray-900" x-text="formatCOP(item.neto_linea)"></span>
@@ -543,7 +542,7 @@
                 <h3 class="text-xl font-black text-gray-900">⌨ Configurar Teclas de Función</h3>
                 <button type="button" @click="showFkeysModal = false" class="text-gray-500 hover:text-black font-black text-xl">&times;</button>
             </div>
-            <p class="text-xs text-gray-500 mb-3">Asigne una tecla F1–F12 a cada acción. No se puede repetir una tecla. En el cobro: <b>Enter</b> confirma y <b>Esc</b> cierra. En el carrito: <b>↑ / ↓</b> selecciona línea y <b>Supr</b> la quita.</p>
+            <p class="text-xs text-gray-500 mb-3">Asigne una tecla F1–F12 a cada acción. No se puede repetir una tecla. En el cobro: <b>Enter</b> confirma y <b>Esc</b> cierra. Con texto en el buscador, las <b>flechas</b> mueven la tarjeta resaltada; <b>F3</b> edita la cantidad y <b>F4</b> quita la línea activa.</p>
             <div class="space-y-1.5 mb-3">
                 <template x-for="a in FKEY_ACCIONES" :key="a.id">
                     <div class="flex items-center justify-between gap-3">
@@ -1016,20 +1015,40 @@ function posApp() {
             ).slice(0, 40);
         },
 
-        // Flechas sobre los resultados de búsqueda (con texto en el buscador)
+        // Único manejador de teclado del buscador (el listener global de window no procesa flechas ni Enter de búsqueda).
+        //  - Flechas (texto en el buscador y resultados visibles): navegación por filas/columnas de la cuadrícula.
+        //  - Enter: agrega el artículo resaltado / coincidencia exacta / primer resultado.
         onSearchKeydown(e) {
-            if (!this.searchQuery.trim() || this.filteredCatalog.length === 0) return;
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            if (this.hayModalAbierto) return;   // con un modal abierto manda onKeydown (cobro, etc.)
             const k = e.key;
-            let delta = 0;
-            if (k === 'ArrowDown' || k === 'ArrowRight') delta = 1;
-            else if (k === 'ArrowUp' || k === 'ArrowLeft') delta = -1;
-            if (!delta) return;
+            const total = this.filteredCatalog.length;
+            const hayResultados = !!this.searchQuery.trim() && total > 0;
+
+            if (k === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.repeat) return;
+                this.handleSearchEnter();
+                return;
+            }
+
+            if (!hayResultados) return;
+            if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'ArrowRight' && k !== 'ArrowLeft') return;
             e.preventDefault();
-            const max = this.filteredCatalog.length - 1;
-            this.selectedSearchIndex = Math.min(max, Math.max(0, this.selectedSearchIndex + delta));
+            e.stopPropagation();
+            const gridEl = this.$refs.resultsGrid;
+            const cols = gridEl
+                ? Math.max(1, getComputedStyle(gridEl).gridTemplateColumns.split(' ').filter(Boolean).length)
+                : 1;
+            const idx = this.selectedSearchIndex;
+            if (k === 'ArrowDown') this.selectedSearchIndex = Math.min(total - 1, idx + cols);
+            else if (k === 'ArrowUp') this.selectedSearchIndex = Math.max(0, idx - cols);
+            else if (k === 'ArrowRight') this.selectedSearchIndex = Math.min(total - 1, idx + 1);
+            else this.selectedSearchIndex = Math.max(0, idx - 1);
             this.$nextTick(() => {
-                const el = document.querySelector('[data-search-idx="' + this.selectedSearchIndex + '"]');
-                if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                const el = document.querySelector('[data-search-index="' + this.selectedSearchIndex + '"]');
+                if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
             });
         },
 
@@ -1051,7 +1070,7 @@ function posApp() {
             }
             if (!elegido) return;
             this.addToCart(elegido);
-            this.limpiarBusqueda();
+            this.limpiarBusqueda();   // vacía el buscador, reinicia selectedSearchIndex = 0 y devuelve el foco al input
         },
 
         limpiarBusqueda() {
@@ -1582,18 +1601,6 @@ function posApp() {
             return true;
         },
 
-        moverSeleccion(delta) {
-            const n = this.cart.length;
-            if (!n) return;
-            const nuevo = Math.min(n - 1, Math.max(0, this.lineaActivaIdx + delta));
-            this.activeLineId = this.cart[nuevo].line_id;
-            this.$nextTick(() => {
-                const lista = this.$refs.cartList;
-                const el = lista && lista.querySelector('[data-line-id="' + this.activeLineId + '"]');
-                if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            });
-        },
-
         eliminarLineaActiva() {
             const idx = this.lineaActivaIdx;
             if (idx < 0) { this.notificar('El carrito está vacío.'); return; }
@@ -1702,18 +1709,6 @@ function posApp() {
                 else this.notificar('El pago no cubre el total: faltan ' + this.formatCOP(this.pendienteCobro));
                 return;
             }
-            if (this.hayModalAbierto) return;
-            // Navegación del carrito (buscador vacío): también con el foco en el buscador o en un botón,
-            // pero no mientras se escribe en otro campo de texto.
-            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Delete') return;
-            if (this.searchQuery.trim() || !this.cart.length) return;
-            const t = e.target;
-            const tag = t && t.tagName ? t.tagName : '';
-            const esCampo = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable));
-            if (esCampo && t !== this.$refs.searchInput) return;
-            e.preventDefault();
-            if (e.key === 'Delete') this.eliminarLineaActiva();
-            else this.moverSeleccion(e.key === 'ArrowUp' ? -1 : 1);
         },
 
         resetTef() {
