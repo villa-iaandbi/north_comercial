@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 import datetime
@@ -9,6 +10,13 @@ try:
 except ImportError:
     import pytz
     ZoneInfo = pytz.timezone
+
+try:
+    from django.conf import settings
+except ImportError:  # Ejecución aislada sin Django
+    settings = None
+
+logger = logging.getLogger(__name__)
 
 BOGOTA_TZ = ZoneInfo("America/Bogota")
 
@@ -26,6 +34,18 @@ class InvoicePayloadBuilder:
         return now.strftime("%Y-%m-%dT%H:%M:%S")
 
     @staticmethod
+    def _document_id_entero(id_documento):
+        """
+        DocumentID como entero, igual que el JSON real de Binapps: numérico ('4' -> 4) o con número
+        final ('CJ01-4' -> 4). Si no hay número final se conserva el valor original.
+        """
+        texto = str(id_documento if id_documento is not None else '').strip()
+        if texto.isdigit():
+            return int(texto)
+        cola = re.search(r'(\d+)$', texto)
+        return int(cola.group(1)) if cola else id_documento
+
+    @staticmethod
     def _save_payload_locally(id_documento: str, payload_dict: dict):
         """
         Guarda el objeto JSON de manera local como mecanismo de auditoría y respaldo.
@@ -33,8 +53,16 @@ class InvoicePayloadBuilder:
         """
         try:
             # Resolución de la ruta dinámica
-            base_dir = getattr(settings, 'BASE_DIR', Path(os.getcwd()))
-            payloads_dir = getattr(settings, 'FEL_PAYLOADS_DIR', base_dir / 'logs' / 'fel_payloads')
+            base_dir = Path(os.getcwd())
+            payloads_dir = None
+            if settings is not None:
+                try:
+                    base_dir = Path(getattr(settings, 'BASE_DIR', base_dir))
+                    payloads_dir = getattr(settings, 'FEL_PAYLOADS_DIR', None)
+                except Exception:  # p.ej. ImproperlyConfigured fuera de Django configurado
+                    base_dir = Path(os.getcwd())
+            if not payloads_dir:
+                payloads_dir = base_dir / 'logs' / 'fel_payloads'
             
             # Garantizar la existencia del directorio
             os.makedirs(payloads_dir, exist_ok=True)
@@ -185,8 +213,8 @@ class InvoicePayloadBuilder:
                 "TaxTributeCode": 0,
                 "TaxEvidenceIndicator": False,
                 "Percent": percent,
-                "TaxAmount": float(vals['amount']),
-                "TaxableAmount": float(vals['base']),
+                "TaxAmount": round(float(vals['amount']), 2),
+                "TaxableAmount": round(float(vals['base']), 2),
                 "TaxDetail": None
             })
 
@@ -211,8 +239,8 @@ class InvoicePayloadBuilder:
                 "TaxTributeCode": 1,
                 "TaxEvidenceIndicator": False,
                 "Percent": percent,
-                "TaxAmount": float(vals['amount']),
-                "TaxableAmount": float(vals['base']),
+                "TaxAmount": round(float(vals['amount']), 2),
+                "TaxableAmount": round(float(vals['base']), 2),
                 "TaxDetail": None
             })
 
@@ -226,8 +254,8 @@ class InvoicePayloadBuilder:
                     "TaxTributeCode": 5,
                     "TaxEvidenceIndicator": True,
                     "Percent": percent,
-                    "TaxAmount": amount,
-                    "TaxableAmount": base,
+                    "TaxAmount": round(amount, 2),
+                    "TaxableAmount": round(base, 2),
                     "TaxDetail": None
                 })
 
@@ -241,25 +269,39 @@ class InvoicePayloadBuilder:
 
         # Separatar prefijo y consecutivo de NUM_DOCUMENTO (Ej: FES5675 -> FES + 5675)
         import re
-        raw_num_doc = header_data.get('NUM_DOCUMENTO', '')
+        raw_num_doc = str(header_data.get('NUM_DOCUMENTO', '') or '').strip()
+        explicit_prefix = str(header_data.get('PREFIJO', '') or '').strip()
         doc_prefix = "FES"
         doc_number = raw_num_doc
-        match = re.match(r'^([A-Za-z]+)(\d+)$', raw_num_doc)
-        if match:
-            doc_prefix = match.group(1)
-            doc_number = match.group(2)
+        if explicit_prefix:
+            # Prefijo informado (POS por caja, ej. PREFIJO='CJ01-', NUM_DOCUMENTO='CJ01-46' -> '46').
+            doc_prefix = explicit_prefix
+            if raw_num_doc.upper().startswith(explicit_prefix.upper()):
+                resto = raw_num_doc[len(explicit_prefix):].lstrip('-_ ')
+            else:
+                resto = raw_num_doc
+            if resto.isdigit():
+                doc_number = resto
+            else:
+                tail = re.search(r'(\d+)$', resto)
+                doc_number = tail.group(1) if tail else (resto or raw_num_doc)
         else:
-            doc_number = re.sub(r'\D', '', raw_num_doc)
-            if not doc_number:
-                doc_number = raw_num_doc
+            match = re.match(r'^([A-Za-z]+)(\d+)$', raw_num_doc)
+            if match:
+                doc_prefix = match.group(1)
+                doc_number = match.group(2)
+            else:
+                doc_number = re.sub(r'\D', '', raw_num_doc)
+                if not doc_number:
+                    doc_number = raw_num_doc
 
         # ENSAMBLAJE FINAL DEL PAYLOAD NATIVO
         payload = {
             "InvoiceGeneralInformation": {
                 "InvoiceNumber": doc_number,
                 "PreinvoiceNumber": doc_number,
-                "InvoiceAuthorizationPrefix": doc_prefix,
-                "InvoiceAuthorizationNumber": header_data.get('NUM_RESOLUCION', ''), # Ajustar si se cruza de maestro
+                "InvoiceAuthorizationPrefix": str(doc_prefix or '').strip().rstrip('-'),
+                "InvoiceAuthorizationNumber": str(header_data.get('NUM_RESOLUCION', '') or '').strip(), # Resolución DIAN (TS_CAJAS.NUM_RESOLUCION en POS)
                 "DaysOff": 0,
                 "Currency": "COP",
                 "ExchangeRate": 0,
@@ -347,7 +389,7 @@ class InvoicePayloadBuilder:
             "Zone": header_data.get('ZONE', ''),
             "Weight": float(header_data.get('WEIGHT', 0.0) or 0.0),
             "DocumentName": "FACTURA ELECTRONICA DE VENTA",
-            "DocumentID": int(id_documento) if str(id_documento).isdigit() else id_documento,
+            "DocumentID": InvoicePayloadBuilder._document_id_entero(id_documento),
             "Note2": header_data.get('NOTE_2', ''),
             "Note3": header_data.get('NOTE_3', ''),
             "Note4": header_data.get('NOTE_4', ''),

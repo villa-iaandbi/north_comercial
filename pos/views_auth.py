@@ -92,17 +92,25 @@ def _fetch_empresas(ids_sistema):
     if not ids_sistema:
         return []
     lista = ','.join('"{}"'.format(str(i).replace('"', '')) for i in ids_sistema)
-    return _supabase_select(
-        'north_configuraciones',
-        {
-            'select': (
-                'id_sistema,nom_empresa,token,operacion_suspendida,'
-                'mensaje_suspension,db_host,db_user,db_password'
-            ),
-            'id_sistema': f'in.({lista})',
-        },
-        'No fue posible leer la configuración de la empresa.',
+    columnas = (
+        'id_sistema,nom_empresa,token,operacion_suspendida,'
+        'mensaje_suspension,db_host,db_user,db_password'
     )
+    error_msg = 'No fue posible leer la configuración de la empresa.'
+    try:
+        # Si la columna prefijo_numeracion no existe PostgREST responde 400.
+        return _supabase_select(
+            'north_configuraciones',
+            {'select': f'{columnas},prefijo_numeracion', 'id_sistema': f'in.({lista})'},
+            error_msg,
+        )
+    except SupabaseError:
+        logger.warning('Reintentando north_configuraciones sin prefijo_numeracion')
+        return _supabase_select(
+            'north_configuraciones',
+            {'select': columnas, 'id_sistema': f'in.({lista})'},
+            error_msg,
+        )
 
 
 def _validar_credenciales(email, password):
@@ -256,6 +264,8 @@ class PosLoginView(View):
         request.session['token_empresa'] = empresa.get('token')
         request.session['id_sistema'] = empresa.get('id_sistema')
         request.session['nom_empresa'] = empresa.get('nom_empresa')
+        # '' si el campo no existe o viene vacío: document_renderer usa su respaldo ('GENERAL').
+        request.session['prefijo_numeracion'] = str(empresa.get('prefijo_numeracion') or '').strip()
         request.session['id_usuario'] = usuario.get('id_usuario')
         request.session['usuario_nombre'] = usuario.get('usuario_nombre')
         request.session['usuario_rol'] = rol

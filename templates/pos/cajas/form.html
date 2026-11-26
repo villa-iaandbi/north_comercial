@@ -14,18 +14,149 @@
         </div>
         {% endif %}
 
+        <h3 class="mb-4 border-b border-gray-100 pb-2 text-base font-bold text-gray-800">Datos de la Caja</h3>
         <div class="grid grid-cols-1 gap-x-6 gap-y-5 md:grid-cols-2">
-            {% for field in form %}
-            <div class="{% if field.name == 'descripcion' %}md:col-span-2{% endif %}">
-                <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
-                    {{ field.label }}{% if field.field.required %} <span class="text-red-500">*</span>{% endif %}
+            <div>
+                <label for="{{ form.cod_caja.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.cod_caja.label }}{% if form.cod_caja.field.required %} <span class="text-red-500">*</span>{% endif %}
                 </label>
-                {{ field }}
-                {% if field.errors %}
-                <p class="mt-1 text-xs text-red-600">{{ field.errors|join:" " }}</p>
+                {{ form.cod_caja }}
+                {% if form.cod_caja.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.cod_caja.errors|join:" " }}</p>
                 {% endif %}
             </div>
-            {% endfor %}
+            <div class="md:col-span-2">
+                <label for="{{ form.descripcion.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.descripcion.label }}{% if form.descripcion.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.descripcion }}
+                {% if form.descripcion.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.descripcion.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.id_bodega.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.id_bodega.label }}{% if form.id_bodega.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.id_bodega }}
+                {% if form.id_bodega.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.id_bodega.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.id_centro_costo.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.id_centro_costo.label }}{% if form.id_centro_costo.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.id_centro_costo }}
+                {% if form.id_centro_costo.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.id_centro_costo.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.id_tipo_documento.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.id_tipo_documento.label }}{% if form.id_tipo_documento.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.id_tipo_documento }}
+                {% if form.id_tipo_documento.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.id_tipo_documento.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.id_doc_consecutivo.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.id_doc_consecutivo.label }}{% if form.id_doc_consecutivo.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.id_doc_consecutivo }}
+                {% if form.id_doc_consecutivo.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.id_doc_consecutivo.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.estado.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.estado.label }}{% if form.estado.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.estado }}
+                {% if form.estado.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.estado.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <h3 class="mb-1 mt-8 border-b border-gray-100 pb-2 text-base font-bold text-gray-800">Resolución DIAN y Numeración POS</h3>
+        <p class="mb-4 text-xs text-gray-500">Cada prefijo solo puede estar asignado a una caja activa.</p>
+        <div class="grid grid-cols-1 gap-x-6 gap-y-5 md:grid-cols-2">
+            <div>
+                <label for="{{ form.prefijo.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.prefijo.label }}{% if form.prefijo.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.prefijo }}
+                {% if form.prefijo.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.prefijo.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.num_resolucion.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.num_resolucion.label }}{% if form.num_resolucion.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.num_resolucion }}
+                {% if form.num_resolucion.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.num_resolucion.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.fch_expedicion.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.fch_expedicion.label }}{% if form.fch_expedicion.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.fch_expedicion }}
+                {% if form.fch_expedicion.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.fch_expedicion.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.fch_vencimiento.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.fch_vencimiento.label }}{% if form.fch_vencimiento.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.fch_vencimiento }}
+                {% if form.fch_vencimiento.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.fch_vencimiento.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.rango_inicial.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.rango_inicial.label }}{% if form.rango_inicial.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.rango_inicial }}
+                {% if form.rango_inicial.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.rango_inicial.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.rango_final.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.rango_final.label }}{% if form.rango_final.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.rango_final }}
+                {% if form.rango_final.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.rango_final.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label for="{{ form.consecutivo_actual.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.consecutivo_actual.label }}{% if form.consecutivo_actual.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.consecutivo_actual }}
+                <p class="mt-1 text-xs text-gray-500">Último número emitido; al crear en 0 se inicializa en Rango Inicial - 1</p>
+                {% if form.consecutivo_actual.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.consecutivo_actual.errors|join:" " }}</p>
+                {% endif %}
+            </div>
+            <div class="md:col-span-2">
+                <label for="{{ form.clave_tecnica.id_for_label }}" class="mb-1 block text-sm font-semibold text-gray-700">
+                    {{ form.clave_tecnica.label }}{% if form.clave_tecnica.field.required %} <span class="text-red-500">*</span>{% endif %}
+                </label>
+                {{ form.clave_tecnica }}
+                {% if form.clave_tecnica.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.clave_tecnica.errors|join:" " }}</p>
+                {% endif %}
+            </div>
         </div>
 
         <div class="mt-8 flex items-center justify-end gap-3 border-t border-gray-100 pt-5">

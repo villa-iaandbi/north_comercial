@@ -1,17 +1,121 @@
 import logging
 from decimal import Decimal
-from django.db import connection, transaction
+from django.db import transaction
+from core.tenant import get_oracle_connection
 from django.utils import timezone
 from core.models import (
     CoDocumento, CtVenta, InMovInventario, CoDocumentoItem
 )
 from pos.models import PosTurno, PosTicketHeader, PosTicketDetail
 from services.legacy_repository import get_system_parameter
-from facturacion.dian_async import encolar_transmision_dian
 
 logger = logging.getLogger(__name__)
 
-def consolidar_cierre_z(turno_id):
+def _leer_parametro_car(oracle, parametro, id_sistema):
+    """PARAMETRO_CAR(parametro, SYSDATE, id_sistema) de Oracle; '' si no está configurado."""
+    with oracle.cursor() as cursor:
+        cursor.execute("SELECT PARAMETRO_CAR(%s, SYSDATE, %s) FROM DUAL", [parametro, id_sistema])
+        row = cursor.fetchone()
+    return str(row[0]).strip() if row and row[0] is not None else ''
+
+
+def _preparar_tipo_doc_tef(oracle, id_sistema, id_ano):
+    """
+    Resuelve (solo lectura) el tipo de documento y la plantilla contable de los vouchers TEF.
+    COD_POS_TEF -> CO_TIPO_DOCUMENTOS (cod_tipo_documento -> id_tipo_documento) -> CO_PLANTILLAS -> CO_PLANTILLA_ITEMS.
+    Lanza ValueError (antes de escribir nada) si falta algún eslabón.
+    """
+    cod_tef = _leer_parametro_car(oracle, 'COD_POS_TEF', id_sistema)
+    if not cod_tef:
+        raise ValueError(
+            "Cierre Z abortado: el parámetro COD_POS_TEF no está configurado (vacío) en SG_PARAMETROS. "
+            "Hay ventas con tarjeta (TEF) y no se puede generar su documento contable."
+        )
+
+    with oracle.cursor() as cursor:
+        cursor.execute(
+            "SELECT ID_TIPO_DOCUMENTO FROM CO_TIPO_DOCUMENTOS "
+            "WHERE COD_TIPO_DOCUMENTO = %s AND ID_SISTEMA = %s AND ID_ANO = %s",
+            [cod_tef, id_sistema, id_ano]
+        )
+        row = cursor.fetchone()
+        # Igual que facturación masiva: si no hay equivalencia por código se usa el valor como ID.
+        id_tipo_doc = str(row[0]) if row else cod_tef
+
+        cursor.execute(
+            "SELECT ID_PLANTILLA, ID_DOC_CONSECUTIVO FROM CO_PLANTILLAS "
+            "WHERE ID_TIPO_DOCUMENTO = %s ORDER BY ID_PLANTILLA",
+            [id_tipo_doc]
+        )
+        plantilla = cursor.fetchone()
+        if not plantilla:
+            raise ValueError(
+                f"Cierre Z abortado: no hay plantilla en CO_PLANTILLAS para el tipo de documento TEF "
+                f"'{id_tipo_doc}' (COD_POS_TEF='{cod_tef}')."
+            )
+        id_plantilla = str(plantilla[0])
+        id_doc_consec_plantilla = str(plantilla[1]) if plantilla[1] else None
+
+        cursor.execute(
+            "SELECT DEBE_HABER, ID_CENTRO_COSTO, ID_CUENTA, CAMPO FROM CO_PLANTILLA_ITEMS "
+            "WHERE ID_PLANTILLA = %s ORDER BY ORDEN, ID_ITEM",
+            [id_plantilla]
+        )
+        items = [
+            {'debe_haber': r[0], 'id_centro_costo': r[1], 'id_cuenta': r[2], 'campo': r[3]}
+            for r in cursor.fetchall()
+        ]
+
+    if not any(i['debe_haber'] == 'D' for i in items) or not any(i['debe_haber'] == 'H' for i in items):
+        raise ValueError(
+            f"Cierre Z abortado: la plantilla {id_plantilla} del tipo TEF '{id_tipo_doc}' debe tener "
+            f"al menos una línea Débito y una Crédito (Datáfonos en Tránsito POS vs Caja POS)."
+        )
+    if any(i['debe_haber'] not in ('D', 'H') or not i['id_cuenta'] for i in items):
+        raise ValueError(
+            f"Cierre Z abortado: la plantilla {id_plantilla} contiene líneas sin DEBE_HABER o sin cuenta."
+        )
+    if sum(1 for i in items if i['debe_haber'] == 'D') != sum(1 for i in items if i['debe_haber'] == 'H'):
+        raise ValueError(
+            f"Cierre Z abortado: la plantilla {id_plantilla} del tipo TEF '{id_tipo_doc}' no balancea "
+            f"(distinto número de líneas Débito y Crédito); el voucher TEF lleva el mismo valor en cada línea."
+        )
+    return {
+        'cod': cod_tef, 'id_tipo_documento': id_tipo_doc, 'id_plantilla': id_plantilla,
+        'id_doc_consecutivo': id_doc_consec_plantilla, 'items': items,
+    }
+
+
+def _consecutivo_tipo_doc(oracle, id_tipo_doc, id_doc_consecutivo=None):
+    """
+    Número de documento vía PL/SQL CONSECUTIVO_TIPO_DOC (mismo mecanismo de facturación masiva),
+    en la conexión/transacción del tenant. Retorna (num_documento, id_doc_consecutivo).
+    """
+    oracle.ensure_connection()
+    raw_cursor = oracle.connection.cursor()
+    try:
+        out_val = raw_cursor.var(str, 50)
+        raw_cursor.callproc('CONSECUTIVO_TIPO_DOC', [id_tipo_doc, id_doc_consecutivo, out_val])
+        numero = out_val.getvalue()
+        id_consec = id_doc_consecutivo
+        if not id_consec:
+            raw_cursor.execute(
+                "SELECT ID_DOC_CONSECUTIVO FROM CO_TIPO_DOC_CONSECUTIVOS "
+                "WHERE ID_TIPO_DOCUMENTO = :1 AND ROWNUM = 1", [id_tipo_doc]
+            )
+            row = raw_cursor.fetchone()
+            id_consec = row[0] if row else None
+    finally:
+        raw_cursor.close()
+    if not numero:
+        raise ValueError(
+            f"Cierre Z abortado: CONSECUTIVO_TIPO_DOC no devolvió número para el tipo TEF '{id_tipo_doc}'. "
+            f"Verifique que el tipo de documento tenga un consecutivo asociado."
+        )
+    return str(numero), id_consec
+
+
+def consolidar_cierre_z(turno_id, id_sistema='1'):
     """
     Ejecuta el Cierre Z de un turno de caja:
     1. Agrupa los tickets confirmados del turno por ID_ARTICULO.
@@ -19,8 +123,9 @@ def consolidar_cierre_z(turno_id):
     3. Inserta un ÚNICO registro consolidado por artículo en IN_MOV_INVENTARIOS (Kardex).
     4. Genera el comprobante contable maestro en CO_DOCUMENTO_ITEMS.
     5. Actualiza el turno a 'CERRADO'.
-    6. Orquesta la Transmisión Asíncrona a la DIAN en segundo plano vía Django-Q2.
+    La transmisión DIAN se hace ticket a ticket al sincronizar (pos.views); el Cierre Z solo consolida en el ERP.
     """
+    id_sistema = str(id_sistema or '1').strip() or '1'
     turno = PosTurno.objects.get(pk=turno_id)
     if turno.estado == 'CERRADO':
         return {
@@ -86,8 +191,20 @@ def consolidar_cierre_z(turno_id):
     id_centro_costo = get_system_parameter('POS_CC_DEF', '01')
     tercero_pos = '222222222222'
 
-    with transaction.atomic(using='default'):
-        with connection.cursor() as cursor:
+    # Oracle del tenant activo (no el alias 'default' del .env).
+    oracle = get_oracle_connection()
+
+    # Tiquetes con tarjeta (TEF): 1 documento contable por voucher (excluye valor 0 / anulados).
+    tickets_tef = list(tickets_pendientes.filter(pago_tarjeta__gt=0).order_by('fch_ticket', 'ticket_id'))
+    tef_cfg = None
+    if tickets_tef:
+        # Solo lectura y antes de escribir: si falta COD_POS_TEF / plantilla se aborta sin tocar Oracle.
+        tef_cfg = _preparar_tipo_doc_tef(oracle, id_sistema, id_ano)
+    tef_docs_count = 0
+    tef_total = Decimal('0.00')
+
+    with transaction.atomic(using=oracle.alias):
+        with oracle.cursor() as cursor:
             cursor.execute("SELECT SEC_DOCUMENTO.NEXTVAL FROM DUAL")
             row = cursor.fetchone()
             if row:
@@ -102,12 +219,12 @@ def consolidar_cierre_z(turno_id):
             OBSER, ESTADO_DOC, FCH_REGISTRO, TERMINAL, ID_SISTEMA, ID_ANO
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        with connection.cursor() as cursor:
+        with oracle.cursor() as cursor:
             cursor.execute(sql_co_doc, [
                 vID_DOC, id_tipo_doc, vID_DOC, now_naive,
                 tercero_pos, id_vendedor, id_vendedor, float(tot_general),
                 f"CIERRE Z TURNO #{turno.id_turno} CAJA {turno.caja_id}",
-                'GRABADO', now_naive, 'NORTH-LOCAL', '1', id_ano
+                'GRABADO', now_naive, 'NORTH-LOCAL', id_sistema, id_ano
             ])
 
             sql_ct_ventas = """
@@ -135,7 +252,7 @@ def consolidar_cierre_z(turno_id):
                     str(item_seq), vID_DOC, art_id, now_naive, 'S',
                     float(info['cantidad']), float(info['vlr_unitario']), 0.00,
                     float(info['vlr_iva']), 0.00, float(info['vlr_unitario']),
-                    0.00, id_centro_costo, id_bodega, '1'
+                    0.00, id_centro_costo, id_bodega, id_sistema
                 ])
                 item_seq += 1
 
@@ -170,6 +287,85 @@ def consolidar_cierre_z(turno_id):
                     'H', cuenta_iva, 'IVA', float(tot_iva_general)
                 ])
 
+        # 4b. Documentos TEF (Tiempo 1): un voucher contable + un registro TS_RECAUDOS_TEF por tiquete con tarjeta.
+        #     Trasladan el valor de tarjeta de Caja POS a Datáfonos en Tránsito POS según la plantilla COD_POS_TEF.
+        if tef_cfg:
+            sql_tef_doc = """
+            INSERT INTO co_documentos (
+                ID_DOCUMENTO, ID_TIPO_DOCUMENTO, NUM_DOCUMENTO, FCH_DOCUMENTO,
+                ID_TERCERO, ID_VENDEDOR, ID_RESPONSABLE, TOT_DOCUMENTO,
+                OBSER, DOCTO_ALTERNO, ESTADO_DOC, FCH_REGISTRO, TERMINAL, ID_SISTEMA, ID_ANO
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            sql_tef_item = """
+            INSERT INTO co_documento_items (
+                ID_DOCUMENTO, ID_ITEM, ID_TERCERO, FCH_DOCUMENTO, ID_CENTRO_COSTO,
+                DEBE_HABER, ID_CUENTA, CAMPO, VALOR
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            sql_tef_recaudo = """
+            INSERT INTO ts_recaudos_tef (
+                ID_DOCUMENTO, ID_DOCUMENTO_VENTA, CAJA_ID, NUM_TICKET, CANAL,
+                NUM_APROBACION, FRANQUICIA, TIPO_TARJETA, ULTIMOS4, NUM_RECIBO,
+                VLR_BRUTO, ESTADO, OBSER
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            caja_ref = str(turno.caja_id or '')[:20]
+
+            for tk in tickets_tef:
+                valor_tarjeta = tk.pago_tarjeta
+                num_ticket = tk.numero_ticket
+                aprob = str(tk.tef_aprobacion or '').strip()
+                franq = str(tk.tef_franquicia or '').strip()
+
+                with oracle.cursor() as cursor:
+                    cursor.execute("SELECT SEC_DOCUMENTO.NEXTVAL FROM DUAL")
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError("No se pudo obtener SEC_DOCUMENTO.NEXTVAL de Oracle (documento TEF).")
+                    id_doc_tef = str(row[0])
+
+                num_doc_tef, id_consec_tef = _consecutivo_tipo_doc(
+                    oracle, tef_cfg['id_tipo_documento'], tef_cfg['id_doc_consecutivo']
+                )
+
+                with oracle.cursor() as cursor:
+                    cursor.execute(sql_tef_doc, [
+                        id_doc_tef, tef_cfg['id_tipo_documento'], num_doc_tef, now_naive,
+                        tercero_pos, id_vendedor, id_vendedor, float(valor_tarjeta),
+                        f"TEF POS {num_ticket} APROB:{aprob or 'N/A'} {franq}".strip()[:250],
+                        aprob[:15] or None,
+                        'GRABADO', now_naive, 'NORTH-LOCAL', id_sistema, id_ano
+                    ])
+                    if id_consec_tef:
+                        # Bypass ORA-04091 (trigger de consecutivos): se asigna tras el INSERT, como en facturación.
+                        cursor.execute(
+                            "UPDATE co_documentos SET ID_DOC_CONSECUTIVO = %s WHERE ID_DOCUMENTO = %s",
+                            [str(id_consec_tef), id_doc_tef]
+                        )
+
+                    # Líneas de la plantilla: cada línea Débito/Crédito lleva el valor de la tarjeta (voucher de 2 patas).
+                    for n, pi in enumerate(tef_cfg['items'], start=1):
+                        campo = str(pi['campo'] or '')[:17]
+                        campo = f"{campo}-{n}" if sum(1 for x in tef_cfg['items'] if x['campo'] == pi['campo']) > 1 else campo
+                        cursor.execute(sql_tef_item, [
+                            id_doc_tef, str(n), tercero_pos, now_naive,
+                            pi['id_centro_costo'] or id_centro_costo,
+                            pi['debe_haber'], pi['id_cuenta'], campo[:20] or None, float(valor_tarjeta)
+                        ])
+
+                    cursor.execute(sql_tef_recaudo, [
+                        id_doc_tef, vID_DOC, caja_ref, str(num_ticket or '')[:40], 'TEF',
+                        (aprob if aprob else f"SIN-APROB-{num_ticket}")[:50],
+                        franq[:50] or None, None,
+                        str(tk.tef_ultimos4 or '').strip()[:10] or None,
+                        str(tk.tef_recibo or '').strip()[:50] or None,
+                        float(valor_tarjeta), 'PENDIENTE',
+                        str(tk.tef_respuesta_raw or '').strip()[:250] or None
+                    ])
+                tef_docs_count += 1
+                tef_total += valor_tarjeta
+
     # 5. Marcar tickets como consolidados y cerrar turno
     tickets_pendientes.update(consolidado_cierre=True)
     turno.estado = 'CERRADO'
@@ -180,23 +376,19 @@ def consolidar_cierre_z(turno_id):
     turno.id_documento_cierre = vID_DOC
     turno.save()
 
-    # 6. Orquestar la Transmisión Asíncrona a la DIAN mediante Django-Q2
+    # La transmisión DIAN ya no se encola aquí: se hace ticket a ticket (evita doble facturación).
     dian_task_id = None
-    if vID_DOC:
-        try:
-            dian_task_id = encolar_transmision_dian(vID_DOC)
-            logger.info(f"Transmisión asíncrona DIAN encolada para Cierre Z Doc '{vID_DOC}' con Task ID: {dian_task_id}")
-        except Exception as e:
-            logger.error(f"Fallo al encolar transmisión DIAN en Cierre Z para Doc '{vID_DOC}': {e}")
 
     logger.info(f"Cierre Z exitoso. Turno #{turno_id} -> Doc Oracle: {vID_DOC}")
     return {
         'status': 'success',
-        'message': f'Cierre Z procesado exitosamente. Documento maestro: {vID_DOC}. Transmisión DIAN encolada.',
+        'message': f'Cierre Z procesado exitosamente. Documento maestro: {vID_DOC}. Consolidado en ERP.',
         'id_documento': vID_DOC,
         'dian_task_id': dian_task_id,
         'tot_general': float(tot_general),
         'tot_mercancia': float(tot_mercancia_general),
         'tot_iva': float(tot_iva_general),
-        'items_count': len(articulos_agrupados)
+        'items_count': len(articulos_agrupados),
+        'tef_docs_count': tef_docs_count,
+        'tef_total': float(tef_total)
     }

@@ -117,6 +117,18 @@ def impresion_table_results(request):
         'estado': estado_filter
     })
 
+def _prefijo_desde_sesion(request):
+    """
+    Prefijo de numeración desde la sesión (si existe). Si no hay valor retorna None y
+    el renderizador usa el prefijo del propio documento o 'GENERAL'.
+    """
+    try:
+        valor = request.session.get('prefijo_numeracion')
+    except Exception:
+        return None
+    return str(valor).strip() if valor else None
+
+
 def descargar_factura_pdf(request, id_documento):
     """
     Genera el PDF usando render_invoice_to_pdf, lo guarda en la carpeta por fecha de factura y lo retorna.
@@ -128,7 +140,11 @@ def descargar_factura_pdf(request, id_documento):
     from .document_renderer import render_invoice_to_pdf
 
     try:
-        file_path = render_invoice_to_pdf(id_documento)
+        file_path = render_invoice_to_pdf(
+            id_documento,
+            prefijo_numeracion=_prefijo_desde_sesion(request),
+            tipo='credito',
+        )
         pdf_filename = os.path.basename(file_path)
 
         # Actualizar estado a impreso 'S'
@@ -147,7 +163,7 @@ def descargar_factura_pdf(request, id_documento):
 from django.db import connection
 from django_q.tasks import async_task
 
-def procesar_lote_impresion(ids_seleccionados):
+def procesar_lote_impresion(ids_seleccionados, prefijo_numeracion=None):
     """Tarea de fondo para generar PDFs masivamente."""
     from .document_renderer import render_invoice_to_pdf
     
@@ -156,7 +172,7 @@ def procesar_lote_impresion(ids_seleccionados):
     
     for doc_id in ids_seleccionados:
         try:
-            render_invoice_to_pdf(doc_id)
+            render_invoice_to_pdf(doc_id, prefijo_numeracion=prefijo_numeracion, tipo='credito')
             
             # Actualizar el documento a 'Impreso' (siono_impreso='S')
             with connection.cursor() as cursor:
@@ -189,12 +205,14 @@ def generar_pdfs_seleccionados(request):
         </div>
         """, status=200)
 
+    prefijo_sesion = _prefijo_desde_sesion(request)
+
     # Si son 20 o menos facturas, procesamos directamente para respuesta inmediata sin requerir qcluster
     if len(ids_seleccionados) <= 20:
-        exitosos, fallidos = procesar_lote_impresion(ids_seleccionados)
+        exitosos, fallidos = procesar_lote_impresion(ids_seleccionados, prefijo_sesion)
         msg = f"Éxito: Se generaron {exitosos} documentos PDF ({fallidos} fallos)."
     else:
-        async_task(procesar_lote_impresion, ids_seleccionados)
+        async_task(procesar_lote_impresion, ids_seleccionados, prefijo_sesion)
         msg = f"Se ha enviado a la cola de impresión el lote de {len(ids_seleccionados)} facturas. Procesando en segundo plano..."
 
     html_response = f"""

@@ -85,16 +85,34 @@ class TsCajaForm(forms.ModelForm):
         fields = [
             'cod_caja', 'descripcion', 'id_bodega', 'id_centro_costo',
             'id_tipo_documento', 'id_doc_consecutivo', 'estado',
+            'num_resolucion', 'fch_expedicion', 'fch_vencimiento', 'prefijo',
+            'rango_inicial', 'rango_final', 'consecutivo_actual', 'clave_tecnica',
         ]
         labels = {
             'cod_caja': 'Código',
             'descripcion': 'Descripción',
             'estado': 'Estado',
+            'num_resolucion': 'N° Resolución DIAN',
+            'fch_expedicion': 'Fecha expedición',
+            'fch_vencimiento': 'Fecha vencimiento',
+            'prefijo': 'Prefijo',
+            'rango_inicial': 'Rango inicial',
+            'rango_final': 'Rango final',
+            'consecutivo_actual': 'Consecutivo actual',
+            'clave_tecnica': 'Clave técnica',
         }
         widgets = {
             'cod_caja': forms.TextInput(),
             'descripcion': forms.TextInput(),
             'estado': forms.Select(),
+            'num_resolucion': forms.TextInput(),
+            'fch_expedicion': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'fch_vencimiento': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'prefijo': forms.TextInput(attrs={'maxlength': 15}),
+            'rango_inicial': forms.NumberInput(attrs={'min': 0}),
+            'rango_final': forms.NumberInput(attrs={'min': 0}),
+            'consecutivo_actual': forms.NumberInput(attrs={'min': 0}),
+            'clave_tecnica': forms.TextInput(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -143,6 +161,73 @@ class TsCajaForm(forms.ModelForm):
             choices.append((valor_actual, valor_actual))
         return choices
 
+    def clean_prefijo(self):
+        return (self.cleaned_data.get('prefijo') or '').strip().upper() or None
+
+    def clean_num_resolucion(self):
+        return (self.cleaned_data.get('num_resolucion') or '').strip() or None
+
+    def clean_clave_tecnica(self):
+        return (self.cleaned_data.get('clave_tecnica') or '').strip() or None
+
+    def clean(self):
+        cleaned = super().clean()
+        editando = bool(self.instance and not self.instance._state.adding)
+
+        # Valores por defecto de rangos.
+        rango_inicial = cleaned.get('rango_inicial')
+        if rango_inicial is None:
+            rango_inicial = 1
+        rango_final = cleaned.get('rango_final')
+        if rango_final is None:
+            rango_final = 0
+        cleaned['rango_inicial'] = rango_inicial
+        cleaned['rango_final'] = rango_final
+
+        for campo, etiqueta in (('rango_inicial', 'El rango inicial'),
+                                ('rango_final', 'El rango final'),
+                                ('consecutivo_actual', 'El consecutivo actual')):
+            valor = cleaned.get(campo)
+            if valor is not None and valor < 0:
+                self.add_error(campo, f'{etiqueta} no puede ser negativo.')
+
+        # Fechas de la resolución.
+        fch_exp = cleaned.get('fch_expedicion')
+        fch_ven = cleaned.get('fch_vencimiento')
+        if fch_exp and fch_ven and fch_exp > fch_ven:
+            self.add_error('fch_vencimiento',
+                           'La fecha de vencimiento debe ser mayor o igual a la fecha de expedición.')
+
+        # Rangos.
+        if rango_final > 0 and rango_inicial > rango_final:
+            self.add_error('rango_inicial', 'El rango inicial no puede ser mayor que el rango final.')
+
+        # Consecutivo actual: al crear se inicializa; al editar se conserva si viene vacío.
+        # (Al crear, el valor por defecto del modelo es 0: se trata como vacío.)
+        if cleaned.get('consecutivo_actual') is None or (
+            not editando and not cleaned.get('consecutivo_actual')
+        ):
+            original = self.initial.get('consecutivo_actual') if editando else None
+            cleaned['consecutivo_actual'] = (
+                original if original is not None else max(0, rango_inicial - 1)
+            )
+
+        # Regla 1: un prefijo = una caja activa.
+        prefijo = cleaned.get('prefijo')
+        if cleaned.get('estado') == 'A' and prefijo:
+            otras = TsCaja.objects.filter(estado='A', prefijo__iexact=prefijo)
+            if editando:
+                otras = otras.exclude(id_caja=self.instance.id_caja)
+            conflicto = list(otras)  # list() evita .exists()/FETCH FIRST en Oracle 11g.
+            if conflicto:
+                c = conflicto[0]
+                self.add_error(
+                    'prefijo',
+                    f"El prefijo '{prefijo}' ya está asignado a la caja activa "
+                    f"{c.cod_caja} (ID {c.id_caja}). Un prefijo solo puede usarse en una caja activa.",
+                )
+        return cleaned
+
     def validate_unique(self):
         # id_caja se genera desde SEC_TS_CAJAS en la vista; además el validate_unique
         # estándar usa .exists() -> FETCH FIRST, incompatible con Oracle 11g.
@@ -158,12 +243,20 @@ class CajaListView(ListView):
         ctx = super().get_context_data(**kwargs)
         bodegas = {b.id_bodega: b.nom_bodega for b in InBodega.objects.all()}
         prefijos = _prefijos_por_consecutivo()
+        hoy = datetime.now().date()
         filas = []
         for caja in ctx['cajas']:
             filas.append({
                 'caja': caja,
                 'bodega': bodegas.get(caja.id_bodega, caja.id_bodega),
                 'prefijo': prefijos.get(caja.id_doc_consecutivo, ''),
+                'prefijo_caja': caja.prefijo or '',
+                'num_resolucion': caja.num_resolucion or '',
+                'consecutivo_actual': caja.consecutivo_actual or 0,
+                'rango_inicial': caja.rango_inicial if caja.rango_inicial is not None else 1,
+                'rango_final': caja.rango_final or 0,
+                'fch_vencimiento': caja.fch_vencimiento,
+                'vencida': bool(caja.fch_vencimiento and caja.fch_vencimiento < hoy),
             })
         ctx['filas'] = filas
         return ctx

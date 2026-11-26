@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}Punto de Venta (POS) - North Comercial{% endblock %}
-{% block page_title %}Caja Registradora POS (Offline-First, Promociones & DIAN){% endblock %}
+{% block page_title %}{% endblock %}
 
 {# El POS requiere el 100% del ancho: sidebar colapsado por defecto #}
 {% block sidebar_collapsed %}true{% endblock %}
@@ -11,6 +11,10 @@
 <script src="{% static 'pos/pos_db.js' %}"></script>
 <script src="{% static 'pos/sw.js' %}"></script>
 <style>
+    /* POS a pantalla completa: se oculta la barra de título global (el POS trae su propia barra compacta) */
+    body > div > div > header { display: none !important; }
+    body > div > div > main { padding: 0 !important; overflow: hidden !important; }
+    .pos-fkey { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .btn-pos-primary {
         background-color: #1d4ed8;
         color: #ffffff;
@@ -68,94 +72,143 @@
 {% endblock %}
 
 {% block content %}
-<div x-data="posApp()" x-init="initApp()" class="-m-6 md:-m-8 p-4 bg-gray-100 min-h-screen">
-    
-    <!-- Barra Superior de Estado y Controles del Turno -->
-    <div class="bg-gray-900 text-white rounded-lg p-4 mb-4 shadow-md flex flex-wrap items-center justify-between gap-4">
-        <div class="flex items-center space-x-4">
-            <!-- Indicador Red -->
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide"
-                  :class="isOnline ? 'bg-green-600 text-white' : 'bg-red-600 text-white'">
-                <span class="w-2.5 h-2.5 rounded-full mr-2" :class="isOnline ? 'bg-green-300 animate-pulse' : 'bg-red-300'"></span>
-                <span x-text="isOnline ? 'EN LÍNEA (ONLINE)' : 'SIN RED (OFFLINE)'"></span>
-            </span>
+<div x-data="posApp()" x-init="initApp()" class="h-screen flex flex-col gap-2 p-2 bg-gray-100 overflow-y-auto lg:overflow-hidden">
 
-            <!-- Indicador Turno -->
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide"
-                  :class="turno.abierto ? 'bg-blue-600 text-white' : 'bg-yellow-600 text-white'">
-                <span x-text="turno.abierto ? 'TURNO #' + turno.id_turno + ' (ABIERTO)' : 'CAJA CERRADA'"></span>
-            </span>
+    <!-- Barra superior única y compacta -->
+    <div class="bg-gray-900 text-white rounded-lg px-3 py-1.5 shadow-md flex flex-wrap items-center justify-between gap-x-3 gap-y-1 shrink-0">
+        <div class="flex flex-wrap items-center gap-2 min-w-0">
+            <button type="button" title="Menú lateral"
+                    @click="(window.innerWidth >= 1024) ? (desktopSidebarCollapsed = !desktopSidebarCollapsed) : (sidebarOpen = true)"
+                    class="w-8 h-8 flex items-center justify-center rounded bg-gray-700 hover:bg-gray-600 text-lg font-black leading-none">☰</button>
+            <h1 class="text-sm font-black uppercase tracking-wide truncate max-w-[14rem]">{{ request.session.nom_empresa|default:'North Comercial' }}</h1>
 
-            <!-- Indicador Base Económica -->
-            <template x-if="turno.abierto">
-                <span class="text-sm font-semibold text-gray-300">
-                    Base: <span class="text-green-400 font-bold" x-text="formatCOP(turno.base_economica)"></span>
-                </span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-extrabold uppercase"
+                  :class="isOnline ? 'bg-green-600' : 'bg-red-600'">
+                <span class="w-2 h-2 rounded-full mr-1.5" :class="isOnline ? 'bg-green-300 animate-pulse' : 'bg-red-300'"></span>
+                <span x-text="isOnline ? 'EN LÍNEA' : 'SIN RED'"></span>
+            </span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-extrabold uppercase"
+                  :class="turno.abierto ? 'bg-blue-600' : 'bg-yellow-600'">
+                <span x-text="turno.abierto ? 'TURNO #' + turno.id_turno : 'CAJA CERRADA'"></span>
+            </span>
+            <template x-if="numeracion && numeracion.prefijo">
+                <span class="text-[11px] font-semibold text-gray-300">Próx: <span class="text-yellow-300 font-black" x-text="numeracion.prefijo + siguienteConsecutivo"></span></span>
             </template>
-
-            <!-- Counter Tickets Pendientes de Sync -->
-            <span x-show="unsyncedCount > 0" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold bg-orange-600 text-white animate-bounce">
-                Sync Pendiente: <span class="ml-1 text-sm font-black" x-text="unsyncedCount"></span>
+            <span x-show="unsyncedCount > 0" style="display:none" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-orange-600">
+                Pend: <span class="ml-1 font-black" x-text="unsyncedCount"></span>
             </span>
-
-            <!-- Puntos Ganados Previstos -->
-            <span x-show="puntosGanados > 0" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-purple-600 text-white">
-                🎁 Puntos Venta: +<span x-text="puntosGanados"></span> pts
+            <span x-show="puntosGanados > 0" style="display:none" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-purple-600">
+                🎁 +<span x-text="puntosGanados"></span> pts
             </span>
         </div>
 
-        <div class="flex items-center space-x-2">
-            <!-- Botón Último Recibo / Factura -->
-            <button x-show="lastIssuedTicket" @click="showReceiptModal = true" class="bg-indigo-700 hover:bg-indigo-600 text-white font-bold px-3 py-2 rounded text-sm flex items-center shadow">
-                📄 Última Factura
-            </button>
+        <div class="flex flex-wrap items-center gap-1.5">
+            <!-- Balanza serial (Web Serial API) -->
+            <div class="flex items-center gap-1" x-show="balanza.soportada" style="display:none">
+                <button type="button" @click="balanza.conectada ? desconectarBalanza() : conectarBalanza()"
+                        :disabled="balanza.conectando"
+                        :title="balanza.conectada ? 'Desconectar balanza' : 'Conectar balanza serial (9600 baudios)'"
+                        class="font-bold px-2 py-1 rounded text-xs flex items-center text-white disabled:opacity-50"
+                        :class="balanza.conectada ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-gray-700 hover:bg-gray-600'">
+                    ⚖️ <span class="ml-1" x-text="balanza.conectada ? 'Balanza ✕' : 'Balanza'"></span>
+                </button>
+                <button type="button" x-show="balanza.conectada" style="display:none" @click="aplicarPesoBalanza()"
+                        :disabled="balanza.peso === null"
+                        title="Aplicar este peso como cantidad de la línea activa del carrito"
+                        class="px-2 py-1 rounded text-xs font-black bg-yellow-400 hover:bg-yellow-300 text-gray-900 disabled:opacity-50">
+                    <span x-text="balanza.peso === null ? '-- kg' : fmtQty(balanza.peso) + ' kg'"></span>
+                    <span class="ml-1 text-[10px] uppercase font-extrabold">Aplicar</span>
+                </button>
+            </div>
+            <span x-show="!balanza.soportada" style="display:none"
+                  title="Este navegador no soporta Web Serial API (use Chrome o Edge en HTTPS/localhost)"
+                  class="px-2 py-1 rounded text-xs font-bold bg-gray-700 text-gray-400 opacity-60 cursor-not-allowed">⚖️ Balanza</span>
+            <span x-show="balanza.error" style="display:none" class="text-[11px] font-bold text-red-300" x-text="balanza.error"></span>
 
-            <!-- Botón Sync Catálogo & Promociones -->
-            <button @click="syncCatalogAndPromos()" class="bg-gray-700 hover:bg-gray-600 text-white font-bold px-3 py-2 rounded text-sm flex items-center">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                Sync Datos & Promos
-            </button>
+            <button type="button" @click="reimprimirUltimaPdf()" :disabled="!lastIssuedTicket"
+                    :title="lastIssuedTicket ? 'Reimprimir última factura PDF' : 'Reimprimir última factura PDF (aún no se ha emitido ningún tiquete en esta sesión)'"
+                    class="bg-indigo-700 hover:bg-indigo-600 font-bold px-2 py-1 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-700">📄 Última</button>
 
-            <!-- Botón Apertura de Caja -->
-            <button x-show="!turno.abierto" @click="showAperturaModal = true" class="btn-pos-success text-sm py-2">
-                + Apertura de Caja
+            <button type="button" @click="syncCatalogAndPromos()" title="Sincronizar catálogo y promociones"
+                    class="bg-gray-700 hover:bg-gray-600 font-bold px-2 py-1 rounded text-xs flex items-center">
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Sync
             </button>
+            <button type="button" @click="abrirConfigTeclas()" title="Configurar teclas de función"
+                    class="bg-gray-700 hover:bg-gray-600 font-bold px-2 py-1 rounded text-xs">⌨ Teclas (F1-F12)</button>
+            <button x-show="!turno.abierto" style="display:none" @click="showAperturaModal = true" class="btn-pos-success text-xs py-1 px-3">+ Apertura de Caja</button>
 
-            <!-- Botón Cierre Z -->
-            <button x-show="turno.abierto" @click="openCierreZModal()" class="btn-pos-warning text-sm py-2">
-                Cierre Z (Finalizar Turno)
-            </button>
+            <!-- Fecha, reloj, caja y cajero -->
+            <div class="relative text-right leading-tight pl-3 ml-1 border-l border-gray-700" x-data="{ userOpen: false }">
+                <p class="text-[11px] font-extrabold capitalize" x-text="fechaHoy"></p>
+                <p class="text-[11px] font-semibold text-gray-300">
+                    <span class="font-black text-white" x-text="horaActual"></span>
+                    <template x-if="turno.caja_id"><span> · Caja <span x-text="turno.caja_id"></span></span></template>
+                    {% firstof request.session.usuario_nombre request.session.pos_user.nombre as nombre_cajero %}
+                    · <button type="button" @click="userOpen = !userOpen" class="font-bold underline decoration-dotted">{% if nombre_cajero %}{{ nombre_cajero }}{% elif request.user.is_authenticated %}{{ request.user.username }}{% else %}Cajero{% endif %}</button>
+                </p>
+                <div x-show="userOpen" @click.away="userOpen = false" style="display:none"
+                     class="absolute right-0 mt-1 w-40 py-1 bg-white rounded shadow-lg z-30 border border-gray-200 text-left">
+                    <a href="{% url 'logout' %}" class="block px-3 py-1.5 text-sm text-red-600 hover:bg-gray-100">Cerrar sesión</a>
+                </div>
+            </div>
         </div>
     </div>
 
+    <!-- Alerta de resolución DIAN / folios -->
+    <div x-show="alertaResolucion" style="display:none"
+         class="rounded-lg border-l-4 px-3 py-1 text-xs font-semibold shadow-sm shrink-0"
+         :class="alertaResolucion && alertaResolucion.nivel === 'rojo'
+                 ? 'bg-red-100 border-red-600 text-red-800'
+                 : 'bg-yellow-100 border-yellow-500 text-yellow-800'">
+        <span x-text="alertaResolucion ? (alertaResolucion.nivel === 'rojo' ? '⛔ ' : '⚠️ ') + alertaResolucion.mensaje : ''"></span>
+    </div>
+
     <!-- Grid Principal POS -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+    <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-2">
         
         <!-- PANEL IZQUIERDO: Catálogo y Búsqueda de Productos (7 Cols) -->
-        <div class="lg:col-span-7 bg-white rounded-lg p-4 shadow-sm border border-gray-200 flex flex-col h-[calc(100vh-12rem)]">
+        <div class="lg:col-span-7 bg-white rounded-lg p-3 shadow-sm border border-gray-200 flex flex-col min-h-0 h-[70vh] lg:h-auto">
             <!-- Buscador de artículos -->
-            <div class="mb-4">
+            <div class="mb-3 shrink-0">
                 <div class="relative">
-                    <input type="text" x-model="searchQuery" @input="filterCatalog()"
+                    <input type="text" x-model="searchQuery" x-ref="searchInput" @input="filterCatalog()"
+                           @keydown="onSearchKeydown($event)" autocomplete="off"
                            placeholder="🔍 Buscar por nombre, referencia o código de barras..."
-                           class="w-full text-lg p-3 pl-10 border-2 border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 font-semibold bg-gray-50 text-gray-900">
+                           class="w-full text-lg p-3 pl-10 border-2 border-blue-500 rounded-lg focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400 font-semibold bg-gray-50 text-gray-900">
                 </div>
             </div>
 
-            <!-- Listado Grid de Artículos -->
-            <div class="flex-1 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <template x-for="item in filteredCatalog" :key="item.id_articulo">
-                    <div class="bg-gray-50 border-2 border-gray-200 hover:border-blue-500 rounded-lg p-3 flex flex-col justify-between transition-colors shadow-sm">
+            <!-- Panel de reposo: sin texto de búsqueda no se muestran artículos -->
+            <div x-show="!searchQuery.trim()" style="display:none" class="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-4">
+                <p class="text-5xl mb-2">⌨️</p>
+                <p class="text-lg font-black text-gray-700 uppercase tracking-wide">Listo para vender</p>
+                <p class="text-sm text-gray-500 mb-4">Escanee un código o escriba para buscar un artículo. Teclas de función activas:</p>
+                <div class="grid grid-cols-2 gap-2 w-full max-w-xl">
+                    <template x-for="f in fkeyResumen" :key="f.id">
+                        <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-left">
+                            <span class="pos-fkey inline-block min-w-[2.75rem] text-center bg-gray-900 text-white font-black text-sm rounded px-2 py-1" x-text="f.tecla"></span>
+                            <span class="text-sm font-bold text-gray-800" x-text="f.nombre"></span>
+                        </div>
+                    </template>
+                </div>
+                <button type="button" @click="abrirConfigTeclas()" class="mt-4 text-xs font-bold text-blue-700 underline">Configurar teclas de función</button>
+            </div>
+
+            <!-- Resultados de búsqueda (tarjetas de tamaño fijo, alineadas arriba) -->
+            <div x-show="searchQuery.trim()" x-ref="resultsGrid" style="display:none" class="flex-1 min-h-0 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+                <template x-for="(item, i) in filteredCatalog" :key="item.id_articulo">
+                    <div :data-search-index="i" tabindex="-1" @mousedown.prevent :class="i === selectedSearchIndex ? 'border-yellow-400 ring-2 ring-yellow-400 bg-slate-800' : 'border-gray-200 bg-gray-50'" class="border-2 hover:border-yellow-400 rounded-lg p-3 flex flex-col justify-between transition-colors shadow-sm min-h-[125px] max-h-[145px] overflow-hidden">
                         <div>
                             <div class="flex justify-between items-start">
-                                <span class="text-xs font-bold text-gray-500 uppercase tracking-wider" x-text="item.referencia || item.id_articulo"></span>
+                                <span class="text-xs font-bold uppercase tracking-wider" :class="i === selectedSearchIndex ? 'text-gray-300' : 'text-gray-500'" x-text="item.referencia || item.id_articulo"></span>
                                 <span class="text-xs font-extrabold px-2 py-0.5 rounded" :class="item.porc_gravamen > 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-700'" x-text="item.porc_gravamen > 0 ? 'IVA ' + item.porc_gravamen + '%' : 'EXENTO'"></span>
                             </div>
-                            <h4 class="text-base font-bold text-gray-900 line-clamp-2 mt-1" x-text="item.nom_articulo"></h4>
+                            <h4 class="text-base font-bold line-clamp-2 mt-1" :class="i === selectedSearchIndex ? 'text-white' : 'text-gray-900'" x-text="item.nom_articulo"></h4>
                         </div>
-                        <div class="mt-3 flex items-center justify-between">
-                            <span class="text-xl font-black text-blue-900" x-text="formatCOP(item.precio)"></span>
-                            <button @click="addToCart(item)" :disabled="!turno.abierto"
+                        <div class="mt-2 flex items-center justify-between">
+                            <span class="text-xl font-black" :class="i === selectedSearchIndex ? 'text-yellow-300' : 'text-blue-900'" x-text="formatCOP(item.precio)"></span>
+                            <button type="button" tabindex="-1" @mousedown.prevent @click="addToCart(item)" :disabled="!turno.abierto"
                                     class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold px-4 py-2 rounded-lg text-sm transition-transform active:scale-95 shadow">
                                 + AGREGAR
                             </button>
@@ -172,21 +225,21 @@
         </div>
 
         <!-- PANEL DERECHO: Carrito, Cliente, Promociones y Cobro (5 Cols) -->
-        <div class="lg:col-span-5 bg-white rounded-lg p-4 shadow-sm border border-gray-200 flex flex-col h-[calc(100vh-12rem)]">
+        <div class="lg:col-span-5 bg-white rounded-lg p-3 shadow-sm border border-gray-200 flex flex-col min-h-0 h-[90vh] lg:h-auto">
             
             <!-- Cabecera de Cliente y Saldo de Puntos -->
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2 flex items-center justify-between">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-2 flex items-center justify-between shrink-0">
                 <div>
                     <span class="text-xs font-extrabold text-blue-600 uppercase tracking-wide">Cliente Factura:</span>
-                    <p class="text-sm font-bold text-gray-900" x-text="cliente.id_tercero + ' - ' + cliente.nom_tercero"></p>
+                    <p class="text-sm font-bold text-gray-900" x-text="(cliente.cod_tercero || cliente.id_tercero) + ' - ' + cliente.nom_tercero"></p>
                     <template x-if="cliente.id_tercero !== '222222222222'">
                         <p class="text-xs font-extrabold text-purple-700 mt-0.5">
                             ⭐ Puntos Acumulados: <span x-text="puntosCliente.saldo"></span> pts (<span x-text="formatCOP(puntosCliente.valor_cop)"></span>)
                         </p>
                     </template>
                 </div>
-                <button @click="showClienteModal = true" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded uppercase shadow">
-                    Cambiar
+                <button @click="abrirCliente()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded uppercase shadow">
+                    Cambiar <span class="pos-fkey opacity-80" x-text="teclaDe('cliente')"></span>
                 </button>
             </div>
 
@@ -204,10 +257,18 @@
                 </div>
             </template>
 
+            <!-- Aviso: próximo artículo se asigna a un grupo -->
+            <template x-if="grupoDestino">
+                <div class="bg-amber-100 border border-amber-400 text-amber-900 rounded px-2 py-1 mb-1 text-xs font-bold flex items-center justify-between">
+                    <span x-text="'El próximo artículo se agregará a: ' + grupoDestino"></span>
+                    <button @click="grupoDestino = ''" class="underline">Cancelar</button>
+                </div>
+            </template>
+
             <!-- Tabla de Ítems en el Carrito -->
-            <div class="flex-1 overflow-y-auto border-t border-b border-gray-200 py-2">
+            <div class="flex-1 min-h-0 overflow-y-auto border-t border-b border-gray-200 py-2" x-ref="cartList">
                 <template x-if="cart.length === 0">
-                    <div class="text-center py-16 text-gray-400">
+                    <div class="text-center py-10 text-gray-400">
                         <svg class="w-12 h-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                         <p class="font-bold text-gray-500">Carrito de Venta Vacío</p>
                         <p class="text-xs">Selecciona productos del catálogo para comenzar.</p>
@@ -215,9 +276,22 @@
                 </template>
 
                 <div class="space-y-2">
-                    <template x-for="(item, index) in cart" :key="item.id_articulo">
-                        <div class="bg-gray-50 p-2.5 rounded-lg border border-gray-200 flex items-center justify-between"
-                             :class="item.es_regalo ? 'bg-purple-50 border-purple-300' : ''">
+                    <template x-for="(item, index) in cart" :key="item.line_id || index">
+                      <div>
+                        <!-- Encabezado de grupo (Ancheta / compuesto) -->
+                        <template x-if="item.grupo_compuesto && (index === 0 || cart[index - 1].grupo_compuesto !== item.grupo_compuesto)">
+                            <div class="flex items-center justify-between bg-amber-50 border border-amber-300 text-amber-900 rounded px-2 py-1 mb-1 mt-1">
+                                <span class="text-xs font-extrabold uppercase tracking-wide" x-text="'Ancheta: ' + item.grupo_compuesto"></span>
+                                <button @click="toggleGrupoDestino(item.grupo_compuesto)"
+                                        class="text-[11px] font-bold px-2 py-0.5 rounded border"
+                                        :class="grupoDestino === item.grupo_compuesto ? 'bg-amber-600 text-white border-amber-700' : 'bg-white text-amber-800 border-amber-400 hover:bg-amber-100'"
+                                        x-text="grupoDestino === item.grupo_compuesto ? 'Elija el artículo… (cancelar)' : '+ Sustituto'"></button>
+                            </div>
+                        </template>
+                        <div class="p-2.5 rounded-lg border border-gray-200 flex items-center justify-between cursor-pointer"
+                             :data-line="index" :data-line-id="item.line_id" @click="activeLineId = item.line_id"
+                             :class="[item.es_regalo ? 'bg-purple-50 border-purple-300' : (item.grupo_compuesto ? 'border-l-4 border-l-amber-400 ml-2' : ''),
+                                      (index === lineaActivaIdx) ? 'border-yellow-400 ring-2 ring-yellow-400 bg-yellow-50' : (item.es_regalo ? '' : 'bg-gray-50')]">
                             <div class="flex-1 pr-2">
                                 <div class="flex items-center">
                                     <p class="text-sm font-bold text-gray-800 leading-tight" x-text="item.nom_articulo"></p>
@@ -225,45 +299,52 @@
                                         <span class="ml-2 bg-purple-600 text-white font-black text-[10px] px-1.5 py-0.5 rounded">REGALO</span>
                                     </template>
                                 </div>
-                                <p class="text-xs text-gray-500 font-semibold" x-text="formatCOP(item.vlr_unitario) + ' c/u'"></p>
+                                <p class="text-sm text-gray-500 font-semibold" x-text="formatCOP(item.vlr_unitario) + ' c/u'"></p>
+                                <template x-if="item.descuento_linea > 0">
+                                    <p class="text-[11px] text-purple-700 font-bold" x-text="'Desc. -' + formatCOP(item.descuento_linea)"></p>
+                                </template>
                             </div>
-                            <!-- Controles de Cantidad -->
-                            <div class="flex items-center space-x-1">
-                                <button @click="updateQty(index, -1)" :disabled="item.es_regalo" class="w-7 h-7 bg-red-100 hover:bg-red-200 text-red-700 font-black rounded flex items-center justify-center text-base disabled:opacity-30">-</button>
-                                <span class="w-8 text-center font-black text-sm text-gray-900" x-text="item.cantidad"></span>
-                                <button @click="updateQty(index, 1)" :disabled="item.es_regalo" class="w-7 h-7 bg-green-100 hover:bg-green-200 text-green-700 font-black rounded flex items-center justify-center text-base disabled:opacity-30">+</button>
-                            </div>
+                            <!-- Cantidad (solo input: F3 / Enter lo enfocan) -->
+                            <input type="text" inputmode="decimal" :value="fmtQty(item.cantidad)" :disabled="item.es_regalo"
+                                   @change="setQty(index, $event.target.value); $event.target.value = fmtQty(cart[index] ? cart[index].cantidad : 0)"
+                                   :data-qty-line="index"
+                                   @focus="activeLineId = item.line_id"
+                                   @keydown.enter.prevent="$event.target.blur(); focusBuscador()"
+                                   class="w-20 text-right font-bold text-base text-gray-900 border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400 disabled:bg-gray-100">
                             <!-- Subtotal y Eliminar -->
                             <div class="w-28 text-right pl-2">
-                                <span class="block text-sm font-black text-gray-900" x-text="formatCOP(item.tot_linea)"></span>
+                                <span class="block text-lg font-bold text-gray-900" x-text="formatCOP(item.neto_linea)"></span>
                                 <button @click="removeFromCart(index)" class="text-xs text-red-600 hover:underline font-bold">Quitar</button>
                             </div>
                         </div>
+                      </div>
                     </template>
                 </div>
             </div>
 
             <!-- Resumen Financiero del Ticket -->
-            <div class="bg-gray-900 text-white rounded-lg p-3 mt-3 shadow-inner space-y-1.5">
-                <div class="flex justify-between text-xs font-semibold text-gray-300">
+            <div class="bg-gray-900 text-white rounded-lg px-3 py-2 mt-2 shadow-inner space-y-0.5 shrink-0">
+                <div class="flex justify-between text-base font-semibold text-gray-300">
                     <span>Subtotal Mercancía:</span>
                     <span x-text="formatCOP(totMercancia)"></span>
                 </div>
-                <div class="flex justify-between text-xs font-semibold text-gray-300">
+                <div class="flex justify-between text-base font-semibold text-gray-300">
                     <span>IVA Generado:</span>
                     <span x-text="formatCOP(totIVA)"></span>
                 </div>
+                <template x-if="totINC > 0">
+                    <div class="flex justify-between text-base font-semibold text-gray-300">
+                        <span>Impoconsumo (INC):</span>
+                        <span x-text="formatCOP(totINC)"></span>
+                    </div>
+                </template>
                 <template x-if="descuentoPromocion > 0">
-                    <div class="flex justify-between text-xs font-bold text-purple-400">
-                        <span>Descuento Promoción:</span>
+                    <div class="flex justify-between text-sm font-bold text-purple-400">
+                        <span>Descuento Promoción (ya incluido):</span>
                         <span x-text="'-' + formatCOP(descuentoPromocion)"></span>
                     </div>
                 </template>
-                <div class="flex justify-between text-xs font-semibold text-gray-400">
-                    <span>Retenciones (Exención POS):</span>
-                    <span>$0.00</span>
-                </div>
-                <div class="flex justify-between text-xl font-black text-green-400 border-t border-gray-700 pt-2 mt-1">
+                <div class="flex justify-between items-center text-3xl font-extrabold text-green-400 border-t border-gray-700 pt-1 mt-1">
                     <span>TOTAL:</span>
                     <span x-text="formatCOP(totTicket)"></span>
                 </div>
@@ -271,8 +352,8 @@
 
             <!-- Botón Cobrar Ticket -->
             <button @click="openPaymentModal()" :disabled="cart.length === 0 || !turno.abierto"
-                    class="btn-pos-success w-full mt-3 py-3 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                💳 COBRAR TICKET (<span x-text="formatCOP(totTicket)"></span>)
+                    class="btn-pos-success w-full mt-2 py-2.5 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+                💳 COBRAR TICKET (<span x-text="formatCOP(totTicket)"></span>) <span class="pos-fkey text-sm opacity-80" x-text="teclaDe('cobrar')"></span>
             </button>
         </div>
     </div>
@@ -302,12 +383,16 @@
     <div x-show="showClienteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
         <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border-2 border-gray-300">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-gray-900">🔍 Buscar Cliente (CO_TERCEROS)</h3>
+                <div>
+                    <h3 class="text-xl font-bold text-gray-900">🔍 Buscar Cliente (CO_TERCEROS)</h3>
+                    <p class="text-[11px] text-gray-500 font-semibold">Enter: primer resultado (o Consumidor Final si está vacío) · <span class="pos-fkey" x-text="teclaDe('cliente')"></span> de nuevo: Consumidor Final · Esc: cerrar</p>
+                </div>
                 <button @click="showClienteModal = false" class="text-gray-500 hover:text-black font-black text-xl">&times;</button>
             </div>
             
-            <input type="text" x-model="clienteQuery" @input.debounce.300ms="searchTerceros()"
-                   placeholder="Ingrese NIT o Nombre del cliente..."
+            <input type="text" x-model="clienteQuery" x-ref="clienteInput" @input.debounce.300ms="searchTerceros()"
+                   @keydown.enter.prevent="enterCliente()"
+                   placeholder="Buscar por NIT / cédula o por nombre..."
                    class="w-full text-base p-2.5 border-2 border-blue-400 rounded-lg mb-3">
 
             <div class="max-h-60 overflow-y-auto space-y-1 mb-4 border rounded p-2">
@@ -318,7 +403,8 @@
                 <template x-for="t in tercerosResults" :key="t.id_tercero">
                     <button @click="selectCliente(t)"
                             class="w-full text-left p-2 hover:bg-blue-100 rounded border-b font-semibold text-gray-800 text-sm">
-                        <span x-text="t.id_tercero + ' - ' + t.nom_tercero"></span>
+                        <span class="inline-block min-w-[7.5rem] text-blue-800 font-black">NIT <span x-text="t.cod_tercero || t.id_tercero"></span></span>
+                        <span x-text="t.nom_tercero"></span>
                     </button>
                 </template>
             </div>
@@ -339,19 +425,61 @@
                 <!-- Efectivo -->
                 <div class="flex items-center justify-between">
                     <label class="text-sm font-extrabold text-gray-800 uppercase w-36">💵 Efectivo:</label>
-                    <input type="number" step="100" min="0" x-model.number="pagoEfectivo"
+                    <input type="number" step="1" min="0" x-model.number="pagoEfectivo" x-ref="efectivoInput" placeholder="0"
                            class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
+                </div>
+                <!-- Botones rápidos de efectivo -->
+                <div class="flex flex-wrap justify-end gap-1.5 -mt-1">
+                    <button type="button" @click="setEfectivoExacto()" class="px-2.5 py-1 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-black uppercase">Exacto</button>
+                    <template x-for="b in [2000, 5000, 10000, 20000, 50000, 100000]" :key="b">
+                        <button type="button" @click="sumarEfectivo(b)" title="Suma al efectivo recibido" class="px-2.5 py-1 rounded bg-gray-200 hover:bg-gray-300 text-gray-800 text-xs font-bold" x-text="formatCOP(b)"></button>
+                    </template>
+                    <button type="button" @click="pagoEfectivo = ''" class="px-2.5 py-1 rounded bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold">Borrar</button>
                 </div>
                 <!-- Tarjeta -->
                 <div class="flex items-center justify-between">
                     <label class="text-sm font-extrabold text-gray-800 uppercase w-36">💳 Tarjeta:</label>
-                    <input type="number" step="100" min="0" x-model.number="pagoTarjeta"
+                    <input type="number" step="1" min="0" x-model.number="pagoTarjeta" x-ref="tarjetaInput" @focus="prefillTarjeta()"
                            class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
+                </div>
+                <!-- Datos del datáfono (TEF) -->
+                <div x-show="(pagoTarjeta || 0) > 0" style="display:none" class="bg-white border border-blue-200 rounded-lg p-2.5 space-y-1.5">
+                    <div class="flex items-center justify-between gap-2">
+                        <p class="text-[11px] font-extrabold text-blue-700 uppercase tracking-wide">Datáfono (TEF)</p>
+                        <div class="flex items-center gap-1.5">
+                            <button type="button" @click="tefCfgAbierta = !tefCfgAbierta" title="Configurar URL del puente local"
+                                    class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold">⚙</button>
+                            <button type="button" @click="cobrarConDatafono()" :disabled="tefCobrando"
+                                    class="px-3 py-1.5 rounded bg-blue-700 hover:bg-blue-800 text-white text-xs font-black uppercase disabled:opacity-50">
+                                <span x-text="tefCobrando ? 'Esperando...' : 'Cobrar con Datáfono'"></span> <span class="pos-fkey opacity-70" x-text="teclaDe('datafono')"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div x-show="tefCfgAbierta" style="display:none" class="flex items-center gap-2">
+                        <label class="text-[11px] font-bold text-gray-600 whitespace-nowrap">URL puente:</label>
+                        <input type="text" x-model="tefUrl" @change="guardarTefUrl()" placeholder="http://127.0.0.1:8090/cobrar"
+                               class="flex-1 text-xs p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                    </div>
+                    <p x-show="tefEstado.mensaje" style="display:none" class="text-xs font-bold rounded px-2 py-1"
+                       :class="{'bg-blue-50 text-blue-800': tefEstado.tipo === 'espera',
+                                'bg-green-50 text-green-800': tefEstado.tipo === 'ok',
+                                'bg-red-50 text-red-700': tefEstado.tipo === 'error'}"
+                       x-text="tefEstado.mensaje"></p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="text" maxlength="50" x-model="tefAprobacion" placeholder="N.º aprobación"
+                               class="text-sm p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                        <input type="text" maxlength="50" x-model="tefFranquicia" placeholder="Franquicia (VISA, MC...)"
+                               class="text-sm p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                        <input type="text" inputmode="numeric" maxlength="4" x-model="tefUltimos4" placeholder="Últimos 4 dígitos"
+                               class="text-sm p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                        <input type="text" maxlength="50" x-model="tefRecibo" placeholder="N.º recibo"
+                               class="text-sm p-1.5 border border-gray-300 rounded focus:border-blue-600 focus:outline-none">
+                    </div>
                 </div>
                 <!-- Transferencia -->
                 <div class="flex items-center justify-between">
                     <label class="text-sm font-extrabold text-gray-800 uppercase w-36">📲 Transferencia:</label>
-                    <input type="number" step="100" min="0" x-model.number="pagoTransferencia"
+                    <input type="number" step="1" min="0" x-model.number="pagoTransferencia"
                            class="w-48 text-lg font-bold p-2 border-2 border-gray-300 rounded text-right focus:border-green-600 focus:outline-none">
                 </div>
 
@@ -368,7 +496,7 @@
                             </template>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <input type="number" step="100" min="0" x-model.number="pagoPuntos" :disabled="!isOnline || cliente.id_tercero === '222222222222'"
+                            <input type="number" step="1" min="0" x-model.number="pagoPuntos" :disabled="!isOnline || cliente.id_tercero === '222222222222'"
                                    class="w-36 text-lg font-bold p-2 border-2 border-purple-300 rounded text-right focus:border-purple-600 focus:outline-none disabled:bg-gray-200 disabled:cursor-not-allowed">
                             <button @click="redimirPuntos()" :disabled="!isOnline || cliente.id_tercero === '222222222222'"
                                     class="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-black text-xs px-2.5 py-2.5 rounded uppercase">
@@ -397,15 +525,48 @@
 
             <div class="flex space-x-3">
                 <button @click="showPaymentModal = false" class="w-1/3 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-lg text-base">
-                    Cancelar
+                    Cancelar <span class="text-xs opacity-80">(Esc)</span>
                 </button>
                 <button @click="confirmPayment()" :disabled="totalPagado < totTicket"
                         class="w-2/3 btn-pos-success py-3 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-lg">
-                    ✅ FINALIZAR Y EMITIR
+                    ✅ FINALIZAR Y EMITIR <span class="text-xs opacity-80">(Enter)</span>
                 </button>
             </div>
         </div>
     </div>
+
+    <!-- MODAL: CONFIGURAR TECLAS DE FUNCIÓN -->
+    <div x-show="showFkeysModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-5 border-2 border-gray-300">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-xl font-black text-gray-900">⌨ Configurar Teclas de Función</h3>
+                <button type="button" @click="showFkeysModal = false" class="text-gray-500 hover:text-black font-black text-xl">&times;</button>
+            </div>
+            <p class="text-xs text-gray-500 mb-3">Asigne una tecla F1–F12 a cada acción. No se puede repetir una tecla. En el cobro: <b>Enter</b> confirma y <b>Esc</b> cierra. Con texto en el buscador, las <b>flechas</b> mueven la tarjeta resaltada; <b>F3</b> edita la cantidad y <b>F4</b> quita la línea activa.</p>
+            <div class="space-y-1.5 mb-3">
+                <template x-for="a in FKEY_ACCIONES" :key="a.id">
+                    <div class="flex items-center justify-between gap-3">
+                        <label class="text-sm font-bold text-gray-800" x-text="a.nombre"></label>
+                        <select x-model="fkeysDraft[a.id]" class="pos-fkey w-24 border-2 border-gray-300 rounded p-1 font-black text-sm focus:border-blue-600 focus:outline-none"
+                                :class="fkeyDuplicada(a.id) ? 'border-red-500 bg-red-50' : ''">
+                            <template x-for="k in FKEY_TECLAS" :key="k"><option :value="k" x-text="k"></option></template>
+                        </select>
+                    </div>
+                </template>
+            </div>
+            <p x-show="fkeysError" style="display:none" class="text-xs font-bold text-red-600 mb-2" x-text="fkeysError"></p>
+            <div class="flex gap-2">
+                <button type="button" @click="restaurarFkeys()" class="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-bold">Restaurar valores</button>
+                <button type="button" @click="showFkeysModal = false" class="flex-1 px-3 py-2 rounded bg-gray-500 hover:bg-gray-600 text-white text-sm font-bold">Cancelar</button>
+                <button type="button" @click="guardarFkeys()" class="flex-1 px-3 py-2 rounded bg-blue-700 hover:bg-blue-800 text-white text-sm font-black">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aviso breve de teclas de función -->
+    <div x-show="toast" style="display:none" x-transition
+         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-gray-900 text-white text-sm font-bold px-4 py-2 rounded-lg shadow-lg"
+         x-text="toast"></div>
 
     <!-- MODAL 4: CIERRE Z (CONSOLIDACIÓN) -->
     <div x-show="showCierreZModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" style="display: none;">
@@ -479,10 +640,10 @@
                                 <p>Cliente: <span x-text="lastIssuedTicket.nom_tercero"></span></p>
                                 <p class="border-b my-1.5"></p>
                                 <div class="space-y-1">
-                                    <template x-for="it in lastIssuedTicket.items" :key="it.id_articulo">
+                                    <template x-for="(it, ix) in lastIssuedTicket.items" :key="ix">
                                         <div class="flex justify-between text-[11px]">
-                                            <span x-text="it.cantidad + 'x ' + it.nom_articulo"></span>
-                                            <span x-text="formatCOP(it.tot_linea)"></span>
+                                            <span x-text="fmtQty(it.cantidad) + 'x ' + it.nom_articulo"></span>
+                                            <span x-text="formatCOP(it.neto_linea != null ? it.neto_linea : it.tot_linea)"></span>
                                         </div>
                                     </template>
                                 </div>
@@ -517,16 +678,64 @@
 </div>
 
 <script>
+// Estado no reactivo de la balanza (SerialPort/streams no deben pasar por el proxy de Alpine)
+const _serialBalanza = { port: null, reader: null, readableClosed: null, cerrando: false };
+
+// Catálogo cerrado de acciones del POS asignables a teclas de función
+const FKEY_ACCIONES = [
+    { id: 'buscar',          nombre: 'Buscar artículo',                 def: 'F2' },
+    { id: 'cantidad',        nombre: 'Cantidad de la línea activa',     def: 'F3' },
+    { id: 'eliminar',        nombre: 'Eliminar línea activa',           def: 'F4' },
+    { id: 'cliente',         nombre: 'Cliente (buscar / Consumidor Final)', def: 'F6' },
+    { id: 'peso',            nombre: 'Aplicar peso de balanza',         def: 'F7' },
+    { id: 'cobrar',          nombre: 'Cobrar ticket',                   def: 'F8' },
+    { id: 'efectivo_exacto', nombre: 'Pago rápido: efectivo exacto',    def: 'F9' },
+    { id: 'datafono',        nombre: 'Cobrar con datáfono',             def: 'F10' }
+];
+const FKEY_TECLAS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
+const FKEY_STORAGE = 'pos_fkeys_config';
+
+function fkeysPorDefecto() {
+    const m = {};
+    FKEY_ACCIONES.forEach(a => { m[a.id] = a.def; });
+    return m;
+}
+
+// Lee la configuración guardada; si es inválida (clave desconocida, tecla fuera de F1-F12 o repetida) usa los valores por defecto.
+function cargarFkeys() {
+    const def = fkeysPorDefecto();
+    try {
+        const raw = JSON.parse(localStorage.getItem(FKEY_STORAGE) || 'null');
+        if (!raw || typeof raw !== 'object') return def;
+        const out = {};
+        const usadas = new Set();
+        for (const a of FKEY_ACCIONES) {
+            const k = raw[a.id];
+            if (!FKEY_TECLAS.includes(k) || usadas.has(k)) return def;
+            out[a.id] = k;
+            usadas.add(k);
+        }
+        return out;
+    } catch (e) {
+        return def;
+    }
+}
+
 function posApp() {
     return {
         isOnline: navigator.onLine,
-        turno: { abierto: false, id_turno: null, caja_id: 'CAJA-01', base_economica: 0, tickets_count: 0 },
+        turno: { abierto: false, id_turno: null, caja_id: null, base_economica: 0, tickets_count: 0 },
+        numeracion: null,
+        confirmandoPago: false,
         catalog: [],
         filteredCatalog: [],
         promociones: [],
         promocionesAplicadas: [],
         descuentoPromocion: 0,
         searchQuery: '',
+        articlesMap: {},       // id_articulo (texto) -> artículo del catálogo local
+        grupoDestino: '',      // si no es vacío, el próximo artículo se asigna a ese grupo (sustituto)
+        lineSeq: 0,
         cart: [],
         cliente: { id_tercero: '222222222222', nom_tercero: 'VENTAS MASIVAS (CONSUMIDOR FINAL)' },
         puntosCliente: { saldo: 0, valor_cop: 0 },
@@ -536,6 +745,8 @@ function posApp() {
         unsyncedCount: 0,
         lastIssuedTicket: null,
         lastIssuedDocId: null,
+        fechaHoy: '',
+        horaActual: '',
         
         // Modales
         showAperturaModal: false,
@@ -546,14 +757,55 @@ function posApp() {
         
         // Form inputs
         aperturaBase: 100000,
-        pagoEfectivo: 0,
+        pagoEfectivo: '',
         pagoTarjeta: 0,
+        tefAprobacion: '',
+        tefFranquicia: '',
+        tefUltimos4: '',
+        tefRecibo: '',
+        tefRespuestaRaw: '',   // JSON/texto crudo del puente local del datáfono (cuando se conecte)
+        tefUrl: (function () { try { return localStorage.getItem('pos_tef_url') || 'http://127.0.0.1:8090/cobrar'; } catch (e) { return 'http://127.0.0.1:8090/cobrar'; } })(),
+        tefCfgAbierta: false,
+        tefCobrando: false,
+        tefEstado: { tipo: '', mensaje: '' },
+        // Balanza serial (el puerto/lector viven fuera del estado reactivo: ver _serialBalanza)
+        balanza: { soportada: ('serial' in navigator), conectada: false, conectando: false, peso: null, error: '' },
+        // Teclas de función y navegación sin mouse
+        FKEY_ACCIONES: FKEY_ACCIONES,
+        FKEY_TECLAS: FKEY_TECLAS,
+        fkeys: cargarFkeys(),
+        fkeysDraft: {},
+        fkeysError: '',
+        showFkeysModal: false,
+        activeLineId: null,     // line_id de la línea activa del carrito (null = última línea que no es regalo)
+        selectedSearchIndex: 0, // tarjeta resaltada en los resultados de búsqueda
+        toast: '',
+        _toastTimer: null,
         pagoTransferencia: 0,
         pagoPuntos: 0,
 
+        actualizarReloj() {
+            const d = new Date();
+            this.fechaHoy = d.toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+            this.horaActual = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+        },
+
         async initApp() {
+            this.actualizarReloj();
+            setInterval(() => this.actualizarReloj(), 15000);
             window.addEventListener('online', () => { this.isOnline = true; this.triggerSync(); this.fetchPuntosSaldo(); });
             window.addEventListener('offline', () => { this.isOnline = false; });
+            // Teclas de función / navegación sin mouse
+            window.addEventListener('keydown', (e) => this.onKeydown(e));
+            this.$watch('cart.length', (n, o) => { if (n > o) this.activeLineId = null; });
+            // Balanza: desconexión limpia al cerrar/recargar o al desenchufar el cable
+            window.addEventListener('beforeunload', () => { this.desconectarBalanza(); });
+            window.addEventListener('pagehide', () => { this.desconectarBalanza(); });
+            if (this.balanza.soportada) {
+                navigator.serial.addEventListener('disconnect', (ev) => {
+                    if (_serialBalanza.port && ev.target === _serialBalanza.port) this.desconectarBalanza();
+                });
+            }
             
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('/static/pos/sw.js').catch(err => console.error('SW Error:', err));
@@ -564,6 +816,7 @@ function posApp() {
             await this.loadLocalCatalog();
             await this.loadLocalPromociones();
             await this.updateUnsyncedCount();
+            this.focusBuscador();
             
             if (this.isOnline) {
                 this.triggerSync();
@@ -572,23 +825,129 @@ function posApp() {
             }
         },
 
+        // Fecha local de hoy en formato YYYY-MM-DD (comparable como texto con fch_vencimiento).
+        hoyISO() {
+            const d = new Date();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${d.getFullYear()}-${mm}-${dd}`;
+        },
+
+        // Aplica la respuesta de api_shift_status / api_shift_open: fusiona la numeración del
+        // servidor con la guardada en IndexedDB (sin pisar ventas offline pendientes) y persiste.
+        async aplicarRespuestaTurno(data, abierto) {
+            const cajaId = data.caja_id || (data.turno && data.turno.caja_id) || null;
+            const turno = abierto
+                ? { abierto: true, ...data.turno }
+                : { abierto: false, id_turno: null, caja_id: cajaId, base_economica: 0, tickets_count: 0 };
+
+            let saved = null;
+            try { saved = await window.posDB.getShift(); } catch (e) { console.warn('[POS] getShift falló:', e); }
+            const mismaCaja = !!(saved && cajaId && String(saved.caja_id) === String(cajaId));
+            const local = mismaCaja ? (saved.numeracion || null) : null;
+
+            let numeracion = data.numeracion ? { ...data.numeracion } : null;
+            if (numeracion && local && String(local.prefijo || '') === String(numeracion.prefijo || '')) {
+                numeracion.consecutivo_actual = Math.max(
+                    Number(local.consecutivo_actual || 0),
+                    Number(numeracion.consecutivo_actual || 0)
+                );
+            } else if (!numeracion && local) {
+                numeracion = { ...local };  // el servidor no pudo leer TS_CAJAS: se conserva lo local
+            }
+
+            this.turno = turno;
+            this.numeracion = numeracion;
+            await this.guardarTurnoLocal();
+        },
+
+        async guardarTurnoLocal() {
+            try {
+                await window.posDB.saveShift({
+                    caja_id: this.turno.caja_id,
+                    turno: this.turno,
+                    numeracion: this.numeracion
+                });
+            } catch (e) {
+                console.error('[POS] No fue posible guardar el turno en IndexedDB:', e);
+            }
+        },
+
         async checkShiftStatus() {
             try {
-                const res = await fetch('/pos/api/shift/status/?caja_id=CAJA-01');
+                // Sin caja conocida no se envía caja_id: el backend usa request.session['caja_id'].
+                const qs = this.turno.caja_id ? `?caja_id=${encodeURIComponent(this.turno.caja_id)}` : '';
+                const res = await fetch(`/pos/api/shift/status/${qs}`);
                 const data = await res.json();
-                if (data.status === 'success' && data.turno_abierto) {
-                    this.turno = { abierto: true, ...data.turno };
+                if (data.status !== 'success') throw new Error(data.message || 'Respuesta no válida');
+                if (data.turno_abierto) {
+                    await this.aplicarRespuestaTurno(data, true);
                 } else {
-                    this.turno = { abierto: false, id_turno: null, caja_id: 'CAJA-01', base_economica: 0, tickets_count: 0 };
+                    await this.aplicarRespuestaTurno(data, false);
                     this.showAperturaModal = true;
                 }
             } catch (e) {
                 console.warn('[POS] Error al verificar estado del turno online, operando offline:', e);
+                try {
+                    const saved = await window.posDB.getShift();
+                    if (saved && saved.turno) {
+                        this.turno = { ...saved.turno };
+                        this.numeracion = saved.numeracion || null;
+                    }
+                } catch (e2) {
+                    console.error('[POS] No fue posible restaurar el turno desde IndexedDB:', e2);
+                }
             }
+        },
+
+        // --- Alertas de resolución DIAN (banner) ---
+        get siguienteConsecutivo() {
+            const n = this.numeracion;
+            if (!n) return 0;
+            return Math.max(
+                Number(n.consecutivo_actual || 0),
+                Math.max(0, Number(n.rango_inicial || 1) - 1)
+            ) + 1;
+        },
+
+        get alertaResolucion() {
+            const n = this.numeracion;
+            if (!n || !n.prefijo) return null;
+            const rojo = [];
+            const amarillo = [];
+
+            const rangoFinal = Number(n.rango_final || 0);
+            if (rangoFinal > 0) {
+                const restantes = rangoFinal - Number(n.consecutivo_actual || 0);
+                if (this.siguienteConsecutivo > rangoFinal) {
+                    rojo.push('Rango de facturación DIAN agotado para esta caja');
+                } else if (restantes <= 100) {
+                    amarillo.push(`Quedan ${restantes} folios disponibles (rango final ${rangoFinal})`);
+                }
+            }
+
+            if (n.fch_vencimiento) {
+                const hoy = this.hoyISO();
+                if (hoy > n.fch_vencimiento) {
+                    rojo.push(`Resolución DIAN vencida el ${n.fch_vencimiento.split('-').reverse().join('/')}`);
+                } else {
+                    const dias = Math.round(
+                        (new Date(n.fch_vencimiento + 'T00:00:00') - new Date(hoy + 'T00:00:00')) / 86400000
+                    );
+                    if (dias <= 15) {
+                        amarillo.push(dias === 0 ? 'La resolución DIAN vence hoy' : `La resolución DIAN vence en ${dias} día(s)`);
+                    }
+                }
+            }
+
+            if (rojo.length) return { nivel: 'rojo', mensaje: rojo.join(' · ') };
+            if (amarillo.length) return { nivel: 'amarillo', mensaje: amarillo.join(' · ') };
+            return null;
         },
 
         async loadLocalCatalog() {
             this.catalog = await window.posDB.getCatalog();
+            this.buildArticlesMap();
             if (this.catalog.length === 0 && this.isOnline) {
                 await this.syncCatalog();
             } else {
@@ -603,6 +962,7 @@ function posApp() {
                 const data = await res.json();
                 if (data.status === 'success') {
                     this.catalog = data.catalog;
+                    this.buildArticlesMap();
                     await window.posDB.saveCatalog(this.catalog);
                     this.filterCatalog();
                 }
@@ -642,9 +1002,10 @@ function posApp() {
         },
 
         filterCatalog() {
+            this.selectedSearchIndex = 0;   // cada cambio de texto reinicia la tarjeta resaltada
             const q = this.searchQuery.trim().toLowerCase();
             if (!q) {
-                this.filteredCatalog = this.catalog.slice(0, 40);
+                this.filteredCatalog = [];   // sin texto: no se muestran tarjetas (panel de reposo con teclas de función)
                 return;
             }
             this.filteredCatalog = this.catalog.filter(item => 
@@ -654,39 +1015,191 @@ function posApp() {
             ).slice(0, 40);
         },
 
+        // Único manejador de teclado del buscador (el listener global de window no procesa flechas ni Enter de búsqueda).
+        //  - Flechas (texto en el buscador y resultados visibles): navegación por filas/columnas de la cuadrícula.
+        //  - Enter: agrega el artículo resaltado / coincidencia exacta / primer resultado.
+        onSearchKeydown(e) {
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            if (this.hayModalAbierto) return;   // con un modal abierto manda onKeydown (cobro, etc.)
+            const k = e.key;
+            const total = this.filteredCatalog.length;
+            const hayResultados = !!this.searchQuery.trim() && total > 0;
+
+            if (k === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.repeat) return;
+                this.handleSearchEnter();
+                return;
+            }
+
+            if (!hayResultados) return;
+            if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'ArrowRight' && k !== 'ArrowLeft') return;
+            e.preventDefault();
+            e.stopPropagation();
+            const gridEl = this.$refs.resultsGrid;
+            const cols = gridEl
+                ? Math.max(1, getComputedStyle(gridEl).gridTemplateColumns.split(' ').filter(Boolean).length)
+                : 1;
+            const idx = this.selectedSearchIndex;
+            if (k === 'ArrowDown') this.selectedSearchIndex = Math.min(total - 1, idx + cols);
+            else if (k === 'ArrowUp') this.selectedSearchIndex = Math.max(0, idx - cols);
+            else if (k === 'ArrowRight') this.selectedSearchIndex = Math.min(total - 1, idx + 1);
+            else this.selectedSearchIndex = Math.max(0, idx - 1);
+            this.$nextTick(() => {
+                const el = document.querySelector('[data-search-index="' + this.selectedSearchIndex + '"]');
+                if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+            });
+        },
+
+        // Enter en el buscador:
+        //  - vacío: enfoca la cantidad de la línea activa del carrito
+        //  - con tarjeta movida (> 0): agrega el artículo resaltado
+        //  - en 0: coincidencia exacta (código de barras / código / referencia) o, si no hay, el primer resultado
+        handleSearchEnter() {
+            const q = this.searchQuery.trim().toLowerCase();
+            if (!q) { this.enfocarCantidadActiva(); return; }
+            let elegido = null;
+            if (this.selectedSearchIndex > 0 && this.filteredCatalog[this.selectedSearchIndex]) {
+                elegido = this.filteredCatalog[this.selectedSearchIndex];
+            } else {
+                const norm = (v) => (v === null || v === undefined) ? '' : String(v).trim().toLowerCase();
+                elegido = this.catalog.find(it =>
+                    norm(it.codigo_barras) === q || norm(it.referencia) === q || norm(it.id_articulo) === q
+                ) || this.filteredCatalog[0] || null;
+            }
+            if (!elegido) return;
+            this.addToCart(elegido);
+            this.limpiarBusqueda();   // vacía el buscador, reinicia selectedSearchIndex = 0 y devuelve el foco al input
+        },
+
+        limpiarBusqueda() {
+            this.searchQuery = '';
+            this.filterCatalog();   // sin texto: panel de reposo (sin tarjetas)
+            this.$nextTick(() => { if (this.$refs.searchInput) this.$refs.searchInput.focus(); });
+        },
+
+        buildArticlesMap() {
+            const map = {};
+            (this.catalog || []).forEach(a => { map[String(a.id_articulo).trim()] = a; });
+            this.articlesMap = map;
+        },
+
+        toggleGrupoDestino(grupo) {
+            this.grupoDestino = (this.grupoDestino === grupo) ? '' : grupo;
+        },
+
+        // Inserta (o acumula) una línea de artículo. Si tiene grupo, queda contigua a las demás líneas del grupo.
+        agregarLinea(item, cantidad, grupo) {
+            grupo = grupo || '';
+            const index = this.cart.findIndex(c =>
+                c.id_articulo === item.id_articulo && !c.es_regalo && (c.grupo_compuesto || '') === grupo);
+            if (index > -1) {
+                this.cart[index].cantidad = this.rQty(this.cart[index].cantidad + cantidad);
+                this.recalcCartLine(index);
+                return;
+            }
+            const vlrUnitario = item.precio;
+            const linea = {
+                line_id: ++this.lineSeq,
+                id_articulo: item.id_articulo,
+                referencia: item.referencia,
+                nom_articulo: item.nom_articulo,
+                id_grupo: String(item.id_grupo || ''),   // para cruzar promociones por Grupo/Línea
+                id_linea: String(item.id_linea || ''),
+                grupo_compuesto: grupo,                  // Ancheta/compuesto al que pertenece ('' = línea normal)
+                cantidad: this.rQty(cantidad),
+                vlr_unitario: vlrUnitario,          // precio unitario con IVA/INC incluidos
+                porc_descuento: 0,
+                descuento_valor: 0,                 // descuento de promoción (COP) de ESTA línea; 0 = sin promoción
+                porc_iva: item.porc_gravamen || 0,
+                porc_inc: item.porc_impoconsumo || 0,
+                vlr_inc_fijo_unit: item.vlr_inc_fijo_unit || 0,
+                vlr_iva: 0,
+                vlr_inc: 0,
+                base_neta: 0,
+                descuento_linea: 0,
+                tot_linea: Math.round(this.rQty(cantidad) * vlrUnitario), // bruto (entero)
+                neto_linea: Math.round(this.rQty(cantidad) * vlrUnitario),// bruto - descuento (entero)
+                es_regalo: false
+            };
+            let pos = this.cart.length;
+            if (grupo) {
+                for (let k = this.cart.length - 1; k >= 0; k--) {
+                    if ((this.cart[k].grupo_compuesto || '') === grupo) { pos = k + 1; break; }
+                }
+            }
+            this.cart.splice(pos, 0, linea);
+        },
+
+        // Artículo compuesto/ancheta: se despliegan sus componentes como líneas editables.
+        agregarCompuesto(padre) {
+            const grupo = padre.nom_articulo;
+            const faltantes = [];
+            let agregados = 0;
+            (padre.componentes || []).forEach(comp => {
+                const art = this.articlesMap[String(comp.id_articulo).trim()];
+                if (!art) { faltantes.push(comp.id_articulo); return; }
+                const cant = Number(comp.cantidad) > 0 ? Number(comp.cantidad) : 1;
+                this.agregarLinea(art, cant, grupo);
+                agregados++;
+            });
+            if (faltantes.length) {
+                alert(`Ancheta "${grupo}": ${faltantes.length} componente(s) no están en el catálogo activo `
+                    + `y no se agregaron: ${faltantes.join(', ')}.` + (agregados ? '' : '\nNo se agregó ninguna línea.'));
+            }
+        },
+
         addToCart(item) {
             if (!this.turno.abierto) {
                 alert('Debes realizar la Apertura de Caja antes de facturar.');
                 return;
             }
-            const index = this.cart.findIndex(c => c.id_articulo === item.id_articulo && !c.es_regalo);
-            if (index > -1) {
-                this.cart[index].cantidad += 1;
-                this.recalcCartLine(index);
+            if (item.es_compuesto === true && Array.isArray(item.componentes) && item.componentes.length > 0) {
+                this.agregarCompuesto(item);
             } else {
-                const vlrUnitario = item.precio;
-                const porcIva = item.porc_gravamen || 0;
-                const vlrIva = vlrUnitario * (porcIva / 100);
-                
-                this.cart.push({
-                    id_articulo: item.id_articulo,
-                    referencia: item.referencia,
-                    nom_articulo: item.nom_articulo,
-                    cantidad: 1,
-                    vlr_unitario: vlrUnitario,
-                    porc_descuento: 0,
-                    porc_iva: porcIva,
-                    vlr_iva: vlrIva,
-                    tot_linea: vlrUnitario,
-                    es_regalo: false
-                });
+                // Sustituto: si hay un grupo destino activo, la línea se asigna a ese grupo (una sola vez)
+                this.agregarLinea(item, 1, this.grupoDestino);
+                this.grupoDestino = '';
             }
+            this.evaluatePromotions();
+        },
+
+        // Cantidad: hasta 3 decimales
+        rQty(x) {
+            return Math.round(Number(x) * 1000) / 1000;
+        },
+
+        // Acepta punto o coma decimal ("1,250" / "1.250" / "0.45")
+        parseQty(str) {
+            const n = parseFloat(String(str).trim().replace(',', '.'));
+            return isFinite(n) ? this.rQty(n) : NaN;
+        },
+
+        fmtQty(q) {
+            const n = this.rQty(q);
+            if (!isFinite(n)) return '0';
+            if (Number.isInteger(n)) return String(n);
+            return n.toLocaleString('es-CO', { minimumFractionDigits: 3, maximumFractionDigits: 3, useGrouping: false });
+        },
+
+        setQty(index, raw) {
+            const item = this.cart[index];
+            if (!item || item.es_regalo) return;
+            const q = this.parseQty(raw);
+            if (isNaN(q)) return;               // entrada inválida: se conserva la cantidad anterior
+            if (q <= 0) {
+                this.removeFromCart(index);
+                return;
+            }
+            item.cantidad = q;
+            this.recalcCartLine(index);
             this.evaluatePromotions();
         },
 
         updateQty(index, delta) {
             if (this.cart[index].es_regalo) return;
-            this.cart[index].cantidad += delta;
+            this.cart[index].cantidad = this.rQty(this.cart[index].cantidad + delta);
             if (this.cart[index].cantidad <= 0) {
                 this.removeFromCart(index);
             } else {
@@ -697,83 +1210,194 @@ function posApp() {
 
         recalcCartLine(index) {
             const item = this.cart[index];
-            item.tot_linea = item.cantidad * item.vlr_unitario;
-            item.vlr_iva = (item.vlr_unitario * (item.porc_iva / 100)) * item.cantidad;
+            item.tot_linea = Math.round(item.cantidad * item.vlr_unitario);
+        },
+
+        // Redondeo half-up a 2 decimales (igual a Decimal ROUND_HALF_UP de pos/views.py)
+        r2(x) {
+            return Math.round(Number((x * 100).toFixed(6))) / 100;
+        },
+
+        // Cálculo en reversa (precios con IVA/INC incluidos). Debe mantenerse idéntico a
+        // calcular_ticket_en_reversa() de pos/views.py:
+        //   bruto = cant * precio; descuento = propio + prorrateo del global; pagar = bruto - descuento
+        //   con INC fijo/unidad: saldo = pagar - cant*inc_fijo
+        //   base = saldo / (1 + %iva + %inc); iva = base*%iva; inc = inc_fijo_linea + base*%inc
+        //   (el residuo de redondeo, <= 0.01, se absorbe en la base para que base+iva+inc == pagar)
+        recalcTaxes() {
+            const lines = this.cart;
+            // Si alguna línea trae descuento_valor se aplica EXACTAMENTE sobre su propia línea y NO se
+            // prorratea nada. El prorrateo del descuento global es solo respaldo (sin descuento_valor).
+            const hayDescItem = lines.some(i => (i.descuento_valor || 0) > 0);
+            const pre = lines.map(i => {
+                // Pesos enteros: bruto y descuento de línea se redondean al peso => neto entero exacto
+                const bruto = Math.round(i.cantidad * i.vlr_unitario);
+                const propio = Math.min(bruto, Math.round(bruto * (i.porc_descuento || 0) / 100) + Math.round(i.descuento_valor || 0));
+                return { bruto, propio, neto: Math.max(0, bruto - propio) };
+            });
+            const sumNeto = pre.reduce((s, p) => s + p.neto, 0);
+            const global = hayDescItem ? 0 : Math.min(Math.max(this.descuentoPromocion || 0, 0), sumNeto);
+            let lastPos = -1;
+            pre.forEach((p, k) => { if (p.neto > 0) lastPos = k; });
+            let asignado = 0;
+            lines.forEach((item, k) => {
+                const p = pre[k];
+                let cuota = 0;
+                if (sumNeto > 0 && p.neto > 0) {
+                    cuota = (k === lastPos) ? Math.round(global - asignado) : Math.round(global * p.neto / sumNeto);
+                    asignado = asignado + cuota;
+                }
+                const pagar = Math.max(0, p.neto - cuota);
+                const incFijo = Math.min(pagar, this.r2(item.cantidad * (item.vlr_inc_fijo_unit || 0)));
+                const saldo = this.r2(pagar - incFijo);
+                const pIva = (item.porc_iva || 0) / 100;
+                const pInc = (item.porc_inc || 0) / 100;
+                let base = this.r2(saldo / (1 + pIva + pInc));
+                const iva = this.r2(base * pIva);
+                const incPct = this.r2(base * pInc);
+                base = this.r2(pagar - iva - incPct - incFijo);
+                item.tot_linea = p.bruto;
+                item.descuento_linea = p.propio + cuota;
+                item.neto_linea = pagar;
+                item.base_neta = base;
+                item.vlr_iva = iva;
+                item.vlr_inc = this.r2(incFijo + incPct);
+            });
         },
 
         removeFromCart(index) {
             this.cart.splice(index, 1);
+            if (this.cart.length === 0) this.grupoDestino = '';
             this.evaluatePromotions();
         },
 
         evaluatePromotions() {
+            this.computePromotions();
+            this.recalcTaxes();
+        },
+
+        // Motor de promociones v2 (PrPromocion: dias_semana, monto_minimo, alcance, tipo_beneficio...).
+        // Reglas: se evalúan por prioridad (mayor primero); NO son acumulables: una línea que ya recibió
+        // descuento de una promoción queda bloqueada para las de menor prioridad.
+        // Salida: item.descuento_valor (COP exacto por línea), this.descuentoPromocion (= suma de las líneas) y this.promocionesAplicadas.
+        computePromotions() {
             this.descuentoPromocion = 0;
             this.promocionesAplicadas = [];
             this.cart = this.cart.filter(item => !item.es_regalo);
+            this.cart.forEach(item => { item.descuento_valor = 0; });
 
             if (this.cart.length === 0 || this.promociones.length === 0) return;
 
-            const subtotalSinDescuento = this.cart.reduce((sum, item) => sum + item.tot_linea, 0);
+            // Python/Django: 0=Lunes..6=Domingo | JS getDay(): 0=Domingo..6=Sábado
+            const diaHoy = String((new Date().getDay() + 6) % 7);
 
-            for (const promo of this.promociones) {
-                let cumpleTodas = true;
+            const promos = [...this.promociones].sort((a, b) => Number(b.prioridad || 0) - Number(a.prioridad || 0));
+            const bruto = (item) => Math.round(Number(item.cantidad || 0) * Number(item.vlr_unitario || 0));
+            const lineasBloqueadas = new Set();   // índices del carrito que ya recibieron una promoción
+            const descLinea = this.cart.map(() => 0);   // descuento (COP) asignado a cada línea del carrito
 
-                for (const cond of promo.condiciones || []) {
-                    if (cond.tipo_condicion === 'MONTO_MINIMO') {
-                        if (subtotalSinDescuento < parseFloat(cond.valor_condicion)) {
-                            cumpleTodas = false; break;
-                        }
-                    } else if (cond.tipo_condicion === 'PRODUCTO') {
-                        const existe = this.cart.some(i => i.id_articulo === cond.valor_condicion && i.cantidad >= parseFloat(cond.cantidad_minima || 1));
-                        if (!existe) { cumpleTodas = false; break; }
-                    } else if (cond.tipo_condicion === 'CLIENTE') {
-                        if (this.cliente.id_tercero !== cond.valor_condicion) {
-                            cumpleTodas = false; break;
-                        }
+            for (const promo of promos) {
+                const valor = Number(promo.valor_beneficio || 0);
+                if (valor <= 0) continue;
+
+                // Días de la semana (vacío = todos)
+                const dias = String(promo.dias_semana || '').split(',').map(d => d.trim()).filter(Boolean);
+                if (dias.length > 0 && !dias.includes(diaHoy)) continue;
+
+                // Líneas elegibles: no regalo, no bloqueadas y dentro del alcance
+                const valores = new Set((promo.alcance_valores || []).map(v => String(v)));
+                const elegibles = [];
+                this.cart.forEach((item, idx) => {
+                    if (item.es_regalo || lineasBloqueadas.has(idx)) return;
+                    let ok = false;
+                    switch (promo.alcance) {
+                        case 'TODA_TIENDA': ok = true; break;
+                        case 'GRUPO': ok = valores.has(String(item.id_grupo || '')); break;
+                        case 'LINEA': ok = valores.has(String(item.id_linea || '')); break;
+                        case 'PRODUCTO':
+                        case 'SELECCION_PRODUCTOS': ok = valores.has(String(item.id_articulo || '')); break;
+                        default: ok = false;
                     }
+                    if (ok) elegibles.push(idx);
+                });
+                if (elegibles.length === 0) continue;
+
+                const subtotalElegible = elegibles.reduce((sum, idx) => sum + bruto(this.cart[idx]), 0);
+
+                // Monto mínimo sobre el subtotal de las líneas elegibles de ESTA promoción
+                // (con alcance TODA_TIENDA equivale al carrito completo)
+                if (subtotalElegible < Number(promo.monto_minimo || 0)) continue;
+
+                const asignado = new Map();   // idx -> descuento de ESTA promoción para esa línea
+
+                if (promo.tipo_beneficio === 'DESCUENTO_PORC') {
+                    elegibles.forEach(idx => asignado.set(idx, Math.round(bruto(this.cart[idx]) * (valor / 100))));
+                } else if (promo.tipo_beneficio === 'DESCUENTO_VALOR') {
+                    // Valor fijo: se reparte SOLO entre las líneas elegibles, proporcional a su bruto
+                    const total = Math.min(Math.round(valor), subtotalElegible);
+                    let acum = 0;
+                    elegibles.forEach((idx, k) => {
+                        const cuota = (k === elegibles.length - 1)
+                            ? Math.round(total - acum)
+                            : Math.round(total * bruto(this.cart[idx]) / subtotalElegible);
+                        acum = acum + cuota;
+                        asignado.set(idx, cuota);
+                    });
+                } else if (promo.tipo_beneficio === 'N_ESIMA_UNIDAD') {
+                    // Mix & Match: el descuento aplica a las unidades más baratas del alcance
+                    const unidadesAlcance = [];
+                    for (const idx of elegibles) {
+                        const it = this.cart[idx];
+                        const unidades = Math.floor(Number(it.cantidad || 0));
+                        for (let u = 0; u < unidades; u++) unidadesAlcance.push({ idx, precio: Number(it.vlr_unitario || 0) });
+                    }
+                    unidadesAlcance.sort((a, b) => a.precio - b.precio);
+                    const n = Math.max(2, parseInt(promo.cada_n_unidades || 2, 10));
+                    const veces = Math.floor(unidadesAlcance.length / n);
+                    unidadesAlcance.slice(0, veces).forEach(u => {
+                        asignado.set(u.idx, (asignado.get(u.idx) || 0) + Math.round(u.precio * (valor / 100)));
+                    });
                 }
 
-                if (cumpleTodas) {
-                    this.promocionesAplicadas.push(promo.nom_promocion);
-                    for (const act of promo.acciones || []) {
-                        if (act.tipo_accion === 'DESCUENTO_PORC') {
-                            const desc = subtotalSinDescuento * (parseFloat(act.valor_accion) / 100);
-                            this.descuentoPromocion += desc;
-                        } else if (act.tipo_accion === 'DESCUENTO_VALOR') {
-                            this.descuentoPromocion += parseFloat(act.valor_accion);
-                        } else if (act.tipo_accion === 'REGALO' && act.id_articulo_regalo) {
-                            const regaloArt = this.catalog.find(a => a.id_articulo === act.id_articulo_regalo);
-                            if (regaloArt) {
-                                this.cart.push({
-                                    id_articulo: regaloArt.id_articulo,
-                                    referencia: regaloArt.referencia,
-                                    nom_articulo: regaloArt.nom_articulo + ' [REGALO]',
-                                    cantidad: 1,
-                                    vlr_unitario: 0,
-                                    porc_descuento: 100,
-                                    porc_iva: 0,
-                                    vlr_iva: 0,
-                                    tot_linea: 0,
-                                    es_regalo: true
-                                });
-                            }
-                        }
+                // Solo las líneas que realmente reciben descuento quedan bloqueadas y marcadas
+                let huboDescuento = false;
+                asignado.forEach((monto, idx) => {
+                    if (monto > 0) {
+                        descLinea[idx] = descLinea[idx] + monto;
+                        lineasBloqueadas.add(idx);
+                        huboDescuento = true;
                     }
+                });
+                if (huboDescuento) {
+                    this.promocionesAplicadas.push(promo.nom_promocion || promo.nombre || ('Promoción ' + promo.id_promocion));
                 }
             }
+
+            // Descuento exacto por línea (nunca mayor que su bruto); el global es la suma de las líneas
+            let totalDescuento = 0;
+            this.cart.forEach((item, idx) => {
+                item.descuento_valor = Math.min(Math.round(descLinea[idx]), bruto(item));
+                totalDescuento = totalDescuento + item.descuento_valor;
+            });
+            this.descuentoPromocion = totalDescuento;
         },
 
-        get totMercancia() {
-            return this.cart.reduce((sum, item) => sum + (item.tot_linea - item.vlr_iva), 0);
+        // Total a pagar = suma de netos de línea (enteros). IVA e INC se muestran en pesos enteros y
+        // la mercancía es el residuo, de modo que Mercancía + IVA + INC == Total peso a peso.
+        get totTicket() {
+            return this.cart.reduce((sum, item) => sum + Math.round(item.neto_linea || 0), 0);
         },
 
         get totIVA() {
-            return this.cart.reduce((sum, item) => sum + item.vlr_iva, 0);
+            return Math.round(this.cart.reduce((sum, item) => sum + item.vlr_iva, 0));
         },
 
-        get totTicket() {
-            const raw = (this.totMercancia + this.totIVA) - this.descuentoPromocion;
-            return raw > 0 ? raw : 0;
+        get totINC() {
+            return Math.round(this.cart.reduce((sum, item) => sum + item.vlr_inc, 0));
+        },
+
+        get totMercancia() {
+            return this.totTicket - this.totIVA - this.totINC;
         },
 
         get puntosGanados() {
@@ -838,7 +1462,7 @@ function posApp() {
         },
 
         get totalPagado() {
-            return (this.pagoEfectivo || 0) + (this.pagoTarjeta || 0) + (this.pagoTransferencia || 0) + (this.pagoPuntos || 0);
+            return (Number(this.pagoEfectivo) || 0) + (Number(this.pagoTarjeta) || 0) + (Number(this.pagoTransferencia) || 0) + (Number(this.pagoPuntos) || 0);
         },
 
         get pendienteCobro() {
@@ -852,48 +1476,469 @@ function posApp() {
         },
 
         openPaymentModal() {
-            const resto = Math.max(0, this.totTicket - (this.pagoPuntos || 0));
-            this.pagoEfectivo = resto;
+            this.pagoEfectivo = '';   // sin valor por defecto: el cajero digita lo recibido
             this.pagoTarjeta = 0;
             this.pagoTransferencia = 0;
+            this.resetTef();
             this.showPaymentModal = true;
             this.fetchPuntosSaldo();
+            this.$nextTick(() => { if (this.$refs.efectivoInput) this.$refs.efectivoInput.focus(); });
+        },
+
+        // Botón "Exacto": efectivo = lo que falta por cubrir (sin contar efectivo ya digitado)
+        setEfectivoExacto() {
+            const otros = (Number(this.pagoTarjeta) || 0) + (Number(this.pagoTransferencia) || 0) + (Number(this.pagoPuntos) || 0);
+            this.pagoEfectivo = Math.max(0, this.totTicket - otros);
+        },
+
+        // Billetes acumulativos: cada botón SUMA al efectivo recibido
+        sumarEfectivo(valor) {
+            this.pagoEfectivo = (Number(this.pagoEfectivo) || 0) + valor;
+        },
+
+        // Tarjeta vacía/0: se prellena con el saldo pendiente (total - efectivo recibido y demás medios ya digitados)
+        prefillTarjeta() {
+            if ((Number(this.pagoTarjeta) || 0) > 0) return;
+            const otros = (Number(this.pagoEfectivo) || 0) + (Number(this.pagoTransferencia) || 0) + (Number(this.pagoPuntos) || 0);
+            const saldo = Math.max(0, this.totTicket - otros);
+            if (saldo > 0) this.pagoTarjeta = saldo;
+        },
+
+        // ---------------- Teclas de función y navegación sin mouse ----------------
+        teclaDe(id) { return this.fkeys[id] || ''; },
+
+        get fkeyResumen() {
+            const num = (t) => parseInt(String(t).slice(1), 10);
+            return this.FKEY_ACCIONES
+                .map(a => ({ id: a.id, nombre: a.nombre, tecla: this.fkeys[a.id] }))
+                .sort((x, y) => num(x.tecla) - num(y.tecla));
+        },
+
+        get lineaActivaIdx() {
+            const n = this.cart.length;
+            if (!n) return -1;
+            if (this.activeLineId !== null) {
+                const k = this.cart.findIndex(c => c.line_id === this.activeLineId);
+                if (k >= 0) return k;
+            }
+            for (let k = n - 1; k >= 0; k--) { if (!this.cart[k].es_regalo) return k; }
+            return n - 1;
+        },
+
+        get hayModalAbierto() {
+            return this.showAperturaModal || this.showClienteModal || this.showPaymentModal ||
+                   this.showCierreZModal || this.showReceiptModal || this.showFkeysModal;
+        },
+
+        notificar(msg) {
+            this.toast = msg;
+            clearTimeout(this._toastTimer);
+            this._toastTimer = setTimeout(() => { this.toast = ''; }, 2500);
+        },
+
+        focusBuscador(seleccionar) {
+            this.$nextTick(() => {
+                const el = this.$refs.searchInput;
+                if (el) { el.focus(); if (seleccionar) el.select(); }
+            });
+        },
+
+        abrirConfigTeclas() {
+            this.fkeysDraft = { ...this.fkeys };
+            this.fkeysError = '';
+            this.showFkeysModal = true;
+        },
+
+        fkeyDuplicada(id) {
+            const k = this.fkeysDraft[id];
+            return !!k && this.FKEY_ACCIONES.filter(a => this.fkeysDraft[a.id] === k).length > 1;
+        },
+
+        guardarFkeys() {
+            const usadas = {};
+            for (const a of this.FKEY_ACCIONES) {
+                const k = this.fkeysDraft[a.id];
+                if (!this.FKEY_TECLAS.includes(k)) { this.fkeysError = `Tecla inválida para "${a.nombre}".`; return; }
+                if (usadas[k]) { this.fkeysError = `La tecla ${k} está asignada a dos acciones ("${usadas[k]}" y "${a.nombre}").`; return; }
+                usadas[k] = a.nombre;
+            }
+            this.fkeys = { ...this.fkeysDraft };
+            try { localStorage.setItem(FKEY_STORAGE, JSON.stringify(this.fkeys)); } catch (e) { /* almacenamiento no disponible */ }
+            this.fkeysError = '';
+            this.showFkeysModal = false;
+            this.notificar('Teclas de función guardadas.');
+            this.focusBuscador();
+        },
+
+        restaurarFkeys() {
+            this.fkeys = fkeysPorDefecto();
+            this.fkeysDraft = { ...this.fkeys };
+            this.fkeysError = '';
+            try { localStorage.removeItem(FKEY_STORAGE); } catch (e) { /* almacenamiento no disponible */ }
+            this.notificar('Teclas restauradas a los valores por defecto.');
+        },
+
+        abrirCliente() {
+            this.clienteQuery = '';
+            this.tercerosResults = [];
+            this.showClienteModal = true;
+            this.$nextTick(() => { if (this.$refs.clienteInput) this.$refs.clienteInput.focus(); });
+        },
+
+        seleccionarConsumidorFinal() {
+            this.selectCliente({ id_tercero: '222222222222', nom_tercero: 'VENTAS MASIVAS (CONSUMIDOR FINAL)' });
+        },
+
+        enterCliente() {
+            if (!this.clienteQuery.trim()) { this.seleccionarConsumidorFinal(); return; }
+            if (this.tercerosResults.length > 0) { this.selectCliente(this.tercerosResults[0]); return; }
+            this.searchTerceros();
+        },
+
+        puedeCobrar() {
+            if (!this.turno.abierto) { this.notificar('La caja está cerrada: abra turno para vender.'); return false; }
+            if (this.cart.length === 0) { this.notificar('El carrito está vacío.'); return false; }
+            return true;
+        },
+
+        eliminarLineaActiva() {
+            const idx = this.lineaActivaIdx;
+            if (idx < 0) { this.notificar('El carrito está vacío.'); return; }
+            const item = this.cart[idx];
+            if (item.es_regalo) { this.notificar('Las líneas de regalo las gestiona la promoción.'); return; }
+            const nombre = item.nom_articulo;
+            const explicita = this.activeLineId !== null;
+            this.removeFromCart(idx);
+            // Con selección explícita, la activa pasa a la línea vecina; si no, vuelve a seguir la última.
+            const vecina = this.cart[Math.min(idx, this.cart.length - 1)];
+            this.activeLineId = (explicita && vecina) ? vecina.line_id : null;
+            this.notificar('Línea eliminada: ' + nombre);
+        },
+
+        // Enter con el buscador vacío: enfoca la cantidad de la línea activa
+        enfocarCantidadActiva() {
+            const idx = this.lineaActivaIdx;
+            if (idx < 0) return;
+            if (this.cart[idx].es_regalo) { this.notificar('La cantidad de un regalo no se edita.'); return; }
+            const el = document.querySelector('[data-qty-line="' + idx + '"]');
+            if (el) { el.focus(); el.select(); }
+        },
+
+        ejecutarAccionFkey(id) {
+            switch (id) {
+                case 'buscar':
+                    this.focusBuscador(true);
+                    break;
+                case 'cantidad': {
+                    const idx = this.lineaActivaIdx;
+                    if (idx < 0) { this.notificar('El carrito está vacío.'); break; }
+                    if (this.cart[idx].es_regalo) { this.notificar('La cantidad de un regalo no se edita.'); break; }
+                    const el = document.querySelector('[data-qty-line="' + idx + '"]');
+                    if (el) { el.focus(); el.select(); }
+                    break;
+                }
+                case 'eliminar':
+                    this.eliminarLineaActiva();
+                    break;
+                case 'cliente':
+                    this.abrirCliente();
+                    break;
+                case 'peso':
+                    this.aplicarPesoBalanza();
+                    if (this.balanza.error) this.notificar(this.balanza.error);
+                    break;
+                case 'cobrar':
+                    if (this.puedeCobrar()) this.openPaymentModal();
+                    break;
+                case 'efectivo_exacto':
+                    if (!this.puedeCobrar()) break;
+                    this.openPaymentModal();
+                    this.setEfectivoExacto();
+                    break;
+                case 'datafono':
+                    if (!this.showPaymentModal) {
+                        if (!this.puedeCobrar()) break;
+                        this.openPaymentModal();
+                    }
+                    this.prefillTarjeta();
+                    this.cobrarConDatafono();
+                    break;
+            }
+        },
+
+        manejarFkey(tecla) {
+            if (this.showFkeysModal || this.showAperturaModal || this.showCierreZModal || this.showReceiptModal) return;
+            const accion = this.FKEY_ACCIONES.find(a => this.fkeys[a.id] === tecla);
+            if (!accion) return;
+            if (this.showPaymentModal && !['datafono', 'efectivo_exacto'].includes(accion.id)) return;
+            if (this.showClienteModal) {
+                if (accion.id === 'cliente') this.seleccionarConsumidorFinal();   // segunda pulsación: Consumidor Final
+                return;
+            }
+            this.ejecutarAccionFkey(accion.id);
+        },
+
+        cerrarModalActivo() {
+            if (this.showFkeysModal) { this.showFkeysModal = false; }
+            else if (this.showPaymentModal) { this.showPaymentModal = false; }
+            else if (this.showClienteModal) { this.showClienteModal = false; }
+            else if (this.showReceiptModal) { this.showReceiptModal = false; }
+            else if (this.showCierreZModal) { this.showCierreZModal = false; }
+            else return false;
+            this.focusBuscador();
+            return true;
+        },
+
+        onKeydown(e) {
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            // F1-F12: se interceptan siempre (evita ayuda/recarga/pantalla completa del navegador)
+            if (/^F([1-9]|1[0-2])$/.test(e.key) && !e.shiftKey) {
+                e.preventDefault();
+                if (!e.repeat) this.manejarFkey(e.key);
+                return;
+            }
+            if (e.key === 'Escape') {
+                if (this.cerrarModalActivo()) e.preventDefault();
+                return;
+            }
+            if (e.key === 'Enter' && this.showPaymentModal) {
+                if (e.target && e.target.tagName === 'BUTTON') return;   // un botón enfocado conserva su acción
+                e.preventDefault();
+                if (e.repeat || this.confirmandoPago || this.tefCobrando) return;
+                if (this.totalPagado >= this.totTicket) this.confirmPayment();
+                else this.notificar('El pago no cubre el total: faltan ' + this.formatCOP(this.pendienteCobro));
+                return;
+            }
+        },
+
+        resetTef() {
+            this.tefAprobacion = '';
+            this.tefFranquicia = '';
+            this.tefUltimos4 = '';
+            this.tefRecibo = '';
+            this.tefRespuestaRaw = '';
+            this.tefEstado = { tipo: '', mensaje: '' };
+        },
+
+        guardarTefUrl() {
+            this.tefUrl = String(this.tefUrl || '').trim() || 'http://127.0.0.1:8090/cobrar';
+            try { localStorage.setItem('pos_tef_url', this.tefUrl); } catch (e) { /* almacenamiento no disponible */ }
+        },
+
+        // Conector datáfono TEF (puente HTTP local). Si falla, la captura manual sigue disponible.
+        async cobrarConDatafono() {
+            if (this.tefCobrando) return;
+            const monto = Number(this.pagoTarjeta) || 0;
+            if (monto <= 0) {
+                this.tefEstado = { tipo: 'error', mensaje: 'Digite primero el valor a cobrar por tarjeta.' };
+                return;
+            }
+            this.guardarTefUrl();
+            const ticketId = (this.numeracion && this.numeracion.prefijo)
+                ? `${this.numeracion.prefijo}${this.siguienteConsecutivo}` : null;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 60000);
+            this.tefCobrando = true;
+            this.tefEstado = { tipo: 'espera', mensaje: 'Esperando respuesta del datáfono...' };
+            try {
+                const res = await fetch(this.tefUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ monto: monto, caja_id: this.turno.caja_id || null, ticket_id: ticketId }),
+                    signal: controller.signal
+                });
+                let data = null;
+                try { data = await res.json(); } catch (e) { data = null; }
+                if (!res.ok && !data) throw new Error('El puente respondió HTTP ' + res.status);
+                if (data && data.aprobado === true) {
+                    this.tefAprobacion = String(data.aprobacion ?? data.autorizacion ?? '').slice(0, 50);
+                    this.tefFranquicia = String(data.franquicia ?? '').slice(0, 50);
+                    this.tefUltimos4 = String(data.ultimos4 ?? data.ultimos_4 ?? '').replace(/\D/g, '').slice(-4);
+                    this.tefRecibo = String(data.recibo ?? '').slice(0, 50);
+                    this.tefRespuestaRaw = JSON.stringify(data);
+                    this.tefEstado = { tipo: 'ok', mensaje: 'Transacción aprobada por el datáfono.' };
+                } else {
+                    const motivo = data && (data.mensaje || data.message || data.error || data.motivo);
+                    this.tefEstado = { tipo: 'error', mensaje: 'Transacción rechazada' + (motivo ? ': ' + motivo : '') + '. Puede reintentar o digitar los datos manualmente.' };
+                }
+            } catch (e) {
+                const msg = e && e.name === 'AbortError'
+                    ? 'Tiempo de espera agotado (60 s) sin respuesta del datáfono.'
+                    : 'No se pudo conectar con el puente del datáfono (' + this.tefUrl + ').';
+                this.tefEstado = { tipo: 'error', mensaje: msg + ' Digite los datos manualmente como contingencia.' };
+            } finally {
+                clearTimeout(timer);
+                this.tefCobrando = false;
+            }
+        },
+
+        // Conector balanza serial (Web Serial API)
+        // Extrae el último valor numérico de una trama: "ST,GS,+  0.450kg", "0.450", "  1,250 kg"
+        parsePesoTrama(texto) {
+            const m = String(texto || '').match(/\d+(?:[.,]\d+)?/g);
+            if (!m) return null;
+            const n = parseFloat(m[m.length - 1].replace(',', '.'));
+            return isFinite(n) ? Math.round(n * 1000) / 1000 : null;
+        },
+
+        async conectarBalanza() {
+            if (!this.balanza.soportada || this.balanza.conectada || this.balanza.conectando) return;
+            this.balanza.error = '';
+            this.balanza.conectando = true;
+            const st = _serialBalanza;
+            try {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                st.port = port;
+                st.cerrando = false;
+                this.balanza.conectada = true;
+                this.balanza.peso = null;
+                const decoder = new TextDecoderStream();
+                st.readableClosed = port.readable.pipeTo(decoder.writable).catch(() => {});
+                st.reader = decoder.readable.getReader();
+                this.leerBalanza(st.reader);
+            } catch (e) {
+                if (e && e.name !== 'NotFoundError') this.balanza.error = 'Balanza: ' + (e.message || e);
+                await this.desconectarBalanza();
+            } finally {
+                this.balanza.conectando = false;
+            }
+        },
+
+        async leerBalanza(reader) {
+            const st = _serialBalanza;
+            let buffer = '';
+            let timer = null;
+            const procesar = (texto) => {
+                const peso = this.parsePesoTrama(texto);
+                if (peso !== null) this.balanza.peso = peso;
+            };
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    if (!value) continue;
+                    buffer += value;
+                    const partes = buffer.split(/[\r\n]+/);
+                    buffer = partes.pop();
+                    partes.forEach(procesar);
+                    if (buffer.length > 64) buffer = '';
+                    clearTimeout(timer);
+                    // Balanzas sin terminador de línea: se procesa lo acumulado tras una breve pausa
+                    if (buffer) timer = setTimeout(() => { procesar(buffer); buffer = ''; }, 150);
+                }
+            } catch (e) {
+                if (!st.cerrando) this.balanza.error = 'Balanza desconectada: ' + (e.message || e);
+            } finally {
+                clearTimeout(timer);
+                if (!st.cerrando && st.reader === reader) await this.desconectarBalanza();
+            }
+        },
+
+        async desconectarBalanza() {
+            const st = _serialBalanza;
+            if (st.cerrando) return;
+            st.cerrando = true;
+            try {
+                if (st.reader) { try { await st.reader.cancel(); } catch (e) {} try { st.reader.releaseLock(); } catch (e) {} }
+                if (st.readableClosed) { try { await st.readableClosed; } catch (e) {} }
+                if (st.port) { try { await st.port.close(); } catch (e) {} }
+            } finally {
+                st.port = null; st.reader = null; st.readableClosed = null;
+                this.balanza.conectada = false;
+                this.balanza.peso = null;
+                st.cerrando = false;
+            }
+        },
+
+        // Asigna el peso actual como cantidad del último ítem del carrito (ignora líneas de regalo)
+        aplicarPesoBalanza() {
+            const peso = this.balanza.peso;
+            if (peso === null || !(peso > 0)) { this.balanza.error = 'Sin lectura de peso válida.'; return; }
+            const idx = this.lineaActivaIdx;
+            if (idx < 0) { this.balanza.error = 'El carrito está vacío.'; return; }
+            if (this.cart[idx].es_regalo) { this.balanza.error = 'La línea activa es un regalo.'; return; }
+            this.balanza.error = '';
+            this.setQty(idx, String(Math.round(peso * 1000) / 1000));
         },
 
         async confirmPayment() {
+            if (this.confirmandoPago) return;
             if (this.totalPagado < this.totTicket) {
                 alert('El monto ingresado es inferior al total a pagar.');
                 return;
             }
 
-            const ticketId = 'POS-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+            // Consecutivo real por caja (prefijo + número). Sin numeración/prefijo: id temporal POS-...
+            let ticketId;
+            let consecutivoNum = 0;
+            const num = this.numeracion;
+            if (num && num.prefijo) {
+                const nextNum = this.siguienteConsecutivo;
+                const rangoFinal = Number(num.rango_final || 0);
+                if (rangoFinal > 0 && nextNum > rangoFinal) {
+                    alert('Rango de facturación DIAN agotado para esta caja. No es posible emitir más tiquetes.');
+                    return;
+                }
+                if (num.fch_vencimiento && this.hoyISO() > num.fch_vencimiento) {
+                    alert('Resolución DIAN vencida para esta caja. No es posible emitir más tiquetes.');
+                    return;
+                }
+                ticketId = `${num.prefijo}${nextNum}`;
+                consecutivoNum = nextNum;
+            } else {
+                ticketId = 'POS-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+            }
+
+            this.confirmandoPago = true;
+            try {
+            const tefActivo = (Number(this.pagoTarjeta) || 0) > 0;
             const ticket = {
                 ticket_id: ticketId,
+                consecutivo_num: consecutivoNum,
                 id_tercero: this.cliente.id_tercero,
                 nom_tercero: this.cliente.nom_tercero,
                 fch_ticket: new Date().toLocaleString('es-CO'),
                 tot_mercancia: this.totMercancia,
                 tot_iva: this.totIVA,
+                tot_inc: this.totINC,
                 tot_ticket: this.totTicket,
                 descuento_promocion: this.descuentoPromocion,
-                pago_efectivo: this.pagoEfectivo,
-                pago_tarjeta: this.pagoTarjeta,
-                pago_transferencia: this.pagoTransferencia,
-                pago_puntos: this.pagoPuntos,
+                pago_efectivo: Number(this.pagoEfectivo) || 0,
+                pago_tarjeta: Number(this.pagoTarjeta) || 0,
+                pago_transferencia: Number(this.pagoTransferencia) || 0,
+                pago_puntos: Number(this.pagoPuntos) || 0,
+                // Datáfono TEF (solo con pago por tarjeta)
+                tef_aprobacion: tefActivo ? String(this.tefAprobacion || '').trim() : '',
+                tef_franquicia: tefActivo ? String(this.tefFranquicia || '').trim() : '',
+                tef_ultimos4: tefActivo ? String(this.tefUltimos4 || '').replace(/\D/g, '').slice(-4) : '',
+                tef_recibo: tefActivo ? String(this.tefRecibo || '').trim() : '',
+                tef_respuesta_raw: tefActivo ? String(this.tefRespuestaRaw || '') : '',
                 puntos_ganados: this.puntosGanados,
                 puntos_redimidos_ticket: this.puntosRedimidosTicket,
                 cambio: this.cambioDevuelta,
-                items: JSON.parse(JSON.stringify(this.cart))
+                items: JSON.parse(JSON.stringify(this.cart)).map(it => ({ ...it, grupo_compuesto: it.grupo_compuesto || '' }))
             };
 
             await window.posDB.saveTicket(ticket);
             this.lastIssuedTicket = ticket;
+
+            // El consecutivo solo avanza una vez guardado el ticket local.
+            if (consecutivoNum > 0) {
+                this.numeracion = { ...this.numeracion, consecutivo_actual: consecutivoNum };
+                await this.guardarTurnoLocal();
+            }
             
             // Limpiar estado
             this.cart = [];
+            this.grupoDestino = '';
             this.descuentoPromocion = 0;
             this.promocionesAplicadas = [];
             this.pagoPuntos = 0;
+            this.pagoEfectivo = '';
+            this.pagoTarjeta = 0;
+            this.pagoTransferencia = 0;
+            this.resetTef();
             this.puntosRedimidosTicket = 0;
             this.showPaymentModal = false;
             this.cliente = { id_tercero: '222222222222', nom_tercero: 'VENTAS MASIVAS (CONSUMIDOR FINAL)' };
@@ -905,6 +1950,31 @@ function posApp() {
 
             // Abrir Modal de Impresión / Descarga
             this.showReceiptModal = true;
+            // Listo para el siguiente cliente: buscador limpio y con foco
+            this.limpiarBusqueda();
+            } finally {
+                this.confirmandoPago = false;
+            }
+        },
+
+        // Reimprime el PDF térmico del último tiquete emitido en esta sesión (GET al endpoint de sincronización).
+        async reimprimirUltimaPdf() {
+            const t = this.lastIssuedTicket;
+            if (!t || !t.ticket_id) return;
+            // Se abre la pestaña de inmediato (gesto del usuario) para que el navegador no la bloquee.
+            const win = window.open('', '_blank');
+            if (!this.isOnline) {
+                if (win) win.close();
+                this.notificar('Sin red: el PDF se genera al sincronizar. Se muestra el recibo local.');
+                this.showReceiptModal = true;
+                return;
+            }
+            try {
+                await this.triggerSync();   // asegura que el tiquete exista en el servidor
+            } catch (e) { /* triggerSync ya registra sus errores */ }
+            const url = '/pos/api/sync-tickets/?pdf=1&ticket_id=' + encodeURIComponent(t.ticket_id);
+            if (win) win.location.href = url;
+            else window.open(url, '_blank');
         },
 
         printThermalReceipt() {
@@ -916,11 +1986,11 @@ function posApp() {
                 const res = await fetch('/pos/api/shift/open/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ caja_id: 'CAJA-01', base_economica: this.aperturaBase })
+                    body: JSON.stringify({ caja_id: this.turno.caja_id || undefined, base_economica: this.aperturaBase })
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    this.turno = { abierto: true, ...data.turno };
+                    await this.aplicarRespuestaTurno(data, true);
                     this.showAperturaModal = false;
                     alert('Turno de caja abierto correctamente.');
                 } else {
@@ -932,7 +2002,7 @@ function posApp() {
         },
 
         async searchTerceros() {
-            if (!this.clienteQuery.trim()) return;
+            if (!this.clienteQuery.trim()) { this.tercerosResults = []; return; }
             try {
                 const res = await fetch(`/pos/api/terceros/?q=${encodeURIComponent(this.clienteQuery)}`);
                 const data = await res.json();
@@ -947,6 +2017,7 @@ function posApp() {
         selectCliente(tercero) {
             this.cliente = tercero;
             this.showClienteModal = false;
+            this.focusBuscador();
             this.pagoPuntos = 0;
             this.fetchPuntosSaldo();
             this.evaluatePromotions();
@@ -966,7 +2037,7 @@ function posApp() {
                 const res = await fetch('/pos/api/sync-tickets/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ caja_id: 'CAJA-01', tickets: unsynced })
+                    body: JSON.stringify({ caja_id: this.turno.caja_id || undefined, tickets: unsynced })
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
@@ -995,14 +2066,15 @@ function posApp() {
                 const res = await fetch('/pos/api/cierre-z/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ caja_id: 'CAJA-01' })
+                    body: JSON.stringify({ caja_id: this.turno.caja_id || undefined })
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
                     this.lastIssuedDocId = data.id_documento;
                     alert(`⚡ ${data.message}`);
                     this.showCierreZModal = false;
-                    this.turno = { abierto: false, id_turno: null, caja_id: 'CAJA-01', base_economica: 0, tickets_count: 0 };
+                    this.turno = { abierto: false, id_turno: null, caja_id: this.turno.caja_id, base_economica: 0, tickets_count: 0 };
+                    await this.guardarTurnoLocal();  // conserva la numeración de la caja para la próxima apertura
                     this.showAperturaModal = true;
                     this.showReceiptModal = true; // Mostrar modal de descarga .docx oficial
                     await window.posDB.runGarbageCollection();
@@ -1015,8 +2087,8 @@ function posApp() {
         },
 
         formatCOP(val) {
-            const num = parseFloat(val || 0);
-            return '$' + num.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const num = Math.round(parseFloat(val || 0)) || 0;
+            return '$' + num.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
         }
     };
 }

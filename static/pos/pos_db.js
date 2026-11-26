@@ -9,6 +9,26 @@ class PosDB {
         this.db = null;
     }
 
+    /**
+     * Copia "plana" (JSON puro) de cualquier dato antes de escribirlo en IndexedDB.
+     * Los Proxies reactivos de Alpine.js no son clonables por el algoritmo de IndexedDB
+     * y provocan DataCloneError en .put()/.add().
+     */
+    static toPlain(data) {
+        if (data === undefined || data === null) return data;
+        try {
+            return JSON.parse(JSON.stringify(data));
+        } catch (e) {
+            console.warn('[PosDB] toPlain: JSON falló, se intenta structuredClone:', e);
+            try {
+                return structuredClone(data);
+            } catch (e2) {
+                console.error('[PosDB] toPlain: no fue posible clonar el dato.', e2);
+                return data;
+            }
+        }
+    }
+
     async init() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(this.dbName, this.dbVersion);
@@ -70,12 +90,13 @@ class PosDB {
             const store = tx.objectStore('catalog');
             store.clear();
 
-            items.forEach(item => {
+            const plainItems = PosDB.toPlain(items) || [];
+            plainItems.forEach(item => {
                 store.put(item);
             });
 
             tx.oncomplete = () => {
-                console.log(`[PosDB] Catálogo cargado en IndexedDB (${items.length} artículos).`);
+                console.log(`[PosDB] Catálogo cargado en IndexedDB (${plainItems.length} artículos).`);
                 resolve(true);
             };
             tx.onerror = (e) => reject(e.target.error);
@@ -101,12 +122,13 @@ class PosDB {
             const store = tx.objectStore('promociones');
             store.clear();
 
-            promos.forEach(p => {
+            const plainPromos = PosDB.toPlain(promos) || [];
+            plainPromos.forEach(p => {
                 store.put(p);
             });
 
             tx.oncomplete = () => {
-                console.log(`[PosDB] ${promos.length} Reglas de promociones guardadas en IndexedDB.`);
+                console.log(`[PosDB] ${plainPromos.length} Reglas de promociones guardadas en IndexedDB.`);
                 resolve(true);
             };
             tx.onerror = (e) => reject(e.target.error);
@@ -129,11 +151,12 @@ class PosDB {
         if (!this.db) await this.init();
         ticket.sync_status = false;
         ticket.fch_timestamp = Date.now();
+        const plainTicket = PosDB.toPlain(ticket);
 
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction('tickets', 'readwrite');
             const store = tx.objectStore('tickets');
-            store.put(ticket);
+            store.put(plainTicket);
 
             tx.oncomplete = () => {
                 console.log(`[PosDB] Ticket ${ticket.ticket_id} guardado localmente (sync_status=false).`);
@@ -177,6 +200,30 @@ class PosDB {
 
             tx.oncomplete = () => resolve(true);
             tx.onerror = (e) => reject(e.target.error);
+        });
+    }
+
+    // --- TURNO ACTIVO (offline) ---
+    // Store 'shift': keyPath = 'key'. El turno vigente se guarda siempre con key = 'active_shift'.
+    async saveShift(shiftData) {
+        if (!this.db) await this.init();
+        const record = { ...PosDB.toPlain(shiftData || {}), key: 'active_shift', updated_at: Date.now() };
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction('shift', 'readwrite');
+            tx.objectStore('shift').put(record);
+            tx.oncomplete = () => resolve(record);
+            tx.onerror = (e) => reject(e.target.error);
+            tx.onabort = (e) => reject(e.target.error);
+        });
+    }
+
+    async getShift() {
+        if (!this.db) await this.init();
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction('shift', 'readonly');
+            const req = tx.objectStore('shift').get('active_shift');
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = (e) => reject(e.target.error);
         });
     }
 
